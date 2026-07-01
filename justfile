@@ -151,7 +151,7 @@ ci:
 # Run / auth (local)
 # ---------------------------------------------------------------------------------------------
 
-# Run oura-cli as a STDIO MCP server.
+# Run the CLI (oura) as a STDIO MCP server.
 [group('run')]
 mcp:
     cargo run -p oura-toolkit-cli ----mcp
