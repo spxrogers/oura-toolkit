@@ -1,0 +1,15 @@
+# Hand-written manifest for the GENERATED Rust SDK client.
+# The crate SOURCE (src/lib.rs) is emitted by `just gen-rust` (progenitor) from the overlaid
+# Oura OpenAPI spec and must NOT be hand-edited. This is the one and only Rust SDK copy.
+[package]
+name = "oura-api"
+description = "Generated Rust client for the Oura Ring API v2 (progenitor). Do not hand-edit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Populated when `just gen-rust` wires the progenitor output (reqwest, reqwest-middleware,
+# serde, serde_json, etc.). See issue #6.

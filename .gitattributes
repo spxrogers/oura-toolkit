@@ -1,0 +1,6 @@
+# Generated Rust SDK client — do not hand-edit; regenerate via `just gen-rust` (progenitor).
+# Collapses diffs on GitHub and excludes the dir from language stats.
+sdks/rust/oura-api/** linguist-generated=true
+
+# Breadth-SDK generated client subdirs get marked in #15 (only the generated dir, NOT the
+# hand-written auth companion beside it).

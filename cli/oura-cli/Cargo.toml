@@ -1,0 +1,11 @@
+[package]
+name = "oura-cli"
+description = "CLI and STDIO MCP server for the Oura Ring API v2 (auth setup/login, data commands, --mcp)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# clap + oura-api + oura-auth are wired in issues #8/#9/#10.
