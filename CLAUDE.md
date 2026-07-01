@@ -349,7 +349,7 @@ oura-toolkit/
 │   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, --mcp; depends on oura-toolkit-api + oura-toolkit-auth
 ├── plugins/
 │   ├── .claude-plugin/marketplace.json
-│   └── oura-ring/                # single plugin: MCP server entry + skills/
+│   └── oura-toolkit/             # single plugin (name matches dir): MCP server entry + skills/
 ├── codegen/                       # overlays + codegen scripts (NO justfile; recipes are in root justfile)
 └── dist-workspace.toml            # cargo-dist config
 ```
