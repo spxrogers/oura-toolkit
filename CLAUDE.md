@@ -55,10 +55,10 @@ Command surface reads clean: `oura auth login`, `oura sleep list`.
 per function; try to claim the taken names `oura` / `oura-api` / `oura-cli` (crates), `oura` (npm/
 PyPI).
 
-**Directory paths and the token-store dir are NOT renamed by this decision** — the repo still uses
-the short dirs `sdks/rust/oura-api`, `sdks/rust/oura-auth`, `cli/oura-cli`, and the store stays at
-`$XDG_CONFIG_HOME/oura-cli/` (see AUTH). Only the published crate/package/binary names carry the
-`oura-toolkit` scheme.
+**Repo directory paths are NOT renamed by this decision** — the repo still uses the short dirs
+`sdks/rust/oura-api`, `sdks/rust/oura-auth`, `cli/oura-cli`. The token store lives at
+`$XDG_CONFIG_HOME/oura-toolkit/` (brand-consistent; see AUTH). Only published crate/package/binary
+names carry the `oura-toolkit` scheme; directory paths are an internal detail.
 
 Prior art (awareness only, do NOT copy): `github.com/terry-li-hm/oura-cli` — an unrelated read-only
 personal CLI (crate `oura-cli`, binary `oura`). Useful only as a reference for CLI verb shape:
@@ -255,8 +255,8 @@ scope mapping in the spec — that lives in prose).
 
 ### Token store (in oura-auth)
 
-- Fixed, invocation-independent XDG path: `$XDG_CONFIG_HOME/oura-cli/`
-  (→ `~/.config/oura-cli/`), perms **0600**. MUST be identical whether invoked via `npx`,
+- Fixed, invocation-independent XDG path: `$XDG_CONFIG_HOME/oura-toolkit/`
+  (→ `~/.config/oura-toolkit/`), perms **0600**. MUST be identical whether invoked via `npx`,
   `bunx`, or a brew binary.
 - Store `access_token`, `refresh_token`, `expiry`, **AND** `client_id`/`client_secret`
   (refresh is a confidential-client call needing the secret).

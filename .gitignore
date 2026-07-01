@@ -11,7 +11,7 @@ node_modules/
 # The pristine vendored spec (spec/openapi.json) IS committed; overlay output is not.
 /codegen/build/
 
-# Env / secrets (tokens live in $XDG_CONFIG_HOME/oura-cli/, never in-repo)
+# Env / secrets (tokens live in $XDG_CONFIG_HOME/oura-toolkit/, never in-repo)
 .env
 *.log
 

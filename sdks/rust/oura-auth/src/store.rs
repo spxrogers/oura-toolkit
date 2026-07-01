@@ -1,6 +1,6 @@
 //! Persistent token store at a fixed, invocation-independent XDG path.
 //!
-//! `$XDG_CONFIG_HOME/oura-cli/credentials.json` (→ `~/.config/oura-cli/credentials.json`),
+//! `$XDG_CONFIG_HOME/oura-toolkit/credentials.json` (→ `~/.config/oura-toolkit/credentials.json`),
 //! written `0600` via an atomic temp-file + rename. The path MUST be identical whether the
 //! CLI is invoked via `npx`, `bunx`, or a brew binary — hence it derives only from the XDG
 //! env, never from the invocation location.
@@ -88,18 +88,18 @@ impl TokenStore {
     }
 }
 
-/// `$XDG_CONFIG_HOME/oura-cli`, falling back to `$HOME/.config/oura-cli`.
+/// `$XDG_CONFIG_HOME/oura-toolkit`, falling back to `$HOME/.config/oura-toolkit`.
 fn config_dir() -> Result<PathBuf, AuthError> {
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         if !xdg.is_empty() {
-            return Ok(PathBuf::from(xdg).join("oura-cli"));
+            return Ok(PathBuf::from(xdg).join("oura-toolkit"));
         }
     }
     let home = std::env::var("HOME").map_err(|_| AuthError::NoConfigDir)?;
     if home.is_empty() {
         return Err(AuthError::NoConfigDir);
     }
-    Ok(PathBuf::from(home).join(".config").join("oura-cli"))
+    Ok(PathBuf::from(home).join(".config").join("oura-toolkit"))
 }
 
 /// Atomic write with owner-only perms: write a temp file, fsync, rename into place.
