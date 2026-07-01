@@ -1,6 +1,8 @@
 # Hand-written manifest for the GENERATED Rust SDK client.
-# The crate SOURCE (src/lib.rs) is emitted by `just gen-rust` (progenitor) from the overlaid
-# Oura OpenAPI spec and must NOT be hand-edited. This is the one and only Rust SDK copy.
+# The crate SOURCE (src/lib.rs) is emitted by `just gen-rust` (progenitor) from the overlaid +
+# down-converted Oura OpenAPI spec and must NOT be hand-edited. This is the one and only Rust SDK
+# copy. The [dependencies] below mirror progenitor's generated manifest (see `just gen-rust`);
+# reqwest is unified on the workspace pin with the extra features the generated client needs.
 [package]
 name = "oura-api"
 description = "Generated Rust client for the Oura Ring API v2 (progenitor). Do not hand-edit."
@@ -10,6 +12,17 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# Generated crate: progenitor emits illustrative doc examples that aren't standalone-compilable
+# doctests. The generated code is exercised via the CLI (dogfooding) + sandbox tests, not doctests.
+[lib]
+doctest = false
+
 [dependencies]
-# Populated when `just gen-rust` wires the progenitor output (reqwest, reqwest-middleware,
-# serde, serde_json, etc.). See issue #6.
+progenitor-client = "0.14"
+reqwest = { workspace = true, features = ["query", "stream"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bytes = "1"
+futures-core = "0.3"
+serde_urlencoded = "0.7"
+chrono = { version = "0.4", default-features = false, features = ["serde"] }

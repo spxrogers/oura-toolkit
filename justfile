@@ -16,9 +16,14 @@ spec_version  := "openapi-1.35"
 spec_url      := "https://api.ouraring.com/v2/static/json/" + spec_version + ".json"
 
 # Pristine vendored spec (committed) and the derived overlay output (gitignored).
-spec_file     := "spec/openapi.json"
-build_dir     := "codegen/build"
-overlaid_spec := build_dir / "openapi.overlaid.json"
+spec_file       := "spec/openapi.json"
+build_dir       := "codegen/build"
+overlaid_spec   := build_dir / "openapi.overlaid.json"
+# Rust-only down-convert (3.1 -> 3.0.3) fed to progenitor.
+progenitor_spec := build_dir / "openapi.progenitor.json"
+
+# Workspace version (kept in sync with Cargo.toml [workspace.package].version).
+version := "0.1.0"
 
 # Show available recipes (default recipe).
 default:
@@ -32,9 +37,12 @@ default:
 [group('setup')]
 setup:
     rustup component add rustfmt clippy
-    @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay'"
+    # Rust codegen: progenitor CLI + a nightly rustfmt (progenitor formats with unstable opts).
+    rustup toolchain install nightly --profile minimal --component rustfmt
+    cargo install cargo-progenitor --locked
+    @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
-    @echo "Codegen/release tools are installed by their own recipes: progenitor (#6), cargo-dist (#11)."
+    @echo "cargo-dist for releases is installed by its own recipe (#11)."
 
 # ---------------------------------------------------------------------------------------------
 # Spec (source of truth)
@@ -64,9 +72,18 @@ spec-overlay:
 gen: gen-rust gen-ts gen-py gen-go
 
 # Generate the Rust SDK client (progenitor) -> sdks/rust/oura-api/src/lib.rs.
+# progenitor reads OpenAPI 3.0 only, so the overlaid 3.1 spec is down-converted first; its
+# formatter needs nightly rustfmt via the shim (see codegen/rustfmt-shim.sh). The committed
+# output builds on stable — only regeneration needs nightly + progenitor (installed by `setup`).
 [group('codegen')]
 gen-rust: spec-overlay
-    @echo "TODO(#6): run progenitor on {{overlaid_spec}} -> sdks/rust/oura-api/src/lib.rs (// @generated)"
+    mkdir -p {{build_dir}}
+    jq -f codegen/progenitor-downconvert.jq {{overlaid_spec}} > {{progenitor_spec}}
+    rm -rf {{build_dir}}/oura-api-gen
+    RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-api-gen -n oura-api -v {{version}}
+    cat codegen/generated-header.rs {{build_dir}}/oura-api-gen/src/lib.rs > sdks/rust/oura-api/src/lib.rs
+    cargo fmt -p oura-api
+    @echo "Generated sdks/rust/oura-api/src/lib.rs"
 
 # Generate the TypeScript SDK client (openapi-generator) -> sdks/typescript/.
 [group('codegen')]
