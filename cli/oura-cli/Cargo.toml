@@ -7,5 +7,17 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "oura-cli"
+path = "src/main.rs"
+
 [dependencies]
-# clap + oura-api + oura-auth are wired in issues #8/#9/#10.
+oura-auth = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+url = { workspace = true }
+anyhow = { workspace = true }
+open = "5"
+uuid = { version = "1", features = ["v4"] }
+# oura-api is wired for data commands in #9; --mcp (rmcp) in #10.
