@@ -4,7 +4,7 @@
 # copy. The [dependencies] below mirror progenitor's generated manifest (see `just gen-rust`);
 # reqwest is unified on the workspace pin with the extra features the generated client needs.
 [package]
-name = "oura-api"
+name = "oura-toolkit-api"
 description = "Generated Rust client for the Oura Ring API v2 (progenitor). Do not hand-edit."
 version.workspace = true
 edition.workspace = true

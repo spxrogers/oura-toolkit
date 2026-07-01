@@ -4,16 +4,16 @@
 //! credentials), collects `client_id`/`client_secret` via a localhost paste box (the secret
 //! never leaves the machine), then chains into `login`. `login` runs the Authorization Code
 //! flow against a fixed loopback `redirect_uri`, catches the code, and exchanges it via
-//! `oura-auth`. The non-interactive token machinery (exchange/refresh/store) all lives in
-//! `oura-auth`.
+//! `oura-toolkit-auth`. The non-interactive token machinery (exchange/refresh/store) all lives
+//! in `oura-toolkit-auth`.
 
 use anyhow::{bail, Context, Result};
-use oura_auth::{exchange_code, metadata, TokenStore, Tokens};
+use oura_toolkit_auth::{exchange_code, metadata, TokenStore, Tokens};
 use tokio::net::TcpListener;
 
 use crate::loopback::{self, Request};
 
-/// `oura-cli auth setup` — register an app (paste box), then log in.
+/// `oura auth setup` — register an app (paste box), then log in.
 pub async fn setup(port: u16) -> Result<()> {
     let redirect_uri = redirect_uri(port);
     let scopes = metadata::default_scopes();
@@ -43,12 +43,12 @@ pub async fn setup(port: u16) -> Result<()> {
     Ok(())
 }
 
-/// `oura-cli auth login` — Authorization Code flow using stored client credentials.
+/// `oura auth login` — Authorization Code flow using stored client credentials.
 pub async fn login(port: u16) -> Result<()> {
     let store = TokenStore::new()?;
     let (client_id, client_secret) = match store.load()? {
         Some(t) => (t.client_id, t.client_secret),
-        None => bail!("no client credentials found — run `oura-cli auth setup` first"),
+        None => bail!("no client credentials found — run `oura auth setup` first"),
     };
     let listener = bind(port).await?;
     let tokens = run_authorization(&listener, port, &client_id, &client_secret).await?;

@@ -22,6 +22,51 @@ API base: `https://api.ouraring.com/v2`
 
 ---
 
+## NAMING (LOCKED)
+
+Availability verified against npm, crates.io, and PyPI. **Apply these names; do not "improve"
+them.** Rationale is included only where it prevents a well-meaning refactor.
+
+| Layer | Name | Notes |
+|---|---|---|
+| Project / repo / brand | `oura-toolkit` | umbrella name everywhere |
+| CLI command (binary) | `oura` | what the user types — NOT `oura-toolkit`, NOT `oura-cli` |
+| npm scope | `@oura-toolkit` | verified free |
+| npm packages | `@oura-toolkit/api`, `@oura-toolkit/auth` | function-named leaves under the scope |
+| Rust crates | `oura-toolkit-*` | `oura-toolkit-api`, `oura-toolkit-auth`, `oura-toolkit-cli` |
+| Python distribution | `oura-toolkit` | single dist; submodules below |
+| Python modules | `oura_toolkit.api`, `oura_toolkit.auth` | NOT separate PyPI packages |
+| Claude plugin | `oura-toolkit` | |
+
+**Per-ecosystem namespacing** (do NOT mirror the npm layout everywhere):
+- **npm** — scoped `@oura-toolkit/api`, `@oura-toolkit/auth`. Keep `api`; never rename to `sdk`
+  (the whole scope IS the SDK). Model: `@octokit/core` + `@octokit/auth-token`.
+- **Rust** — no namespaces → flat prefixed crates `oura-toolkit-{api,auth,cli}`. Hyphens in the
+  crate name, underscores on import (`use oura_toolkit_api::…`). The short `oura-api` is taken on
+  crates.io anyway.
+- **Python** — single distribution `oura-toolkit` with submodules `oura_toolkit.api` /
+  `oura_toolkit.auth`. No per-function micro-packages.
+
+**Binary ≠ crate name (the one Cargo gotcha):** the CLI crate is `oura-toolkit-cli` but installs a
+binary named `oura` (`[[bin]] name = "oura"`). `cargo install oura-toolkit-cli` → `oura` on PATH.
+Command surface reads clean: `oura auth login`, `oura sleep list`.
+
+**Do NOT:** name any package/module `sdk`; suffix the binary `-cli`; publish Python sub-packages
+per function; try to claim the taken names `oura` / `oura-api` / `oura-cli` (crates), `oura` (npm/
+PyPI).
+
+**Directory paths and the token-store dir are NOT renamed by this decision** — the repo still uses
+the short dirs `sdks/rust/oura-api`, `sdks/rust/oura-auth`, `cli/oura-cli`, and the store stays at
+`$XDG_CONFIG_HOME/oura-cli/` (see AUTH). Only the published crate/package/binary names carry the
+`oura-toolkit` scheme.
+
+Prior art (awareness only, do NOT copy): `github.com/terry-li-hm/oura-cli` — an unrelated read-only
+personal CLI (crate `oura-cli`, binary `oura`). Useful only as a reference for CLI verb shape:
+`sleep` / `readiness` / `activity` / `hrv` / `stress`, with dates `today` / `yesterday` /
+`YYYY-MM-DD`. Our project is a strict superset (SDK suite + auth + MCP + plugin).
+
+---
+
 ## TASK RUNNER: SINGLE ROOT JUSTFILE (strict)
 
 - There is **ONE** justfile, at the repo root. **No per-directory justfiles.**
@@ -46,7 +91,7 @@ API base: `https://api.ouraring.com/v2`
   just test-sandbox     # integration against Oura /v2/sandbox routes
   just fmt / lint / check
   just clean
-  just mcp              # run oura-cli --mcp
+  just mcp              # run the CLI (oura) as a STDIO MCP server
   just auth-setup / auth-login
   just release          # cargo-dist
   just publish          # npm + homebrew + crates
@@ -194,13 +239,13 @@ scope mapping in the spec — that lives in prose).
 
 ### Commands (all runnable via just recipes for local testing)
 
-- **`oura-cli auth setup`** — guided registration. Open
+- **`oura auth setup`** — guided registration. Open
   `cloud.ouraring.com/oauth/applications` in the **USER'S OWN default browser**, print the
   exact values to paste (app name, redirect URI, scopes), then serve a tiny paste box on
   the loopback listener so the user pastes `client_id`/`client_secret` into a localhost
   page that POSTs back to us. **Secret never leaves the machine.** Chain into `auth login`
   on success.
-- **`oura-cli auth login`** — Authorization Code flow. Loopback HTTP listener on **FIXED
+- **`oura auth login`** — Authorization Code flow. Loopback HTTP listener on **FIXED
   default port 8788** (`redirect_uri http://localhost:8788/callback`, `--port` override).
   Oura requires the `redirect_uri` to be **pre-registered and match EXACTLY**. Open the
   authorize URL, catch the code on callback, exchange at the token endpoint with
@@ -233,7 +278,7 @@ scope mapping in the spec — that lives in prose).
   persist rotated tokens, retry. If tokens are genuinely **ABSENT**: do **NOT** prompt, do
   **NOT** open a browser, do **NOT** write to stdout (stdout is the JSON-RPC transport).
   Let the `initialize` handshake succeed, and on the **first tool call** return a
-  **structured error** telling the user to run `oura-cli auth login`.
+  **structured error** telling the user to run `oura auth login`.
 - stdio MCP auth is **out-of-band** per the MCP spec — do **NOT** implement
   OAuth-over-the-wire for the server, and do **NOT** make the server remote/HTTP or a
   hosted OAuth broker.
@@ -245,7 +290,7 @@ scope mapping in the spec — that lives in prose).
 - **cargo-dist** ("dist") emits shell + powershell + npm + homebrew installers from one
   `dist-workspace.toml`, driven by `just release` / `just publish`. **Confirm current
   cargo-dist version/config format** from its docs.
-- Primary launch is **`npx -y oura-cli ...` (NPX-FIRST)**. `brew` / `bun i -g` are
+- Primary launch is **`npx -y oura-toolkit ...` (NPX-FIRST)**. `brew` / `bun i -g` are
   speed-path alternatives. **No bunx-first shell shim.**
 
 ---
@@ -255,7 +300,7 @@ scope mapping in the spec — that lives in prose).
 - **ONE** Claude plugin (not two) shipping **BOTH** the MCP server config **AND** skills.
   Skills call the MCP tools. Standard marketplace layout
   (`.claude-plugin/marketplace.json` + the plugin's `plugin.json`). The MCP server entry
-  launches `npx -y oura-cli@<pinned-version> --mcp`. **Check the current Claude
+  launches `npx -y oura-toolkit@<pinned-version> --mcp`. **Check the current Claude
   plugin/marketplace manifest schema** against Anthropic's docs before writing manifests.
 
 ---
@@ -301,7 +346,7 @@ oura-toolkit/
 │   ├── python/
 │   └── go/
 ├── cli/
-│   └── oura-cli/                 # THE app: clap CLI, auth setup|login (loopback OAuth), data cmds, --mcp; depends on oura-api + oura-auth
+│   └── oura-cli/                 # THE app (crate oura-toolkit-cli, binary `oura`): auth setup|login (loopback OAuth), data cmds, --mcp; depends on oura-toolkit-api + oura-toolkit-auth
 ├── plugins/
 │   ├── .claude-plugin/marketplace.json
 │   └── oura-ring/                # single plugin: MCP server entry + skills/
@@ -326,7 +371,7 @@ oura-toolkit/
 7. Implement `sdks/rust/oura-auth` (token store, refresh w/ rotation, Bearer middleware,
    spec-read metadata)
 8. Implement `cli/oura-cli` auth setup/login (loopback)
-9. Stub `--mcp` wiring rmcp + rmcp-openapi through oura-auth
+9. Stub `--mcp` wiring rmcp + rmcp-openapi through oura-toolkit-auth
 10. `dist-workspace.toml`
 11. README setup section (commands shown as `just …`)
 

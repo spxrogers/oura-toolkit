@@ -3,9 +3,9 @@
 /// Errors from the token store, the token endpoint, and the auth middleware.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
-    /// No credentials on disk. Callers (CLI/MCP) turn this into a "run `oura-cli auth login`"
+    /// No credentials on disk. Callers (CLI/MCP) turn this into a "run `oura auth login`"
     /// message; the MCP server surfaces it as a structured tool error.
-    #[error("not authenticated — run `oura-cli auth login`")]
+    #[error("not authenticated — run `oura auth login`")]
     NotAuthenticated,
 
     /// Could not resolve the config directory ($XDG_CONFIG_HOME or $HOME).

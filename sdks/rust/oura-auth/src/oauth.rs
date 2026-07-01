@@ -1,7 +1,7 @@
 //! Token-endpoint calls: authorization-code exchange and refresh (with rotation).
 //!
 //! These are the non-interactive half of OAuth — plain HTTPS POSTs to the token endpoint.
-//! The interactive half (browser + loopback listener) lives in `oura-cli`, which calls
+//! The interactive half (browser + loopback listener) lives in `oura-toolkit-cli`, which calls
 //! [`exchange_code`] once it has caught the authorization code.
 
 use serde::Deserialize;

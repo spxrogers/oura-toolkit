@@ -80,9 +80,9 @@ gen-rust: spec-overlay
     mkdir -p {{build_dir}}
     jq -f codegen/progenitor-downconvert.jq {{overlaid_spec}} > {{progenitor_spec}}
     rm -rf {{build_dir}}/oura-api-gen
-    RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-api-gen -n oura-api -v {{version}}
+    RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-api-gen -n oura-toolkit-api -v {{version}}
     cat codegen/generated-header.rs {{build_dir}}/oura-api-gen/src/lib.rs > sdks/rust/oura-api/src/lib.rs
-    cargo fmt -p oura-api
+    cargo fmt -p oura-toolkit-api
     @echo "Generated sdks/rust/oura-api/src/lib.rs"
 
 # Generate the TypeScript SDK client (openapi-generator) -> sdks/typescript/.
@@ -154,17 +154,17 @@ ci:
 # Run oura-cli as a STDIO MCP server.
 [group('run')]
 mcp:
-    cargo run -p oura-cli -- --mcp
+    cargo run -p oura-toolkit-cli ----mcp
 
 # Guided Oura OAuth app registration (loopback paste box), then chain into login.
 [group('run')]
 auth-setup:
-    cargo run -p oura-cli -- auth setup
+    cargo run -p oura-toolkit-cli --auth setup
 
 # Authorization Code login (loopback listener on :8788).
 [group('run')]
 auth-login:
-    cargo run -p oura-cli -- auth login
+    cargo run -p oura-toolkit-cli --auth login
 
 # ---------------------------------------------------------------------------------------------
 # Release / publish

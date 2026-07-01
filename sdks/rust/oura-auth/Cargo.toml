@@ -1,5 +1,5 @@
 [package]
-name = "oura-auth"
+name = "oura-toolkit-auth"
 description = "Non-interactive auth companion for the Oura Ring API: token store, confidential-client refresh with rotation, and Bearer-injecting reqwest middleware. Reads OAuth metadata from the vendored spec."
 version.workspace = true
 edition.workspace = true

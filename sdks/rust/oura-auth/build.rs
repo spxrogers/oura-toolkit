@@ -10,7 +10,7 @@ use std::{env, fs, path::PathBuf};
 
 fn main() {
     let spec = find_spec().expect(
-        "oura-auth build: could not locate `spec/openapi.json` by walking up from the crate dir",
+        "oura-toolkit-auth build: could not locate `spec/openapi.json` by walking up from the crate dir",
     );
     println!("cargo:rerun-if-changed={}", spec.display());
 
