@@ -71,7 +71,7 @@ spec-overlay:
 [group('codegen')]
 gen: gen-rust gen-ts gen-py gen-go
 
-# Generate the Rust SDK client (progenitor) -> sdks/rust/oura-api/src/lib.rs.
+# Generate the Rust SDK client (progenitor) -> sdks/rust/oura-toolkit-api/src/lib.rs.
 # progenitor reads OpenAPI 3.0 only, so the overlaid 3.1 spec is down-converted first; its
 # formatter needs nightly rustfmt via the shim (see codegen/rustfmt-shim.sh). The committed
 # output builds on stable — only regeneration needs nightly + progenitor (installed by `setup`).
@@ -79,11 +79,11 @@ gen: gen-rust gen-ts gen-py gen-go
 gen-rust: spec-overlay
     mkdir -p {{build_dir}}
     jq -f codegen/progenitor-downconvert.jq {{overlaid_spec}} > {{progenitor_spec}}
-    rm -rf {{build_dir}}/oura-api-gen
-    RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-api-gen -n oura-toolkit-api -v {{version}}
-    cat codegen/generated-header.rs {{build_dir}}/oura-api-gen/src/lib.rs > sdks/rust/oura-api/src/lib.rs
+    rm -rf {{build_dir}}/oura-toolkit-api-gen
+    RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-toolkit-api-gen -n oura-toolkit-api -v {{version}}
+    cat codegen/generated-header.rs {{build_dir}}/oura-toolkit-api-gen/src/lib.rs > sdks/rust/oura-toolkit-api/src/lib.rs
     cargo fmt -p oura-toolkit-api
-    @echo "Generated sdks/rust/oura-api/src/lib.rs"
+    @echo "Generated sdks/rust/oura-toolkit-api/src/lib.rs"
 
 # Generate the TypeScript SDK client (openapi-generator) -> sdks/typescript/.
 [group('codegen')]

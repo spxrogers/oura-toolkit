@@ -55,10 +55,10 @@ Command surface reads clean: `oura auth login`, `oura sleep list`.
 per function; try to claim the taken names `oura` / `oura-api` / `oura-cli` (crates), `oura` (npm/
 PyPI).
 
-**Repo directory paths are NOT renamed by this decision** — the repo still uses the short dirs
-`sdks/rust/oura-api`, `sdks/rust/oura-auth`, `cli/oura-cli`. The token store lives at
-`$XDG_CONFIG_HOME/oura-toolkit/` (brand-consistent; see AUTH). Only published crate/package/binary
-names carry the `oura-toolkit` scheme; directory paths are an internal detail.
+**Each crate's directory matches its crate name** — `sdks/rust/oura-toolkit-api`,
+`sdks/rust/oura-toolkit-auth`, `cli/oura-toolkit-cli` — so nothing has to be "patched over" with a
+diverging `[package] name` in Cargo.toml. (Dir length is not a feature; a dir/crate-name mismatch
+is a maintenance overhead.) The token store lives at `$XDG_CONFIG_HOME/oura-toolkit/` (see AUTH).
 
 Prior art (awareness only, do NOT copy): `github.com/terry-li-hm/oura-cli` — an unrelated read-only
 personal CLI (crate `oura-cli`, binary `oura`). Useful only as a reference for CLI verb shape:
@@ -138,8 +138,8 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
 ## CLIENT / SDK GENERATION (do not hand-write transport)
 
 - The Rust API client is **GENERATED** from the spec with **`progenitor`** (idiomatic Rust;
-  far better than openapi-generator's generic Rust). This crate is `sdks/rust/oura-api`.
-- `sdks/rust/oura-api` **IS** the shipped Rust SDK. Dual-use: the CLI depends on it directly
+  far better than openapi-generator's generic Rust). This crate is `sdks/rust/oura-toolkit-api`.
+- `sdks/rust/oura-toolkit-api` **IS** the shipped Rust SDK. Dual-use: the CLI depends on it directly
   (dogfooding = free integration test). Do **NOT** regenerate a second Rust copy elsewhere.
 - **Breadth SDKs** (TypeScript, Python, Go) are generated with **openapi-generator** (or
   evaluate Speakeasy/Fern — see auth note) into `sdks/<lang>/`. Pure data-plane: accept a
@@ -177,8 +177,8 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
 - **The generated client takes a plain `reqwest::Client`** (`Client::new_with_client`);
   progenitor 0.14 does **not** accept a `reqwest_middleware::ClientWithMiddleware`. So the
   data-plane auth wiring (issues #9/#10) hands the generated client a `reqwest::Client`
-  preconfigured with `oura-auth`'s fresh Bearer (proactive refresh via `TokenManager`), and
-  retries once on 401 via `TokenManager::force_refresh`. `oura-auth` still ships the
+  preconfigured with `oura-toolkit-auth`'s fresh Bearer (proactive refresh via `TokenManager`), and
+  retries once on 401 via `TokenManager::force_refresh`. `oura-toolkit-auth` still ships the
   reqwest-middleware `AuthMiddleware`/`build_authenticated_client` for middleware consumers,
   but that is **not** the progenitor integration path.
 
@@ -227,14 +227,14 @@ scope mapping in the spec — that lives in prose).
 
 ### Structure
 
-- **`sdks/rust/oura-auth`**: reusable, **non-interactive** Rust auth companion — token
+- **`sdks/rust/oura-toolkit-auth`**: reusable, **non-interactive** Rust auth companion — token
   store, refresh (with rotation), Bearer-injecting middleware, reads OAuth metadata from
   the spec. Depended on by **BOTH** the CLI's SDK calls **AND** the MCP tool calls (one
   auth layer, two consumers). Plugs into the generated client's bearer slot (progenitor:
   hand it a `reqwest::Client` with `reqwest-middleware` for auth + retry). Each other
   language gets its own sibling companion.
 - **Interactive OAuth** (loopback listener, browser-open, `auth setup` / `auth login`)
-  lives in **`cli/oura-cli`**, NOT in any SDK/companion. SDK consumers bring their own
+  lives in **`cli/oura-toolkit-cli`**, NOT in any SDK/companion. SDK consumers bring their own
   token.
 
 ### Commands (all runnable via just recipes for local testing)
@@ -253,7 +253,7 @@ scope mapping in the spec — that lives in prose).
 - **Default scope request** for the toolkit: `personal daily heartrate workout tag session
   spo2Daily` (omit `email` unless needed).
 
-### Token store (in oura-auth)
+### Token store (in oura-toolkit-auth)
 
 - Fixed, invocation-independent XDG path: `$XDG_CONFIG_HOME/oura-toolkit/`
   (→ `~/.config/oura-toolkit/`), perms **0600**. MUST be identical whether invoked via `npx`,
@@ -273,7 +273,7 @@ scope mapping in the spec — that lives in prose).
   people actually want (daily sleep, daily readiness, daily activity, daily stress, heart
   rate, sessions, workouts, personal info), **hide the rest**, write good LLM-facing
   descriptions.
-- MCP tool calls use the **SAME `oura-auth` companion** (Bearer + refresh) as the CLI.
+- MCP tool calls use the **SAME `oura-toolkit-auth` companion** (Bearer + refresh) as the CLI.
 - **`--mcp` auth behavior**: read tokens from the fixed path; refresh **silently on 401**,
   persist rotated tokens, retry. If tokens are genuinely **ABSENT**: do **NOT** prompt, do
   **NOT** open a browser, do **NOT** write to stdout (stdout is the JSON-RPC transport).
@@ -313,8 +313,8 @@ scope mapping in the spec — that lives in prose).
 - Do **NOT** hand-write a transport/HTTP client in any language. Generate it and depend on
   it.
 - Do **NOT** let codegen touch hand-written auth companions. `just gen` regenerates only
-  the generated SDK clients (e.g. `sdks/rust/oura-api`); it MUST NOT modify `sdks/*/…-auth`.
-- Do **NOT** regenerate a second Rust SDK copy; `sdks/rust/oura-api` is the one Rust SDK.
+  the generated SDK clients (e.g. `sdks/rust/oura-toolkit-api`); it MUST NOT modify `sdks/*/…-auth`.
+- Do **NOT** regenerate a second Rust SDK copy; `sdks/rust/oura-toolkit-api` is the one Rust SDK.
 - Do **NOT** privilege Rust structurally; every language sits under `sdks/<lang>/` with the
   same client+companion shape. The CLI is an app, not an SDK, hence `cli/`.
 - Do **NOT** use PKCE or assume a public client. Oura needs a client_secret.
@@ -340,13 +340,13 @@ oura-toolkit/
 ├── spec/openapi.json              # vendored from openapi-1.35.json, pinned (via just spec-fetch)
 ├── sdks/
 │   ├── rust/
-│   │   ├── oura-api/              # GENERATED (progenitor) = Rust SDK client. regen target; DO NOT hand-edit.
-│   │   └── oura-auth/            # hand-written Rust auth companion (store, refresh, middleware, spec-read metadata)
+│   │   ├── oura-toolkit-api/      # GENERATED (progenitor) = Rust SDK client. regen target; DO NOT hand-edit.
+│   │   └── oura-toolkit-auth/     # hand-written Rust auth companion (store, refresh, middleware, spec-read metadata)
 │   ├── typescript/                # generated client + auth companion (later)
 │   ├── python/
 │   └── go/
 ├── cli/
-│   └── oura-cli/                 # THE app (crate oura-toolkit-cli, binary `oura`): auth setup|login (loopback OAuth), data cmds, --mcp; depends on oura-toolkit-api + oura-toolkit-auth
+│   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, --mcp; depends on oura-toolkit-api + oura-toolkit-auth
 ├── plugins/
 │   ├── .claude-plugin/marketplace.json
 │   └── oura-ring/                # single plugin: MCP server entry + skills/
@@ -354,7 +354,7 @@ oura-toolkit/
 └── dist-workspace.toml            # cargo-dist config
 ```
 
-**Cargo workspace members**: `["sdks/rust/oura-api", "sdks/rust/oura-auth", "cli/oura-cli"]`.
+**Cargo workspace members**: `["sdks/rust/oura-toolkit-api", "sdks/rust/oura-toolkit-auth", "cli/oura-toolkit-cli"]`.
 
 ---
 
@@ -367,10 +367,10 @@ oura-toolkit/
 4. `just spec-fetch` to vendor the spec
 5. Write codegen overlays (fix servers url, strip dict union, narrow client security) wired
    to `just spec-overlay` / `just gen`
-6. Generate `sdks/rust/oura-api` with progenitor
-7. Implement `sdks/rust/oura-auth` (token store, refresh w/ rotation, Bearer middleware,
+6. Generate `sdks/rust/oura-toolkit-api` with progenitor
+7. Implement `sdks/rust/oura-toolkit-auth` (token store, refresh w/ rotation, Bearer middleware,
    spec-read metadata)
-8. Implement `cli/oura-cli` auth setup/login (loopback)
+8. Implement `cli/oura-toolkit-cli` auth setup/login (loopback)
 9. Stub `--mcp` wiring rmcp + rmcp-openapi through oura-toolkit-auth
 10. `dist-workspace.toml`
 11. README setup section (commands shown as `just …`)

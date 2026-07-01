@@ -1,15 +1,15 @@
 # oura-toolkit — cargo workspace.
 #
-# Members are the two Rust SDK crates plus the CLI app. Rust is NOT privileged:
-# `sdks/rust/oura-api` (generated client) and `sdks/rust/oura-auth` (hand-written auth
-# companion) sit next to the future breadth-SDK siblings under `sdks/<lang>/`; the CLI is an
-# app, hence `cli/`. See CLAUDE.md for the full architecture.
+# Members are the two Rust SDK crates plus the CLI app; each directory matches its crate name.
+# Rust is NOT privileged: `sdks/rust/oura-toolkit-api` (generated client) and
+# `sdks/rust/oura-toolkit-auth` (hand-written auth companion) sit next to the future breadth-SDK
+# siblings under `sdks/<lang>/`; the CLI is an app, hence `cli/`. See CLAUDE.md.
 [workspace]
 resolver = "2"
 members = [
-    "sdks/rust/oura-api",
-    "sdks/rust/oura-auth",
-    "cli/oura-cli",
+    "sdks/rust/oura-toolkit-api",
+    "sdks/rust/oura-toolkit-auth",
+    "cli/oura-toolkit-cli",
 ]
 
 [workspace.package]
@@ -48,6 +48,6 @@ thiserror = "2"
 anyhow = "1"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 
-# internal crates (crate names carry the oura-toolkit- prefix; dirs stay short)
-oura-toolkit-api = { path = "sdks/rust/oura-api" }
-oura-toolkit-auth = { path = "sdks/rust/oura-auth" }
+# internal crates (directory names match crate names)
+oura-toolkit-api = { path = "sdks/rust/oura-toolkit-api" }
+oura-toolkit-auth = { path = "sdks/rust/oura-toolkit-auth" }
