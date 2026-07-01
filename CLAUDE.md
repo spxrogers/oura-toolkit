@@ -110,6 +110,33 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
 - **Verify current versions/usage** of `progenitor`, `rmcp`, `rmcp-openapi`, and
   `cargo-dist` from their docs before writing config — **do not assume**.
 
+### Bootstrap discoveries (pinned toolchain realities — do NOT relitigate; these make the
+### mandated progenitor path actually work)
+
+- **Version matrix (bootstrap):** `cargo-progenitor` **0.14** / `progenitor-client` **0.14**
+  need **reqwest ^0.13**; `reqwest-middleware` **0.5** / `reqwest-retry` **0.9** also target
+  reqwest 0.13. The workspace pins **reqwest 0.13** (feature `rustls`, not the old
+  `rustls-tls`; add `form`/`query`/`stream` where used).
+- **progenitor reads OpenAPI 3.0 only.** The vendored spec is 3.1. A **Rust-only** jq
+  down-convert (`codegen/progenitor-downconvert.jq`, run inside `just gen-rust` AFTER
+  `spec-overlay`) relabels `3.1.0`→`3.0.3`, rewrites the `anyOf:[X,{type:null}]` nullable
+  idiom to `nullable:true`, and prunes content-less `4xx` responses (progenitor asserts one
+  error type per op). The **shared overlay stays 3.1** so the breadth SDKs (openapi-generator,
+  3.1-native) keep full fidelity.
+- **progenitor formats with unstable rustfmt opts** (`wrap_comments`,
+  `normalize_doc_attributes`) → needs **nightly rustfmt**, and those opts corrupted a doc
+  comment into invalid Rust. `just gen-rust` runs progenitor through `codegen/rustfmt-shim.sh`
+  (plain nightly rustfmt), then re-formats with stable `cargo fmt` so CI's `fmt --check`
+  passes. The committed generated crate builds on **stable**; only *regeneration* needs
+  nightly + progenitor (installed by `just setup`).
+- **The generated client takes a plain `reqwest::Client`** (`Client::new_with_client`);
+  progenitor 0.14 does **not** accept a `reqwest_middleware::ClientWithMiddleware`. So the
+  data-plane auth wiring (issues #9/#10) hands the generated client a `reqwest::Client`
+  preconfigured with `oura-auth`'s fresh Bearer (proactive refresh via `TokenManager`), and
+  retries once on 401 via `TokenManager::force_refresh`. `oura-auth` still ships the
+  reqwest-middleware `AuthMiddleware`/`build_authenticated_client` for middleware consumers,
+  but that is **not** the progenitor integration path.
+
 ---
 
 ## AUTH (the meaty hand-written part)
