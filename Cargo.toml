@@ -27,10 +27,13 @@ authors = ["steven rogers"]
 # async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal"] }
 
-# transport for the generated client; the auth companion plugs into this stack
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-reqwest-middleware = "0.4"
-reqwest-retry = "0.7"
+# transport for the generated client; the auth companion plugs into this stack.
+# Pinned to 0.13 to match progenitor-client 0.14 (needs reqwest ^0.13) and reqwest-middleware 0.5.
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls"] }
+reqwest-middleware = "0.5"
+reqwest-retry = "0.9"
+http = "1"
+async-trait = "0.1"
 
 # serde
 serde = { version = "1", features = ["derive"] }
