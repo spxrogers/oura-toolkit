@@ -238,6 +238,8 @@ publish-check:
     # and skip re-running build.rs in the isolated context — silently proving nothing.
     # In target/publish-check, any cached fingerprint watches the PREVIOUS run's dead
     # tmp path, so build.rs re-runs every time while dependency builds stay cached.
+    # LOAD-BEARING: the extract path MUST stay a fresh mktemp per run — a fixed dir would
+    # let run 2 cache-hit the build script and silently prove nothing again.
     tmp=$(mktemp -d) && gzip -dc target/package/oura-toolkit-auth-{{version}}.crate 2>/dev/null | tar x -C "$tmp" && CARGO_TARGET_DIR={{justfile_directory()}}/target/publish-check cargo build --manifest-path "$tmp/oura-toolkit-auth-{{version}}/Cargo.toml" && rm -rf "$tmp"
 
 # Build installers/artifacts locally (smoke test). REAL releases are tag-driven: pushing
