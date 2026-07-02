@@ -10,4 +10,5 @@ pub mod auth;
 pub mod commands;
 pub mod contract;
 pub mod loopback;
+pub mod mcp;
 pub mod output;

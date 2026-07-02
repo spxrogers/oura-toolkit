@@ -339,11 +339,32 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 - The CLI has an **`oura mcp` subcommand** that runs it as a **STDIO MCP server** using the
   official Rust SDK **`rmcp`** (run locally via `just mcp`). (A subcommand, not the earlier
   `--mcp` flag — decided 2026-07-02: modes and modifiers don't mix, and clap makes the
-  nonsense states unrepresentable.) Generate tools from the spec via
-  **`rmcp-openapi`**, then add a thin **curation layer**: expose ~8 well-described tools
-  people actually want (daily sleep, daily readiness, daily activity, daily stress, heart
-  rate, sessions, workouts, personal info), **hide the rest**, write good LLM-facing
-  descriptions.
+  nonsense states unrepresentable.) Expose ~8 well-described tools people actually want
+  (daily sleep, daily readiness, daily activity, daily stress, heart rate, sessions,
+  workouts, personal info), **hide the rest**, write good LLM-facing descriptions.
+- **Tool generation (decided 2026-07-02; supersedes the earlier "use `rmcp-openapi`" plan;
+  user-approved after a full trade-off review):** the tools are a **hybrid spec-codegen**
+  over the CLI's own data plane, NOT `rmcp-openapi`. Verified against rmcp-openapi 0.31.2
+  source: its auth is a static `HeaderMap` (or an HTTP-transport passthrough type from
+  `rmcp-actix-web`) with **no seam** for per-call token rotation or silent
+  401-refresh-retry — retrofitting ours would mean sniffing 401s out of its formatted tool
+  output (a test pinning a third party's formatting), and it drags actix-web + rmcp 1.0
+  into a stdio-only binary. Instead:
+  - **Spec-derived at build time** (`cli/oura-toolkit-cli/build.rs`, same spec-read pattern
+    as `oura-toolkit-auth`'s OAuth metadata): each tool description = hand-curated LLM lead
+    + the operation's spec summary + the response document's field inventory with the
+    spec's own field descriptions. A curated operation vanishing from the spec **fails the
+    build**. Tool RESULTS are the progenitor-generated models serialized to JSON.
+  - **Deliberately curated input schema** (one shared `DateRangeParams`): the cursor is
+    hidden (tools auto-paginate), dates use the CLI's local-timezone semantics. The raw
+    spec params are intentionally NOT the tool surface.
+  - **Dispatch is hand-wired to `commands::fetch_*`** — the same functions the CLI
+    subcommands render from: one auth layer AND one data plane, two presentations.
+  - rmcp gotcha: `#[tool_handler]` defaults to a FRESH `Self::tool_router()` per request —
+    it must be `#[tool_handler(router = self.tool_router)]` or descriptions injected at
+    construction silently vanish (the `#[tool]` attr only takes literal descriptions, so
+    the build-time ones are injected into the router's public `map` in `OuraMcp::new`).
+  - Client disconnect (stdin EOF, even before the handshake) is a **clean exit 0**.
 - MCP tool calls use the **SAME `oura-toolkit-auth` companion** (Bearer + refresh) as the CLI.
 - **`oura mcp` auth behavior**: read tokens from the fixed path; refresh **silently on 401**,
   persist rotated tokens, retry. If tokens are genuinely **ABSENT**: do **NOT** prompt, do

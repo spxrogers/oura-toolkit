@@ -7,6 +7,9 @@
 //! refresh-then-retry; rendered output is pinned as goldens through the real pipeline.
 
 use oura_toolkit_auth::{ClientCredentials, TokenManager, TokenStore, Tokens};
+
+mod common;
+use common::{fresh_tokens, page, sleep_doc};
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -29,16 +32,6 @@ fn range() -> DateRange {
     DateRange::resolve(Some("2026-06-26"), Some("2026-07-02"), today).unwrap()
 }
 
-fn fresh_tokens(access: &str) -> Tokens {
-    Tokens {
-        access_token: access.into(),
-        refresh_token: "rt-1".into(),
-        expires_at: 4_102_444_800, // 2100 — never proactively refreshed
-        scope: None,
-        token_type: None,
-    }
-}
-
 fn ctx(server: &MockServer, dir: &tempfile::TempDir, tokens: Tokens) -> Ctx {
     let store = TokenStore::with_dir(dir.path());
     store.save_tokens(&tokens).unwrap();
@@ -52,26 +45,6 @@ fn ctx(server: &MockServer, dir: &tempfile::TempDir, tokens: Tokens) -> Ctx {
         base_url: server.uri(),
         render: plain(),
     }
-}
-
-fn sleep_doc(day: &str, score: i64) -> serde_json::Value {
-    serde_json::json!({
-        "id": format!("doc-{day}"),
-        "day": day,
-        "score": score,
-        "timestamp": format!("{day}T00:00:00+00:00"),
-        "contributors": {
-            "deep_sleep": 70, "efficiency": 90, "latency": 60,
-            "rem_sleep": 80, "restfulness": 55, "timing": 40, "total_sleep": 85
-        }
-    })
-}
-
-fn page(data: Vec<serde_json::Value>, next: Option<&str>) -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-        "data": data,
-        "next_token": next,
-    }))
 }
 
 /// Pagination follows `next_token` across three pages, sends the LITERAL date query params

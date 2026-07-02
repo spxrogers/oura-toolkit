@@ -72,14 +72,16 @@ fn data_command_rejects_a_malformed_date() {
 }
 
 #[test]
-fn unimplemented_mcp_exits_1_with_nothing_on_stdout() {
-    // Stream discipline matters double here: stdout is the future JSON-RPC transport.
+fn mcp_with_no_client_exits_cleanly_and_writes_nothing_to_stdout() {
+    // Stream discipline matters double here: stdout is the JSON-RPC transport, and the
+    // server must not write to it unprompted. assert_cmd closes stdin immediately →
+    // instant EOF → clean shutdown, silent stdout. (The full handshake is exercised in
+    // tests/mcp_stdio.rs.)
     let (mut cmd, _dir) = oura();
     cmd.arg("mcp")
         .assert()
-        .code(1)
-        .stdout(predicate::str::is_empty())
-        .stderr(predicate::str::contains("not yet implemented"));
+        .success()
+        .stdout(predicate::str::is_empty());
 }
 
 #[test]

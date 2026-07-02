@@ -152,10 +152,10 @@ async fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Command::Mcp) => {
-            // The STDIO MCP server is implemented in #10. Nothing may be written to stdout
-            // here, and an unimplemented mode must exit non-zero (an MCP client must not
-            // see success).
-            anyhow::bail!("the STDIO MCP server is not yet implemented (see issue #10)");
+            // STDIO MCP server (#10): stdout is the JSON-RPC transport from here on.
+            // Absent tokens are NOT an error at startup — initialize must succeed and
+            // the first tool call reports the structured auth error (CLAUDE.md → MCP).
+            oura_toolkit_cli::mcp::serve(oura_toolkit_auth::TokenManager::load()?).await
         }
         None => {
             // Reachable: `arg_required_else_help` only fires with ZERO args, so a lone
