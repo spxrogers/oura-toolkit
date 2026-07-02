@@ -120,53 +120,35 @@ async fn run() -> anyhow::Result<()> {
             AuthAction::Login { port } => auth::login(port).await,
         },
         Some(Command::Sleep(range)) => {
-            print!("{}", commands::sleep(&data_ctx()?, range.resolve()?).await?);
+            contract::emit(&commands::sleep(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::Readiness(range)) => {
-            print!(
-                "{}",
-                commands::readiness(&data_ctx()?, range.resolve()?).await?
-            );
+            contract::emit(&commands::readiness(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::Activity(range)) => {
-            print!(
-                "{}",
-                commands::activity(&data_ctx()?, range.resolve()?).await?
-            );
+            contract::emit(&commands::activity(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::Stress(range)) => {
-            print!(
-                "{}",
-                commands::stress(&data_ctx()?, range.resolve()?).await?
-            );
+            contract::emit(&commands::stress(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::Heartrate(range)) => {
-            print!(
-                "{}",
-                commands::heartrate(&data_ctx()?, range.resolve()?).await?
-            );
+            contract::emit(&commands::heartrate(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::Sessions(range)) => {
-            print!(
-                "{}",
-                commands::sessions(&data_ctx()?, range.resolve()?).await?
-            );
+            contract::emit(&commands::sessions(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::Workouts(range)) => {
-            print!(
-                "{}",
-                commands::workouts(&data_ctx()?, range.resolve()?).await?
-            );
+            contract::emit(&commands::workouts(&data_ctx()?, range.resolve()?).await?)?;
             Ok(())
         }
         Some(Command::PersonalInfo) => {
-            print!("{}", commands::personal_info(&data_ctx()?).await?);
+            contract::emit(&commands::personal_info(&data_ctx()?).await?)?;
             Ok(())
         }
         Some(Command::Mcp) => {

@@ -33,6 +33,9 @@ fi
 - **stdout** — results only (tables, plain lines, JSON). `oura mcp` is stricter: stdout is
   the JSON-RPC transport and carries nothing else.
 - **stderr** — everything meant for humans: prose, progress, prompts, errors, hints.
+- **Early-closed pipe** — a downstream consumer closing stdout early (`oura heartrate |
+  head -1`) is **success** (exit 0, nothing on stderr): the consumer got everything it
+  wanted. Never a panic/backtrace.
 
 ## Output formats (data commands)
 

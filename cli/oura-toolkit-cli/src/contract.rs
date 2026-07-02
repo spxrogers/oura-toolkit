@@ -119,10 +119,34 @@ fn compose(err: &anyhow::Error, hint: Option<&'static str>) -> String {
 }
 
 /// Report a failure to stderr per the contract and return the process exit code.
+///
+/// The stderr write is best-effort: reporting an error must never itself abort (a closed
+/// stderr would make `eprintln!` panic), and the exit code is the machine-readable part
+/// of the contract anyway.
 pub fn report(err: anyhow::Error) -> ExitCode {
     let failure = classify(&err);
-    eprintln!("{}", compose(&err, failure.hint));
+    use std::io::Write as _;
+    let _ = writeln!(std::io::stderr(), "{}", compose(&err, failure.hint));
     ExitCode::from(failure.code)
+}
+
+/// Write a command's rendered result to stdout — the ONLY stdout write path for data
+/// commands, because `print!` panics on a closed pipe: Rust ignores SIGPIPE, so
+/// `oura heartrate | head -1` would otherwise die with exit 101 and a backtrace. A
+/// downstream consumer closing the pipe early is SUCCESS (the consumer got everything it
+/// wanted) — documented in docs/cli-contract.md → Streams. Any other write error is a
+/// runtime error.
+pub fn emit(rendered: &str) -> anyhow::Result<()> {
+    let stdout = std::io::stdout();
+    emit_to(&mut stdout.lock(), rendered)
+}
+
+fn emit_to<W: std::io::Write>(w: &mut W, rendered: &str) -> anyhow::Result<()> {
+    use anyhow::Context as _;
+    match w.write_all(rendered.as_bytes()).and_then(|()| w.flush()) {
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        other => other.context("writing results to stdout"),
+    }
 }
 
 #[cfg(test)]
@@ -181,6 +205,33 @@ mod tests {
             }
         );
         assert_eq!(render_error(&generic), "oura: doing a thing: boom");
+    }
+
+    #[test]
+    fn emit_treats_a_broken_pipe_as_success_and_other_errors_as_failures() {
+        struct FailWith(std::io::ErrorKind);
+        impl std::io::Write for FailWith {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::from(self.0))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        // `| head` closing stdout early is success — the consumer got what it wanted.
+        emit_to(&mut FailWith(std::io::ErrorKind::BrokenPipe), "rows\n")
+            .expect("broken pipe must be silent success");
+        // A genuinely failed write is a runtime error with the contract's action context.
+        let err = emit_to(&mut FailWith(std::io::ErrorKind::StorageFull), "rows\n").unwrap_err();
+        assert!(
+            err.to_string().contains("writing results to stdout"),
+            "{err}"
+        );
+        // And the happy path writes the rendered bytes verbatim.
+        let mut buf = Vec::new();
+        emit_to(&mut buf, "a\tb\n").unwrap();
+        assert_eq!(buf, b"a\tb\n");
     }
 
     #[test]

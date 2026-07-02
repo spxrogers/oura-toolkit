@@ -187,7 +187,7 @@ impl DateRange {
     /// keep the requested window maximal. A nonexistent time is nudged INTO the day in
     /// 15-minute steps until it exists, landing on the first (start) or last (end)
     /// instant that actually occurred on that local day. Never panics.
-    pub fn utc_bounds_in<Tz: chrono::TimeZone>(
+    pub(crate) fn utc_bounds_in<Tz: chrono::TimeZone>(
         &self,
         tz: &Tz,
     ) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
@@ -207,10 +207,14 @@ impl DateRange {
 }
 
 /// Resolve a wall-clock time in `tz`, stepping `forward` (or backward) across a DST gap
-/// until the time exists. Real zone offsets change by 30/45/60/120 minutes — all multiples
-/// of the 15-minute step — so the scan lands exactly on the transition instant. The bound
-/// (100 steps ≈ 25h) is unreachable for any real timezone; the final fallback merely keeps
-/// the function total for a pathological `TimeZone` impl rather than panicking.
+/// until the time exists. Modern zone offsets change by 30/45/60/120 minutes — multiples
+/// of the 15-minute step — so the scan lands on the transition instant itself; historical
+/// seconds-level LMT gaps resolve to the next lattice point past the transition (≤15 min
+/// inside the day — immaterial). Pathological-but-real edge, accepted: a date-line
+/// day-skip (Pacific/Apia 2011-12-30 never existed) can nudge start past end, yielding an
+/// inverted window and an empty (not wrong) result. The bound (100 steps ≈ 25h) is
+/// unreachable for any real timezone; the final fallback merely keeps the function total
+/// for a pathological `TimeZone` impl rather than panicking.
 fn resolve_local<Tz: chrono::TimeZone>(
     tz: &Tz,
     wall: chrono::NaiveDateTime,
@@ -342,6 +346,21 @@ mod tests {
         };
         let (_, end) = r.utc_bounds_in(&tz);
         assert_eq!(end.to_rfc3339(), "2018-02-18T02:59:59+00:00"); // 23:59:59 -03:00
+    }
+
+    /// The OTHER half of "folds resolve outward": a fold covering local MIDNIGHT
+    /// (America/Havana fell back 2023-11-05 01:00→00:00, so 00:00–00:59 happened twice)
+    /// must resolve the START bound to the EARLIER occurrence — an implementation picking
+    /// `.latest()` for the start would clip the doubled hour and fail here.
+    #[test]
+    fn utc_bounds_resolve_a_start_fold_to_the_earlier_instant() {
+        let tz: chrono_tz::Tz = "America/Havana".parse().unwrap();
+        let r = DateRange {
+            start: day("2023-11-05"),
+            end: day("2023-11-05"),
+        };
+        let (start, _) = r.utc_bounds_in(&tz);
+        assert_eq!(start.to_rfc3339(), "2023-11-05T04:00:00+00:00"); // 00:00:00 -04:00 (CDT)
     }
 
     /// A server that mints a NEW token every page defeats the non-advancing check; the

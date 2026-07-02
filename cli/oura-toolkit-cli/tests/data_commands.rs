@@ -481,6 +481,53 @@ async fn personal_info_renders_a_record() {
     );
 }
 
+/// LIST-shaped `--json` (the `render_result` path every windowed command uses) is the
+/// Vec of GENERATED models serialized — never re-encoded table cells. Exact golden
+/// through a real command; the record-shaped sibling is pinned below.
+#[tokio::test]
+async fn workouts_json_is_the_generated_model_list() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/workout"))
+        .respond_with(page(
+            vec![serde_json::json!({
+                "id": "w-1", "day": "2026-06-26", "activity": "running",
+                "intensity": "hard", "calories": 320.5, "source": "manual",
+                "start_datetime": "2026-06-26T07:00:00+00:00",
+                "end_datetime": "2026-06-26T07:45:00+00:00"
+            })],
+            None,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut ctx = ctx(&server, &dir, fresh_tokens("at-1"));
+    ctx.render = RenderOptions {
+        format: Format::Json,
+        style: Style::new(false),
+    };
+    let out = commands::workouts(&ctx, range()).await.unwrap();
+    assert_eq!(
+        out,
+        r#"[
+  {
+    "activity": "running",
+    "calories": 320.5,
+    "day": "2026-06-26",
+    "end_datetime": "2026-06-26T07:45:00+00:00",
+    "id": "w-1",
+    "intensity": "hard",
+    "source": "manual",
+    "start_datetime": "2026-06-26T07:00:00+00:00"
+  }
+]
+"#
+    );
+}
+
 /// `--json` on a real command is the GENERATED model serialized — pinned as an exact,
 /// newline-terminated golden so the scripting contract (docs/cli-contract.md → Output
 /// formats) covers the real serde path, not just a synthetic struct.
