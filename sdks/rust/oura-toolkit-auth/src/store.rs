@@ -1,6 +1,15 @@
-//! Persistent credential store at a fixed, invocation-independent XDG path.
+//! Persistent credential store at a fixed, invocation-independent per-platform path:
+//! `$XDG_CONFIG_HOME/oura-toolkit/` (→ `~/.config/oura-toolkit/`) on Unix/macOS,
+//! `%LOCALAPPDATA%\oura-toolkit\` on Windows.
 //!
-//! Two records live in `$XDG_CONFIG_HOME/oura-toolkit/` (→ `~/.config/oura-toolkit/`):
+//! File protection: on Unix the records and their parent dir are chmod'd `0600`/`0700`. On
+//! Windows those chmods are no-ops — protection relies on `%LOCALAPPDATA%`'s inherited
+//! ACLs (user-private on a default install). Local, not Roaming, deliberately: roaming
+//! profiles sync `%APPDATA%` to file servers/backups at logoff, which would copy plaintext
+//! secrets off the machine. This is still weaker than DPAPI/Credential Manager; OS-keyring
+//! storage is tracked in #26.
+//!
+//! Two records live in the store dir:
 //!
 //! - **`credentials.json`** — [`ClientCredentials`] (the user's own OAuth app id + secret).
 //!   Exists from `oura auth setup` onward, independent of any login.
@@ -10,9 +19,10 @@
 //! Separating the two means a failed or abandoned login never loses the pasted secret, and
 //! `oura auth login` never has to dig client credentials out of a token record (issue #23).
 //!
-//! Everything is written `0600` via an atomic, uniquely named temp-file + rename. The path
-//! MUST be identical whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence
-//! it derives only from the XDG env, never from the invocation location. Caveat: a crash
+//! Everything is written via an atomic, uniquely named temp-file + rename. The path MUST be
+//! identical whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence it
+//! derives only from the platform env (`XDG_CONFIG_HOME`/`HOME`, or `LOCALAPPDATA`), never
+//! from the invocation location. Caveat: a crash
 //! between temp-write and rename can orphan a `0600` `.tmp*` file (containing record JSON)
 //! in the store dir; no worse an exposure than the records themselves, but worth knowing
 //! when auditing the directory (broader secret-hygiene work is tracked in #26).
@@ -105,7 +115,8 @@ impl Drop for StoreLock {
 }
 
 impl TokenStore {
-    /// Store at the default XDG location.
+    /// Store at the default per-platform config location (XDG on Unix/macOS,
+    /// `%LOCALAPPDATA%` on Windows).
     pub fn new() -> Result<Self, AuthError> {
         Ok(Self { dir: config_dir()? })
     }
@@ -208,18 +219,43 @@ impl TokenStore {
     }
 }
 
-/// `$XDG_CONFIG_HOME/oura-toolkit`, falling back to `$HOME/.config/oura-toolkit`.
+/// The fixed, invocation-independent config dir:
+///
+/// - **Unix (incl. macOS):** `$XDG_CONFIG_HOME/oura-toolkit`, falling back to
+///   `$HOME/.config/oura-toolkit`. The XDG path is a locked decision (CLAUDE.md) — it must
+///   be identical under npx/bunx/brew, and deliberately does NOT follow macOS's
+///   `~/Library/Application Support` convention.
+/// - **Windows:** `%LOCALAPPDATA%\oura-toolkit`. Local, NOT roaming: roaming profiles sync
+///   `%APPDATA%` to file servers and profile backups at logoff, which would copy plaintext
+///   OAuth secrets off the machine. `%LOCALAPPDATA%` is not roamed by default and is
+///   equally invocation-independent.
 fn config_dir() -> Result<PathBuf, AuthError> {
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        if !xdg.is_empty() {
-            return Ok(PathBuf::from(xdg).join("oura-toolkit"));
-        }
-    }
-    let home = std::env::var("HOME").map_err(|_| AuthError::NoConfigDir)?;
-    if home.is_empty() {
-        return Err(AuthError::NoConfigDir);
-    }
-    Ok(PathBuf::from(home).join(".config").join("oura-toolkit"))
+    config_dir_from(&|key| std::env::var(key).ok())
+}
+
+/// Testable core of [`config_dir`]: resolves from an injected env lookup, so the per-OS
+/// branches are unit-tested on the CI matrix without racy `env::set_var` calls.
+///
+/// Empty and **relative** values are treated as absent (XDG spec: relative values should
+/// be ignored) — a relative base would make where secrets land depend on the process cwd,
+/// breaking the invocation-independence invariant.
+fn config_dir_from(env: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, AuthError> {
+    let usable = |key: &str| -> Option<PathBuf> {
+        env(key)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
+
+    #[cfg(windows)]
+    let dir = usable("LOCALAPPDATA").map(|base| base.join("oura-toolkit"));
+
+    #[cfg(not(windows))]
+    let dir = usable("XDG_CONFIG_HOME")
+        .map(|xdg| xdg.join("oura-toolkit"))
+        .or_else(|| usable("HOME").map(|home| home.join(".config").join("oura-toolkit")));
+
+    dir.ok_or(AuthError::NoConfigDir)
 }
 
 /// Open (creating if needed) with owner-only perms where supported.
@@ -339,6 +375,118 @@ mod tests {
             "refresh token leaked: {tokens}"
         );
         assert!(tokens.contains("[REDACTED]"));
+    }
+
+    #[cfg(not(windows))]
+    mod unix_config_dir {
+        use super::super::*;
+
+        fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+            move |key| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.to_string())
+            }
+        }
+
+        #[test]
+        fn prefers_xdg_config_home() {
+            let dir =
+                config_dir_from(&env(&[("XDG_CONFIG_HOME", "/xdg"), ("HOME", "/home/u")])).unwrap();
+            assert_eq!(dir, PathBuf::from("/xdg/oura-toolkit"));
+        }
+
+        #[test]
+        fn falls_back_to_home_dot_config() {
+            let dir = config_dir_from(&env(&[("HOME", "/home/u")])).unwrap();
+            assert_eq!(dir, PathBuf::from("/home/u/.config/oura-toolkit"));
+        }
+
+        #[test]
+        fn empty_or_relative_xdg_falls_back_to_home() {
+            for bad in ["", "relative/config"] {
+                let dir = config_dir_from(&env(&[("XDG_CONFIG_HOME", bad), ("HOME", "/home/u")]))
+                    .unwrap();
+                assert_eq!(
+                    dir,
+                    PathBuf::from("/home/u/.config/oura-toolkit"),
+                    "XDG_CONFIG_HOME={bad:?} must be ignored"
+                );
+            }
+        }
+
+        #[test]
+        fn empty_or_relative_home_errors() {
+            for bad in ["", "relative/home"] {
+                assert!(
+                    matches!(
+                        config_dir_from(&env(&[("HOME", bad)])),
+                        Err(AuthError::NoConfigDir)
+                    ),
+                    "HOME={bad:?} must not resolve"
+                );
+            }
+        }
+
+        #[test]
+        fn errors_when_neither_is_set() {
+            assert!(matches!(
+                config_dir_from(&env(&[])),
+                Err(AuthError::NoConfigDir)
+            ));
+        }
+    }
+
+    #[cfg(windows)]
+    mod windows_config_dir {
+        use super::super::*;
+
+        fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+            move |key| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.to_string())
+            }
+        }
+
+        #[test]
+        fn uses_local_appdata_not_roaming() {
+            let dir = config_dir_from(&env(&[
+                ("LOCALAPPDATA", r"C:\Users\u\AppData\Local"),
+                ("APPDATA", r"C:\Users\u\AppData\Roaming"),
+            ]))
+            .unwrap();
+            assert_eq!(
+                dir,
+                PathBuf::from(r"C:\Users\u\AppData\Local").join("oura-toolkit"),
+                "must use machine-local %LOCALAPPDATA%, never the roaming profile"
+            );
+        }
+
+        #[test]
+        fn empty_or_relative_localappdata_errors() {
+            for bad in ["", r"relative\path"] {
+                assert!(
+                    matches!(
+                        config_dir_from(&env(&[("LOCALAPPDATA", bad)])),
+                        Err(AuthError::NoConfigDir)
+                    ),
+                    "LOCALAPPDATA={bad:?} must not resolve"
+                );
+            }
+        }
+
+        #[test]
+        fn errors_without_localappdata_and_names_the_right_var() {
+            let err = config_dir_from(&env(&[])).unwrap_err();
+            assert!(matches!(err, AuthError::NoConfigDir));
+            assert!(
+                err.to_string().contains("%LOCALAPPDATA%"),
+                "Windows users must not be told about Unix env vars: {err}"
+            );
+        }
     }
 
     #[test]
