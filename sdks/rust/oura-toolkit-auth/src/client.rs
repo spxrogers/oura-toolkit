@@ -89,6 +89,12 @@ impl TokenManager {
         }
     }
 
+    /// Point token-endpoint calls at a mock server (hermetic downstream tests only).
+    #[cfg(feature = "test-util")]
+    pub fn override_token_url(&mut self, url: String) {
+        self.token_url = url;
+    }
+
     /// Whether tokens are loaded (does not validate them, and does not imply a refresh is
     /// possible — refresh additionally needs the client-credentials record).
     pub async fn is_authenticated(&self) -> bool {

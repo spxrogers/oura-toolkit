@@ -23,6 +23,11 @@ tokio = { workspace = true }
 # unique-temp-file atomic writes in the store (concurrent writers can't clobber a shared tmp)
 tempfile = "3"
 
+[features]
+# Exposes test-only seams (e.g. token-endpoint URL override) so DOWNSTREAM crates'
+# hermetic tests can point refresh at a mock server. Never enabled in production builds.
+test-util = []
+
 [build-dependencies]
 serde_json = { workspace = true }
 

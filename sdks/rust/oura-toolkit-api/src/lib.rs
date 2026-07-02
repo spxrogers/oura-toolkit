@@ -1348,1341 +1348,6 @@ pub mod types {
         pub next_token: ::std::option::Option<::std::string::String>,
     }
 
-    #[doc = "`MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetStartDate
-    {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl :: std :: default :: Default for MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetStartDate { fn default () -> Self { Self { subtype_0 : Default :: default () , subtype_1 : Default :: default () , } } }
-    #[doc = "`MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailySleepDocumentsV2UsercollectionDailySleepGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailySleepDocumentsV2UsercollectionDailySleepGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleDailySleepDocumentsV2UsercollectionDailySleepGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailySleepDocumentsV2UsercollectionDailySleepGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailySleepDocumentsV2UsercollectionDailySleepGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleDailySleepDocumentsV2UsercollectionDailySleepGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyStressDocumentsV2UsercollectionDailyStressGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyStressDocumentsV2UsercollectionDailyStressGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleDailyStressDocumentsV2UsercollectionDailyStressGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleDailyStressDocumentsV2UsercollectionDailyStressGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleDailyStressDocumentsV2UsercollectionDailyStressGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleDailyStressDocumentsV2UsercollectionDailyStressGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleSessionDocumentsV2UsercollectionSessionGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleSessionDocumentsV2UsercollectionSessionGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleSessionDocumentsV2UsercollectionSessionGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleSessionDocumentsV2UsercollectionSessionGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleSessionDocumentsV2UsercollectionSessionGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleSessionDocumentsV2UsercollectionSessionGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleSleepDocumentsV2UsercollectionSleepGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleSleepDocumentsV2UsercollectionSleepGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleSleepDocumentsV2UsercollectionSleepGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleSleepDocumentsV2UsercollectionSleepGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleSleepDocumentsV2UsercollectionSleepGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleSleepDocumentsV2UsercollectionSleepGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleTagDocumentsV2UsercollectionTagGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleTagDocumentsV2UsercollectionTagGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleTagDocumentsV2UsercollectionTagGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleTagDocumentsV2UsercollectionTagGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleTagDocumentsV2UsercollectionTagGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleTagDocumentsV2UsercollectionTagGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleWorkoutDocumentsV2UsercollectionWorkoutGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleWorkoutDocumentsV2UsercollectionWorkoutGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleWorkoutDocumentsV2UsercollectionWorkoutGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`MultipleWorkoutDocumentsV2UsercollectionWorkoutGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MultipleWorkoutDocumentsV2UsercollectionWorkoutGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for MultipleWorkoutDocumentsV2UsercollectionWorkoutGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
     #[doc = "`PersonalInfoResponse`"]
     #[doc = r""]
     #[doc = r" <details><summary>JSON schema</summary>"]
@@ -6558,1355 +5223,6 @@ pub mod types {
     }
 
     impl :: std :: default :: Default for ResponseSandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGet { fn default () -> Self { Self { subtype_0 : Default :: default () , subtype_1 : Default :: default () , } } }
-    #[doc = "`SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetEndDate
-    {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl :: std :: default :: Default for SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetEndDate { fn default () -> Self { Self { subtype_0 : Default :: default () , subtype_1 : Default :: default () , } } }
-    #[doc = "`SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetStartDate
-    {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl :: std :: default :: Default for SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetStartDate { fn default () -> Self { Self { subtype_0 : Default :: default () , subtype_1 : Default :: default () , } } }
-    #[doc = "`SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetStartDate
-    {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl :: std :: default :: Default for SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetStartDate { fn default () -> Self { Self { subtype_0 : Default :: default () , subtype_1 : Default :: default () , } } }
-    #[doc = "`SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetEndDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default for SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetStartDate {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetEndDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetEndDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetEndDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
-    #[doc = "`SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetStartDate`"]
-    #[doc = r""]
-    #[doc = r" <details><summary>JSON schema</summary>"]
-    #[doc = r""]
-    #[doc = r" ```json"]
-    #[doc = "{"]
-    #[doc = "  \"anyOf\": ["]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date-time\""]
-    #[doc = "    },"]
-    #[doc = "    {"]
-    #[doc = "      \"type\": \"string\","]
-    #[doc = "      \"format\": \"date\""]
-    #[doc = "    }"]
-    #[doc = "  ]"]
-    #[doc = "}"]
-    #[doc = r" ```"]
-    #[doc = r" </details>"]
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetStartDate {
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_0: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(
-            flatten,
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub subtype_1: ::std::option::Option<::chrono::naive::NaiveDate>,
-    }
-
-    impl ::std::default::Default
-        for SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetStartDate
-    {
-        fn default() -> Self {
-            Self {
-                subtype_0: Default::default(),
-                subtype_1: Default::default(),
-            }
-        }
-    }
-
     #[doc = "A TagModel maps to an ASSANote. An ASSANote in ExtAPIV2 is called a Tag\nA TagModel will be populated by data from an ASSANote\nThe fields in the TagModel map to fields in an ASSANote"]
     #[doc = r""]
     #[doc = r" <details><summary>JSON schema</summary>"]
@@ -8527,9 +5843,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyActivity>,
         Error<types::HttpValidationError>,
@@ -8619,9 +5935,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyCardiovascularAge>,
         Error<types::HttpValidationError>,
@@ -8715,9 +6031,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyReadiness>,
         Error<types::HttpValidationError>,
@@ -8807,9 +6123,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponseDailyResilienceModel>,
         Error<types::HttpValidationError>,
@@ -8902,9 +6218,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailySleep>,
         Error<types::HttpValidationError>,
@@ -8997,11 +6313,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailySpO2>,
         Error<types::HttpValidationError>,
@@ -9094,9 +6408,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyStress>,
         Error<types::HttpValidationError>,
@@ -9189,9 +6503,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponseEnhancedTagModel>,
         Error<types::HttpValidationError>,
@@ -9343,9 +6657,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicRestModePeriod>,
         Error<types::HttpValidationError>,
@@ -9571,13 +6885,9 @@ impl Client {
     #[doc = "Sandbox - Multiple Session Documents\n\nSends a `GET` request to `/v2/sandbox/usercollection/session`\n\n"]
     pub async fn sandbox_multiple_session_documents_v2_sandbox_usercollection_session_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicSession>,
         Error<types::HttpValidationError>,
@@ -9671,13 +6981,9 @@ impl Client {
     #[doc = "Sandbox - Multiple Sleep Documents\n\nSends a `GET` request to `/v2/sandbox/usercollection/sleep`\n\n"]
     pub async fn sandbox_multiple_sleep_documents_v2_sandbox_usercollection_sleep_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicModifiedSleepModel>,
         Error<types::HttpValidationError>,
@@ -9773,11 +7079,9 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicSleepTime>,
         Error<types::HttpValidationError>,
@@ -9868,13 +7172,9 @@ impl Client {
     #[doc = "Sandbox - Multiple Tag Documents\n\nSends a `GET` request to `/v2/sandbox/usercollection/tag`\n\n"]
     pub async fn sandbox_multiple_tag_documents_v2_sandbox_usercollection_tag_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponseTagModel>,
         Error<types::HttpValidationError>,
@@ -9965,13 +7265,9 @@ impl Client {
     #[doc = "Sandbox - Multiple Vo2 Max Documents\n\nSends a `GET` request to `/v2/sandbox/usercollection/vO2_max`\n\n"]
     pub async fn sandbox_multiple_v_o2_max_documents_v2_sandbox_usercollection_v_o2_max_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::SandboxMultipleVo2MaxDocumentsV2SandboxUsercollectionVo2MaxGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicVo2Max>,
         Error<types::HttpValidationError>,
@@ -10062,13 +7358,9 @@ impl Client {
     #[doc = "Sandbox - Multiple Workout Documents\n\nSends a `GET` request to `/v2/sandbox/usercollection/workout`\n\n"]
     pub async fn sandbox_multiple_workout_documents_v2_sandbox_usercollection_workout_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicWorkout>,
         Error<types::HttpValidationError>,
@@ -10162,14 +7454,10 @@ impl Client {
     #[doc = "Multiple Daily Activity Documents\n\nSends a `GET` request to `/v2/usercollection/daily_activity`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_daily_activity_documents_v2_usercollection_daily_activity_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyActivity>,
         Error<types::HttpValidationError>,
@@ -10265,10 +7553,10 @@ impl Client {
         'a,
     >(
         &'a self,
-        end_date : Option < & 'a types :: MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetEndDate >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date : Option < & 'a types :: MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetStartDate >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyCardiovascularAge>,
         Error<types::HttpValidationError>,
@@ -10361,14 +7649,10 @@ impl Client {
     #[doc = "Multiple Daily Readiness Documents\n\nSends a `GET` request to `/v2/usercollection/daily_readiness`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_daily_readiness_documents_v2_usercollection_daily_readiness_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyReadiness>,
         Error<types::HttpValidationError>,
@@ -10463,14 +7747,10 @@ impl Client {
     #[doc = "Multiple Daily Resilience Documents\n\nSends a `GET` request to `/v2/usercollection/daily_resilience`\n\nArguments:\n- `end_date`\n- `fields`: N/A. This route does not support field selection yet, all fields will be returned.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_daily_resilience_documents_v2_usercollection_daily_resilience_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponseDailyResilienceModel>,
         Error<types::HttpValidationError>,
@@ -10562,14 +7842,10 @@ impl Client {
     #[doc = "Multiple Daily Sleep Documents\n\nSends a `GET` request to `/v2/usercollection/daily_sleep`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_daily_sleep_documents_v2_usercollection_daily_sleep_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleDailySleepDocumentsV2UsercollectionDailySleepGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleDailySleepDocumentsV2UsercollectionDailySleepGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailySleep>,
         Error<types::HttpValidationError>,
@@ -10661,12 +7937,10 @@ impl Client {
     #[doc = "Multiple Daily Spo2 Documents\n\nSends a `GET` request to `/v2/usercollection/daily_spo2`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_daily_spo2_documents_v2_usercollection_daily_spo2_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleDailySpo2DocumentsV2UsercollectionDailySpo2GetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailySpO2>,
         Error<types::HttpValidationError>,
@@ -10757,14 +8031,10 @@ impl Client {
     #[doc = "Multiple Daily Stress Documents\n\nSends a `GET` request to `/v2/usercollection/daily_stress`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_daily_stress_documents_v2_usercollection_daily_stress_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleDailyStressDocumentsV2UsercollectionDailyStressGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleDailyStressDocumentsV2UsercollectionDailyStressGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicDailyStress>,
         Error<types::HttpValidationError>,
@@ -10856,14 +8126,10 @@ impl Client {
     #[doc = "Multiple Enhanced Tag Documents\n\nSends a `GET` request to `/v2/usercollection/enhanced_tag`\n\nArguments:\n- `end_date`\n- `fields`: N/A. This route does not support field selection yet, all fields will be returned.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_enhanced_tag_documents_v2_usercollection_enhanced_tag_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponseEnhancedTagModel>,
         Error<types::HttpValidationError>,
@@ -11046,14 +8312,10 @@ impl Client {
     #[doc = "Multiple Rest Mode Period Documents\n\nSends a `GET` request to `/v2/usercollection/rest_mode_period`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_rest_mode_period_documents_v2_usercollection_rest_mode_period_get<'a>(
         &'a self,
-        end_date: Option<
-            &'a types::MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetEndDate,
-        >,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicRestModePeriod>,
         Error<types::HttpValidationError>,
@@ -11299,10 +8561,10 @@ impl Client {
     #[doc = "Multiple Session Documents\n\nSends a `GET` request to `/v2/usercollection/session`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_session_documents_v2_usercollection_session_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleSessionDocumentsV2UsercollectionSessionGetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<&'a types::MultipleSessionDocumentsV2UsercollectionSessionGetStartDate>,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicSession>,
         Error<types::HttpValidationError>,
@@ -11393,10 +8655,10 @@ impl Client {
     #[doc = "Multiple Sleep Documents\n\nSends a `GET` request to `/v2/usercollection/sleep`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_sleep_documents_v2_usercollection_sleep_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleSleepDocumentsV2UsercollectionSleepGetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<&'a types::MultipleSleepDocumentsV2UsercollectionSleepGetStartDate>,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicModifiedSleepModel>,
         Error<types::HttpValidationError>,
@@ -11488,12 +8750,10 @@ impl Client {
     #[doc = "Multiple Sleep Time Documents\n\nSends a `GET` request to `/v2/usercollection/sleep_time`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_sleep_time_documents_v2_usercollection_sleep_time_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<
-            &'a types::MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetStartDate,
-        >,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicSleepTime>,
         Error<types::HttpValidationError>,
@@ -11584,10 +8844,10 @@ impl Client {
     #[doc = "Multiple Tag Documents\n\nSends a `GET` request to `/v2/usercollection/tag`\n\nArguments:\n- `end_date`\n- `fields`: N/A. This route does not support field selection yet, all fields will be returned.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_tag_documents_v2_usercollection_tag_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleTagDocumentsV2UsercollectionTagGetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<&'a types::MultipleTagDocumentsV2UsercollectionTagGetStartDate>,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponseTagModel>,
         Error<types::HttpValidationError>,
@@ -11678,10 +8938,10 @@ impl Client {
     #[doc = "Multiple Vo2 Max Documents\n\nSends a `GET` request to `/v2/usercollection/vO2_max`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_v_o2_max_documents_v2_usercollection_v_o2_max_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<&'a types::MultipleVo2MaxDocumentsV2UsercollectionVo2MaxGetStartDate>,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicVo2Max>,
         Error<types::HttpValidationError>,
@@ -11772,10 +9032,10 @@ impl Client {
     #[doc = "Multiple Workout Documents\n\nSends a `GET` request to `/v2/usercollection/workout`\n\nArguments:\n- `end_date`\n- `fields`: Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.\n- `next_token`\n- `start_date`\n"]
     pub async fn multiple_workout_documents_v2_usercollection_workout_get<'a>(
         &'a self,
-        end_date: Option<&'a types::MultipleWorkoutDocumentsV2UsercollectionWorkoutGetEndDate>,
+        end_date: Option<&'a ::chrono::naive::NaiveDate>,
         fields: Option<&'a str>,
         next_token: Option<&'a str>,
-        start_date: Option<&'a types::MultipleWorkoutDocumentsV2UsercollectionWorkoutGetStartDate>,
+        start_date: Option<&'a ::chrono::naive::NaiveDate>,
     ) -> Result<
         ResponseValue<types::MultiDocumentResponsePublicWorkout>,
         Error<types::HttpValidationError>,

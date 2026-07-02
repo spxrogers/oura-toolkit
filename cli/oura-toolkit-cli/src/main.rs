@@ -1,17 +1,11 @@
-//! oura-cli — the Oura Ring toolkit CLI: interactive auth flows, data commands, and `oura mcp`.
+//! oura — the Oura Ring toolkit CLI: interactive auth flows, data commands, and `oura mcp`.
 //!
-//! Interactive OAuth (browser + loopback) lives here, never in the SDKs. Data commands (#9) and
-//! the STDIO MCP server (#10) are wired next; both reuse the `oura-toolkit-auth` companion.
-//!
-//! Exit codes, stream discipline, and error style are a documented contract — see
-//! `docs/cli-contract.md` and the `contract` module (#21).
-
-mod auth;
-mod contract;
-mod loopback;
-mod output;
+//! Thin binary over the library target (which exists so integration tests exercise the
+//! real modules). Exit codes, stream discipline, and error style are a documented
+//! contract — see `docs/cli-contract.md` and the `contract` module (#21).
 
 use clap::{Parser, Subcommand};
+use oura_toolkit_cli::{api, auth, commands, contract, output};
 
 /// Oura Ring toolkit — CLI + MCP server for the Oura API v2.
 #[derive(Parser)]
@@ -29,6 +23,28 @@ struct Cli {
     command: Option<Command>,
 }
 
+/// Shared date-window flags for the data commands. Dates are interpreted in the user's
+/// LOCAL timezone (Oura data is user-local — see docs/cli-contract.md → Dates).
+#[derive(clap::Args)]
+struct RangeArgs {
+    /// Start date: today, yesterday, or YYYY-MM-DD (default: 6 days before --end).
+    #[arg(long)]
+    start: Option<String>,
+    /// End date: today, yesterday, or YYYY-MM-DD (default: today).
+    #[arg(long)]
+    end: Option<String>,
+}
+
+impl RangeArgs {
+    fn resolve(&self) -> anyhow::Result<api::DateRange> {
+        api::DateRange::resolve(
+            self.start.as_deref(),
+            self.end.as_deref(),
+            api::local_today(),
+        )
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Authentication (OAuth) flows.
@@ -36,6 +52,22 @@ enum Command {
         #[command(subcommand)]
         action: AuthAction,
     },
+    /// Daily sleep summaries (score + contributors).
+    Sleep(RangeArgs),
+    /// Daily readiness summaries.
+    Readiness(RangeArgs),
+    /// Daily activity summaries (score, steps, calories).
+    Activity(RangeArgs),
+    /// Daily stress summaries.
+    Stress(RangeArgs),
+    /// Heart-rate time series (5-minute granularity).
+    Heartrate(RangeArgs),
+    /// Moment/session records (meditation, naps, …).
+    Sessions(RangeArgs),
+    /// Workout records.
+    Workouts(RangeArgs),
+    /// Your Oura profile (age, height, weight, …).
+    PersonalInfo,
     /// Run as a STDIO MCP server (see issue #10).
     // A subcommand, not a `--mcp` flag: modes and modifiers don't mix, and clap makes the
     // nonsense states unrepresentable. Decided 2026-07-02 (#21).
@@ -71,28 +103,70 @@ async fn main() -> std::process::ExitCode {
 async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Resolved once here so every data command (#9) inherits the same decision; the auth
-    // flows are interactive prose and don't render tables.
-    let _render = output::RenderOptions::from_flags(cli.json, cli.no_color);
+    // Resolved once so every data command inherits the same decision; the auth flows are
+    // interactive prose and don't render tables.
+    let render = output::RenderOptions::from_flags(cli.json, cli.no_color);
+    let data_ctx = || -> anyhow::Result<commands::Ctx> {
+        Ok(commands::Ctx {
+            manager: oura_toolkit_auth::TokenManager::load()?,
+            base_url: api::API_BASE.to_string(),
+            render,
+        })
+    };
 
     match cli.command {
         Some(Command::Auth { action }) => match action {
             AuthAction::Setup { port } => auth::setup(port).await,
             AuthAction::Login { port } => auth::login(port).await,
         },
+        Some(Command::Sleep(range)) => {
+            contract::emit(&commands::sleep(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Readiness(range)) => {
+            contract::emit(&commands::readiness(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Activity(range)) => {
+            contract::emit(&commands::activity(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Stress(range)) => {
+            contract::emit(&commands::stress(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Heartrate(range)) => {
+            contract::emit(&commands::heartrate(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Sessions(range)) => {
+            contract::emit(&commands::sessions(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Workouts(range)) => {
+            contract::emit(&commands::workouts(&data_ctx()?, range.resolve()?).await?)?;
+            Ok(())
+        }
+        Some(Command::PersonalInfo) => {
+            contract::emit(&commands::personal_info(&data_ctx()?).await?)?;
+            Ok(())
+        }
         Some(Command::Mcp) => {
             // The STDIO MCP server is implemented in #10. Nothing may be written to stdout
-            // here, and an unimplemented mode must exit non-zero (an MCP client must not see
-            // success).
+            // here, and an unimplemented mode must exit non-zero (an MCP client must not
+            // see success).
             anyhow::bail!("the STDIO MCP server is not yet implemented (see issue #10)");
         }
         None => {
             // Reachable: `arg_required_else_help` only fires with ZERO args, so a lone
             // global flag (`oura --json`) parses to no command and lands here. It's a
             // usage error, so help goes to STDERR (stdout stays results-only) and we
-            // exit 2 like clap's own usage errors.
+            // exit 2 like clap's own usage errors. Best-effort write, like
+            // `contract::report`: a closed stderr must not turn a usage error into a
+            // panic — the exit code is the machine-readable part.
             use clap::CommandFactory;
-            eprintln!("{}", Cli::command().render_help());
+            use std::io::Write as _;
+            let _ = writeln!(std::io::stderr(), "{}", Cli::command().render_help());
             std::process::exit(2);
         }
     }

@@ -128,10 +128,12 @@ build:
 test:
     cargo test --workspace
 
-# Integration tests against Oura /v2/sandbox routes (canned data).
+# Integration tests against the LIVE Oura /v2/sandbox routes (canned data; needs network,
+# no credentials — the sandbox accepts any bearer). #[ignore]d so `just test`/`just ci`
+# stay hermetic; this recipe opts in.
 [group('build')]
 test-sandbox:
-    @echo "TODO(#9): run sandbox integration tests against /v2/sandbox/usercollection/*"
+    cargo test -p oura-toolkit-cli --test sandbox -- --ignored
 
 # Format sources.
 [group('quality')]
