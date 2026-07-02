@@ -11,9 +11,9 @@
 
 name: CI
 
+# PR-only by owner decision: CI is the merge gate, and a pull_request run already tests
+# the prospective merge result — re-running on the push to main would duplicate compute.
 on:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
