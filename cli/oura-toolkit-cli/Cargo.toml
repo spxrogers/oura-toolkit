@@ -1,6 +1,6 @@
 [package]
 name = "oura-toolkit-cli"
-description = "CLI and STDIO MCP server for the Oura Ring API v2 (auth setup/login, data commands, --mcp)."
+description = "CLI and STDIO MCP server for the Oura Ring API v2 (auth setup/login, data commands, mcp)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ anyhow = { workspace = true }
 open = "5"
 rpassword = "7"
 uuid = { version = "1", features = ["v4"] }
-# oura-toolkit-api is wired for data commands in #9; --mcp (rmcp) in #10.
+# oura-toolkit-api is wired for data commands in #9; `oura mcp` (rmcp) in #10.

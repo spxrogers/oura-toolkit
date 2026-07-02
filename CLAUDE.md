@@ -268,14 +268,16 @@ scope mapping in the spec — that lives in prose).
 
 ## MCP
 
-- The CLI has a `--mcp` flag that runs it as a **STDIO MCP server** using the official Rust
-  SDK **`rmcp`** (run locally via `just mcp`). Generate tools from the spec via
+- The CLI has an **`oura mcp` subcommand** that runs it as a **STDIO MCP server** using the
+  official Rust SDK **`rmcp`** (run locally via `just mcp`). (A subcommand, not the earlier
+  `--mcp` flag — decided 2026-07-02: modes and modifiers don't mix, and clap makes the
+  nonsense states unrepresentable.) Generate tools from the spec via
   **`rmcp-openapi`**, then add a thin **curation layer**: expose ~8 well-described tools
   people actually want (daily sleep, daily readiness, daily activity, daily stress, heart
   rate, sessions, workouts, personal info), **hide the rest**, write good LLM-facing
   descriptions.
 - MCP tool calls use the **SAME `oura-toolkit-auth` companion** (Bearer + refresh) as the CLI.
-- **`--mcp` auth behavior**: read tokens from the fixed path; refresh **silently on 401**,
+- **`oura mcp` auth behavior**: read tokens from the fixed path; refresh **silently on 401**,
   persist rotated tokens, retry. If tokens are genuinely **ABSENT**: do **NOT** prompt, do
   **NOT** open a browser, do **NOT** write to stdout (stdout is the JSON-RPC transport).
   Let the `initialize` handshake succeed, and on the **first tool call** return a
@@ -301,7 +303,7 @@ scope mapping in the spec — that lives in prose).
 - **ONE** Claude plugin (not two) shipping **BOTH** the MCP server config **AND** skills.
   Skills call the MCP tools. Standard marketplace layout
   (`.claude-plugin/marketplace.json` + the plugin's `plugin.json`). The MCP server entry
-  launches `npx -y oura-toolkit@<pinned-version> --mcp`. **Check the current Claude
+  launches `npx -y oura-toolkit@<pinned-version> mcp`. **Check the current Claude
   plugin/marketplace manifest schema** against Anthropic's docs before writing manifests.
 
 ---
@@ -347,7 +349,7 @@ oura-toolkit/
 │   ├── python/
 │   └── go/
 ├── cli/
-│   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, --mcp; depends on oura-toolkit-api + oura-toolkit-auth
+│   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, mcp; depends on oura-toolkit-api + oura-toolkit-auth
 ├── plugins/
 │   ├── .claude-plugin/marketplace.json
 │   └── oura-toolkit/             # single plugin (name matches dir): MCP server entry + skills/
@@ -372,7 +374,7 @@ oura-toolkit/
 7. Implement `sdks/rust/oura-toolkit-auth` (token store, refresh w/ rotation, Bearer middleware,
    spec-read metadata)
 8. Implement `cli/oura-toolkit-cli` auth setup/login (loopback)
-9. Stub `--mcp` wiring rmcp + rmcp-openapi through oura-toolkit-auth
+9. Stub `oura mcp` wiring rmcp + rmcp-openapi through oura-toolkit-auth
 10. `dist-workspace.toml`
 11. README setup section (commands shown as `just …`)
 

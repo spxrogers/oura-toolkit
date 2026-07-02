@@ -154,7 +154,7 @@ ci:
 # Run the CLI (oura) as a STDIO MCP server.
 [group('run')]
 mcp:
-    cargo run -p oura-toolkit-cli -- --mcp
+    cargo run -p oura-toolkit-cli -- mcp
 
 # Guided Oura OAuth app registration (terminal prompts), then chain into login.
 [group('run')]
