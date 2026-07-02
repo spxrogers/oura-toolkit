@@ -15,17 +15,10 @@ use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use oura_toolkit_auth::{ClientCredentials, TokenManager, TokenStore, Tokens};
-use oura_toolkit_cli::mcp::OuraMcp;
 
-fn fresh_tokens(access: &str) -> Tokens {
-    Tokens {
-        access_token: access.into(),
-        refresh_token: "rt-1".into(),
-        expires_at: 4_102_444_800, // 2100 — never proactively refreshed
-        scope: None,
-        token_type: None,
-    }
-}
+mod common;
+use common::{fresh_tokens, page, sleep_doc};
+use oura_toolkit_cli::mcp::OuraMcp;
 
 /// A store WITH credentials+tokens (authenticated) or empty (fresh machine).
 fn manager(dir: &tempfile::TempDir, tokens: Option<Tokens>) -> TokenManager {
@@ -57,26 +50,6 @@ async fn connect(
 
 fn text_of(result: &CallToolResult) -> &str {
     &result.content[0].as_text().expect("text content").text
-}
-
-fn sleep_doc(day: &str, score: i64) -> serde_json::Value {
-    serde_json::json!({
-        "id": format!("doc-{day}"),
-        "day": day,
-        "score": score,
-        "timestamp": format!("{day}T00:00:00+00:00"),
-        "contributors": {
-            "deep_sleep": 70, "efficiency": 90, "latency": 60,
-            "rem_sleep": 80, "restfulness": 55, "timing": 40, "total_sleep": 85
-        }
-    })
-}
-
-fn page(data: Vec<serde_json::Value>, next: Option<&str>) -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-        "data": data,
-        "next_token": next,
-    }))
 }
 
 fn sleep_args(start: &str, end: &str) -> serde_json::Map<String, serde_json::Value> {
@@ -307,6 +280,73 @@ async fn malformed_dates_are_protocol_invalid_params() {
         message.contains("today, yesterday, or YYYY-MM-DD"),
         "actionable message reaches the caller: {message}"
     );
+
+    client.cancel().await.unwrap();
+}
+
+/// Hostile tool arguments (rule 5): control bytes in a date value are echoed back in the
+/// invalid_params message — they must arrive NEUTRALIZED (MCP clients render this text).
+#[tokio::test]
+async fn hostile_date_arguments_are_sanitized_in_the_error_echo() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = connect(manager(&dir, None), "http://unused.invalid".into()).await;
+
+    let mut args = serde_json::Map::new();
+    args.insert("start".into(), "199\u{1b}[2J6-01-01\ttab".into());
+    let err = client
+        .call_tool(CallToolRequestParams::new("get_daily_sleep").with_arguments(args))
+        .await
+        .expect_err("protocol error expected");
+    let message = err.to_string();
+    assert!(
+        !message.contains('\u{1b}') && !message.contains('\t'),
+        "control bytes must not survive into the rendered error: {message:?}"
+    );
+    assert!(
+        message.contains("[2J"),
+        "the echo itself survives, defanged: {message:?}"
+    );
+
+    client.cancel().await.unwrap();
+}
+
+/// MCP clients parallelize tool calls; the handler shares one TokenManager across them.
+/// Two concurrent calls to different tools must both complete correctly.
+#[tokio::test]
+async fn concurrent_tool_calls_share_the_manager_safely() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(page(vec![sleep_doc("2026-07-01", 88)], None))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/personal_info"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "u-1", "age": 34, "biological_sex": "male",
+            "height": 1.8, "weight": 76.5, "email": "user@example.com"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = connect(manager(&dir, Some(fresh_tokens("at-1"))), server.uri()).await;
+    let sleep_call = client.call_tool(
+        CallToolRequestParams::new("get_daily_sleep")
+            .with_arguments(sleep_args("2026-07-01", "2026-07-01")),
+    );
+    let info_call = client.call_tool(CallToolRequestParams::new("get_personal_info"));
+    let (sleep_result, info_result) = tokio::join!(sleep_call, info_call);
+
+    let sleep_result = sleep_result.unwrap();
+    assert_eq!(sleep_result.is_error, Some(false));
+    assert!(text_of(&sleep_result).contains("2026-07-01"));
+    let info_result = info_result.unwrap();
+    assert_eq!(info_result.is_error, Some(false));
+    assert!(text_of(&info_result).contains("user@example.com"));
 
     client.cancel().await.unwrap();
 }

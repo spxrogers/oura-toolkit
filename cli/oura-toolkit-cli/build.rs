@@ -148,7 +148,7 @@ fn deref<'a>(
     }
 }
 
-/// `name (first sentence of the spec's description)` per top-level property, sorted.
+/// `name (snippet of the spec's description)` per top-level property, sorted.
 fn field_inventory(
     spec: &serde_json::Value,
     document: &serde_json::Value,
@@ -156,6 +156,11 @@ fn field_inventory(
     let properties = document["properties"]
         .as_object()
         .ok_or("document schema has no properties")?;
+    // Wide documents (daily activity: 26 fields) list bare names — per-field snippets
+    // would put >1.5KB of noise in a description whose job is tool SELECTION. Narrow
+    // documents keep the spec's field snippets, where they genuinely inform.
+    const SNIPPETS_UP_TO: usize = 15;
+    let with_snippets = properties.len() <= SNIPPETS_UP_TO;
     let mut fields: Vec<String> = properties
         .iter()
         .map(|(name, prop)| {
@@ -164,8 +169,10 @@ fn field_inventory(
             match prop["description"]
                 .as_str()
                 .or_else(|| resolved["description"].as_str())
+                .filter(|_| with_snippets)
+                .and_then(snippet)
             {
-                Some(d) => format!("{name} ({})", first_sentence(d)),
+                Some(s) => format!("{name} ({s})"),
                 None => name.clone(),
             }
         })
@@ -177,12 +184,26 @@ fn field_inventory(
     Ok(fields.join(", "))
 }
 
-fn first_sentence(text: &str) -> String {
+/// First sentence of a spec description, hard-capped — some spec fields (e.g. daily
+/// activity's `class_5_min`) are one giant sentence-free enumeration that would otherwise
+/// bloat a tool description to kilobytes of noise. The description drives tool SELECTION;
+/// results carry the full data regardless, so snippets stay short. Empty or
+/// whitespace-only descriptions yield None (bare field name).
+fn snippet(text: &str) -> Option<String> {
+    const MAX_CHARS: usize = 60;
     let text = text.trim().replace('\n', " ");
-    match text.find(". ") {
-        Some(i) => text[..=i].trim_end().to_string(),
-        None => text.trim_end_matches('.').to_string() + ".",
+    if text.is_empty() {
+        return None;
     }
+    let sentence = match text.find(". ") {
+        Some(i) => &text[..i],
+        None => text.trim_end_matches('.'),
+    };
+    let mut out: String = sentence.chars().take(MAX_CHARS).collect();
+    if sentence.chars().count() > MAX_CHARS {
+        out.push('…');
+    }
+    Some(out)
 }
 
 fn find_spec() -> Option<PathBuf> {

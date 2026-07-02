@@ -78,7 +78,12 @@ impl DateRangeParams {
             self.end.as_deref(),
             api::local_today(),
         )
-        .map_err(|err| ErrorData::invalid_params(format!("{err:#}"), None))
+        // Sanitized: the message echoes the caller's argument, and MCP clients render
+        // this text — control bytes must die here, not rely on Debug-escaping upstream
+        // staying that way.
+        .map_err(|err| {
+            ErrorData::invalid_params(crate::output::sanitize(&format!("{err:#}")), None)
+        })
     }
 }
 
@@ -107,6 +112,8 @@ fn tool_result<T: serde::Serialize>(
                      registered credentials), then retry this tool.",
                 );
             } else if let Some(hint) = failure.hint {
+                // Defensive: every hint today is auth-shaped (consumed above); this
+                // keeps a future non-auth hint from being silently dropped.
                 message.push_str(&format!("\nhint: {hint}"));
             }
             Ok(CallToolResult::error(vec![ContentBlock::text(message)]))
@@ -243,4 +250,32 @@ pub async fn serve(manager: TokenManager) -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("MCP server terminated abnormally: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DESCRIPTIONS;
+
+    /// The tool descriptions are the LLM-facing selection surface: each must carry the
+    /// curated lead AND both spec-derived sections, and stay within a budget — the spec
+    /// has field descriptions (activity's class_5_min) that would otherwise bloat a
+    /// description into kilobytes of noise on every tools/list.
+    #[test]
+    fn descriptions_have_the_curated_shape_and_stay_within_budget() {
+        for (name, description) in DESCRIPTIONS {
+            assert!(
+                description.contains("Oura API operation:"),
+                "{name}: spec summary section missing"
+            );
+            assert!(
+                description.contains("Documents contain:"),
+                "{name}: spec field inventory missing"
+            );
+            let len = description.chars().count();
+            assert!(
+                (150..=900).contains(&len),
+                "{name}: description length {len} outside the 150..=900 budget"
+            );
+        }
+    }
 }

@@ -47,23 +47,38 @@ fn stdio_speaks_only_json_rpc_and_shuts_down_on_eof() {
     )
     .unwrap();
 
-    let mut initialize_response = None;
-    let mut tools_response = None;
-    for line in stdout.lines() {
-        let line = line.expect("read stdout line");
-        // THE stream-discipline assertion: every stdout line is JSON-RPC, nothing else.
-        let message: serde_json::Value = serde_json::from_str(&line)
-            .unwrap_or_else(|e| panic!("non-JSON bytes on the MCP transport ({e}): {line:?}"));
-        assert_eq!(message["jsonrpc"], "2.0", "not JSON-RPC: {line:?}");
-        match message["id"].as_i64() {
-            Some(1) => initialize_response = Some(message),
-            Some(2) => {
-                tools_response = Some(message);
-                break;
+    // The read phase runs on its OWN thread with a hard deadline: a regressed server
+    // that stays alive but never answers would otherwise block `.lines()` forever, and
+    // cargo test has no per-test timeout — an unbounded CI hang, not a failure.
+    let reader = std::thread::spawn(move || {
+        let mut initialize_response = None;
+        let mut tools_response = None;
+        for line in stdout.lines() {
+            let line = line.expect("read stdout line");
+            // THE stream-discipline assertion: every stdout line is JSON-RPC, nothing else.
+            let message: serde_json::Value = serde_json::from_str(&line)
+                .unwrap_or_else(|e| panic!("non-JSON bytes on the MCP transport ({e}): {line:?}"));
+            assert_eq!(message["jsonrpc"], "2.0", "not JSON-RPC: {line:?}");
+            match message["id"].as_i64() {
+                Some(1) => initialize_response = Some(message),
+                Some(2) => {
+                    tools_response = Some(message);
+                    break;
+                }
+                _ => {} // server-initiated notifications are fine — they parsed as JSON-RPC
             }
-            _ => {} // server-initiated notifications are fine — they parsed as JSON-RPC
         }
+        (initialize_response, tools_response)
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    while !reader.is_finished() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("oura mcp did not answer the handshake within 15s — hung server");
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
+    let (initialize_response, tools_response) = reader.join().expect("reader thread");
 
     // Initialize succeeded WITHOUT tokens (CLAUDE.md: auth failures surface on tool
     // calls, never the handshake).
