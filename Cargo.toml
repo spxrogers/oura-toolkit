@@ -1,0 +1,53 @@
+# oura-toolkit — cargo workspace.
+#
+# Members are the two Rust SDK crates plus the CLI app; each directory matches its crate name.
+# Rust is NOT privileged: `sdks/rust/oura-toolkit-api` (generated client) and
+# `sdks/rust/oura-toolkit-auth` (hand-written auth companion) sit next to the future breadth-SDK
+# siblings under `sdks/<lang>/`; the CLI is an app, hence `cli/`. See CLAUDE.md.
+[workspace]
+resolver = "2"
+members = [
+    "sdks/rust/oura-toolkit-api",
+    "sdks/rust/oura-toolkit-auth",
+    "cli/oura-toolkit-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/spxrogers/oura-toolkit"
+homepage = "https://github.com/spxrogers/oura-toolkit"
+authors = ["steven rogers"]
+
+# Shared, pinned dependencies. Members opt in with `<dep>.workspace = true`; unused entries
+# here are not fetched. Versions are firmed up as each crate is wired in its own issue.
+[workspace.dependencies]
+# async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
+
+# transport for the generated client; the auth companion plugs into this stack.
+# Pinned to 0.13 to match progenitor-client 0.14 (needs reqwest ^0.13) and reqwest-middleware 0.5.
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls"] }
+reqwest-middleware = "0.5"
+reqwest-retry = "0.9"
+http = "1"
+async-trait = "0.1"
+
+# serde
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# cli
+clap = { version = "4", features = ["derive", "env"] }
+
+# misc
+url = "2"
+thiserror = "2"
+anyhow = "1"
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+
+# internal crates (directory names match crate names)
+oura-toolkit-api = { path = "sdks/rust/oura-toolkit-api" }
+oura-toolkit-auth = { path = "sdks/rust/oura-toolkit-auth" }

@@ -1,0 +1,25 @@
+[package]
+name = "oura-toolkit-cli"
+description = "CLI and STDIO MCP server for the Oura Ring API v2 (auth setup/login, data commands, mcp)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# The crate is `oura-toolkit-cli` but installs a binary named `oura` (the command users type).
+[[bin]]
+name = "oura"
+path = "src/main.rs"
+
+[dependencies]
+oura-toolkit-auth = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+url = { workspace = true }
+anyhow = { workspace = true }
+open = "5"
+rpassword = "7"
+uuid = { version = "1", features = ["v4"] }
+# oura-toolkit-api is wired for data commands in #9; `oura mcp` (rmcp) in #10.

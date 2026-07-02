@@ -1,0 +1,19 @@
+# Rust
+/target
+
+# Node (breadth SDKs, npm installer)
+node_modules/
+
+# cargo-dist output
+/dist
+
+# Derived/generated codegen artifacts — regenerate via `just spec-overlay` / `just gen`.
+# The pristine vendored spec (spec/openapi.json) IS committed; overlay output is not.
+/codegen/build/
+
+# Env / secrets (tokens live in $XDG_CONFIG_HOME/oura-toolkit/, never in-repo)
+.env
+*.log
+
+# OS cruft
+.DS_Store

@@ -1,0 +1,7 @@
+# Generated Rust SDK client — do not hand-edit; regenerate via `just gen-rust` (progenitor).
+# Collapses diffs on GitHub and excludes the generated sources from language stats. Only src/ is
+# generated: the crate's Cargo.toml and GENERATED marker are hand-written and must stay reviewable.
+sdks/rust/oura-toolkit-api/src/** linguist-generated=true
+
+# Breadth-SDK generated client subdirs get marked in #15 (only the generated dir, NOT the
+# hand-written auth companion beside it).
