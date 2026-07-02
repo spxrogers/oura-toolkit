@@ -257,12 +257,23 @@ scope mapping in the spec — that lives in prose).
 ### Token store (in oura-toolkit-auth)
 
 - Fixed, invocation-independent XDG path: `$XDG_CONFIG_HOME/oura-toolkit/`
-  (→ `~/.config/oura-toolkit/`), perms **0600**. MUST be identical whether invoked via `npx`,
-  `bunx`, or a brew binary.
-- Store `access_token`, `refresh_token`, `expiry`, **AND** `client_id`/`client_secret`
-  (refresh is a confidential-client call needing the secret).
+  (→ `~/.config/oura-toolkit/`), perms **0600**, atomic writes. MUST be identical whether
+  invoked via `npx`, `bunx`, or a brew binary.
+- **Two records** (split 2026-07-02, #23): `credentials.json` (`client_id`/`client_secret` —
+  exists from `auth setup` onward; refresh is a confidential-client call needing the secret)
+  and `tokens.json` (`access_token`, `refresh_token`, `expiry`, scope). A failed login never
+  loses the pasted secret. (No migration from the earlier combined shape — nothing shipped.)
 - Oura **rotates the refresh_token** on refresh and **invalidates the old one** — you MUST
   persist the newly returned `refresh_token` or the next refresh 400s.
+- **Cross-process safety** (#22): the CLI and the long-running MCP server share this store,
+  so every refresh runs under an exclusive advisory `.lock` (std `File::lock`) and
+  **re-reads the store first** — a rotation another process already performed is adopted
+  instead of re-burned; a refresh 400 is retried once against freshly reloaded disk state.
+  Lock acquisition happens on a blocking pool (never an executor thread) and the token
+  endpoint has a hard 30s timeout, which bounds lock-hold time.
+- **MSRV policy (decided 2026-07-02):** `rust-version` floats with recent stable — currently
+  **1.89** for std file locking (`File::lock`), chosen over a locking dependency. Pre-1.0,
+  no shipped consumers; revisit only if a real consumer needs older.
 
 ---
 
