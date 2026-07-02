@@ -42,9 +42,26 @@ pub async fn setup(port: u16) -> Result<()> {
         client_secret: prompt_secret_required("  Client Secret (input hidden): ")?,
     };
 
-    // Persist the credentials record IMMEDIATELY — if the consent flow below fails or is
-    // abandoned, the pasted secret survives and `oura auth login` can retry without re-setup.
     let store = TokenStore::new()?;
+    persist_credentials_then_authorize(&store, credentials, |creds| async move {
+        run_authorization(&listener, port, &creds).await
+    })
+    .await
+}
+
+/// The ordering guarantee of `auth setup` (#23), as a testable core: the credentials
+/// record is persisted BEFORE the consent flow runs, so a failed or abandoned
+/// authorization never loses the pasted secret — `oura auth login` can retry without
+/// re-setup.
+async fn persist_credentials_then_authorize<F, Fut>(
+    store: &TokenStore,
+    credentials: ClientCredentials,
+    authorize: F,
+) -> Result<()>
+where
+    F: FnOnce(ClientCredentials) -> Fut,
+    Fut: std::future::Future<Output = Result<Tokens>>,
+{
     store.save_credentials(&credentials)?;
     println!(
         "✓ Credentials saved to {} — `oura auth login` can reuse them any time.\n",
@@ -52,8 +69,8 @@ pub async fn setup(port: u16) -> Result<()> {
     );
 
     println!("Continuing to login…");
-    let tokens = run_authorization(&listener, port, &credentials).await?;
-    persist(&store, &tokens)
+    let tokens = authorize(credentials).await?;
+    persist(store, &tokens)
 }
 
 /// `oura auth login` — Authorization Code flow using the stored client credentials.
@@ -288,6 +305,58 @@ mod tests {
     fn missing_code_yields_none() {
         let req = req_with_query(&[("state", "xyz")]);
         assert_eq!(extract_code_state(&req), None);
+    }
+
+    #[tokio::test]
+    async fn setup_persists_credentials_before_consent_so_failure_keeps_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let creds = ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: "sec".into(),
+        };
+
+        let err = persist_credentials_then_authorize(&store, creds.clone(), |_| async {
+            anyhow::bail!("user closed the consent tab")
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("consent tab"));
+
+        assert_eq!(
+            store.load_credentials().unwrap().unwrap(),
+            creds,
+            "the pasted secret must survive an abandoned consent flow"
+        );
+        assert!(
+            store.load_tokens().unwrap().is_none(),
+            "no tokens on failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn setup_happy_path_persists_both_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let creds = ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: "sec".into(),
+        };
+        let tokens = Tokens {
+            access_token: "at".into(),
+            refresh_token: "rt".into(),
+            expires_at: 4_102_444_800,
+            scope: None,
+            token_type: None,
+        };
+
+        let t2 = tokens.clone();
+        persist_credentials_then_authorize(&store, creds.clone(), move |_| async move { Ok(t2) })
+            .await
+            .unwrap();
+
+        assert_eq!(store.load_credentials().unwrap().unwrap(), creds);
+        assert_eq!(store.load_tokens().unwrap().unwrap(), tokens);
     }
 
     #[test]
