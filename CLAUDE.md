@@ -283,6 +283,57 @@ scope mapping in the spec — that lives in prose).
 
 ---
 
+## TESTING & VERIFICATION (LOAD-BEARING — MUST ADHERE)
+
+**The release gate:** a green `just ci` run on the full CI matrix IS the release decision —
+**"if all tests pass, this tool is ready to release a new version."** No manual checklist
+may stand between green CI and a release. Anything release confidence depends on MUST be an
+automated check that fails CI when violated; if a property matters and CI can't see it, the
+work isn't done.
+
+Every change MUST satisfy all of the following (added 2026-07-02; enforced from PR #35 on):
+
+1. **Guarantee = test.** Every documented behavior — `docs/cli-contract.md`, rustdoc
+   promises, CLAUDE.md invariants (refresh-token rotation, 0600 perms, secret redaction,
+   output sanitization, locked store paths) — has an enforcing test that fails when the
+   guarantee breaks. A guarantee without a test is prose, not a guarantee.
+2. **Hermetic `just test`.** No network, no real credentials, no shared/global state:
+   wiremock for HTTP, tempdirs for stores, injected env lookups (never racy
+   `env::set_var`). Live-sandbox integration lives ONLY behind `just test-sandbox` and
+   never gates CI.
+3. **Break-verified guard tests, and load-bearing assertions everywhere.** A test that
+   guards a property must FAIL when the property is broken: when authoring one, neuter the
+   code, watch the test fail with a message naming the contract, restore. More generally,
+   every test's assertions must be load-bearing — pinned to the specific behavior claimed,
+   not "it returned Ok" / "output is non-empty" / a substring so loose anything matches.
+   Reviewing a test means asking "what wrong implementation would still pass this?" — if
+   the answer is "plenty", the test manufactures release confidence and is worse than no
+   test (see the self-masking unicode test caught in PR #34's review loop).
+4. **Real concurrency for concurrency claims.** Locking/liveness/rotation guarantees are
+   tested with genuinely concurrent tasks or lock-holders, never sequential approximations
+   that would pass with a no-op lock (see PR #31's review loop).
+5. **Security invariants each carry an attack test.** Redaction (`{:?}` leak tests),
+   sanitization (escape/forgery payloads), permission modes — one enforcing test per
+   invariant, exercising the hostile input, not just the happy path.
+6. **Platform code runs on its platform.** `cfg`-gated branches ship with `cfg`-gated
+   tests that execute on that OS's CI leg. The 3-OS matrix is the proof; "compiles locally"
+   claims don't count.
+7. **The user-facing contract is enforced at the binary level.** Exit codes, stream
+   discipline, and error/hint shape are asserted by spawning the real `oura` binary
+   (`cli/oura-toolkit-cli/tests/`), not only by unit-testing the classifier.
+8. **Coverage floor (ratchet) — a tripwire, never a target.** `just coverage`
+   (cargo-llvm-cov) enforces a minimum line-coverage floor on the hand-written crates (the
+   generated client is excluded — it is exercised through its consumers and the drift
+   check). CI runs it as its own job. Lowering the floor is a deliberate, reviewed
+   decision; raising it after test additions is encouraged. The floor lives in the
+   justfile (`coverage_floor`). **Coverage measures execution, not verification** — a line
+   counts as covered even if no assertion would catch it misbehaving, so the floor only
+   detects the *absence* of testing; rules 1 and 3 are what make the tests worth anything.
+   Never add an assertion-free test to move the number: that converts a visible gap into
+   invisible false confidence, which is strictly worse.
+
+---
+
 ## MCP
 
 - The CLI has an **`oura mcp` subcommand** that runs it as a **STDIO MCP server** using the
@@ -346,6 +397,9 @@ scope mapping in the spec — that lives in prose).
 - Do **NOT** split into two plugins.
 - Do **NOT** put secrets in URL query strings, logs, or MCP stdout.
 - Do **NOT** skip the `servers[0].url` overlay fix (api.None.com → api.ouraring.com).
+- Do **NOT** merge a documented guarantee without its enforcing test, a guard test that
+  hasn't been break-verified, or platform `cfg` code with no test on that CI leg — see
+  TESTING & VERIFICATION (the release gate is "green CI == releasable").
 
 ---
 

@@ -45,6 +45,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: just ci
 
+  # Release-gate coverage floor on the hand-written crates (see CLAUDE.md → TESTING &
+  # VERIFICATION). Its own job so the test matrix stays exactly `just ci`.
+  coverage:
+    name: coverage floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt, llvm-tools-preview
+      - uses: extractions/setup-just@v4
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - run: just coverage
+
   # Regenerates the Rust SDK client from the vendored spec and fails if the committed
   # copy differs — catches hand-edits to the generated crate and spec/overlay drift.
   gen-drift:

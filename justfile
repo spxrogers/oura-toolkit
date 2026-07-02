@@ -25,6 +25,12 @@ progenitor_spec := build_dir / "openapi.progenitor.json"
 # Workspace version, derived from Cargo.toml [workspace.package].version (single source).
 version := `sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n1`
 
+# Release-gate line-coverage floor (percent) for the HAND-WRITTEN crates; the generated
+# client is excluded (exercised via consumers + the drift check). Lowering this is a
+# deliberate reviewed decision; raise it after test additions (ratchet). See CLAUDE.md
+# TESTING & VERIFICATION.
+coverage_floor := "85"
+
 # Show available recipes (default recipe).
 default:
     @just --list --unsorted
@@ -36,10 +42,12 @@ default:
 # Install/verify toolchains + codegen deps.
 [group('setup')]
 setup:
-    rustup component add rustfmt clippy
+    rustup component add rustfmt clippy llvm-tools-preview
     # Rust codegen: progenitor CLI + a nightly rustfmt (progenitor formats with unstable opts).
     rustup toolchain install nightly --profile minimal --component rustfmt
     cargo install cargo-progenitor --locked
+    # Coverage floor enforcement (`just coverage`).
+    command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
     @echo "cargo-dist for releases is installed by its own recipe (#11)."
@@ -146,12 +154,27 @@ clean:
     cargo clean
     rm -rf {{build_dir}} node_modules dist
 
+# Enforce the release-gate coverage floor on hand-written crates (cargo-llvm-cov;
+# generated oura-toolkit-api excluded). CI runs this as its own job.
+[group('quality')]
+coverage:
+    cargo llvm-cov --workspace --all-targets \
+        --ignore-filename-regex 'oura-toolkit-api/src/' \
+        --fail-under-lines {{coverage_floor}} --summary-only
+
 # What CI runs — and nothing else: fmt-check + lint + test.
+#
+# The env prefixes are build-speed config, not behavior: the release gate never uses
+# debuginfo (failures print messages; nobody attaches a debugger to CI), and stripping it
+# roughly halves compile+link time and cache size — the dominant cost of the Windows leg
+# (MSVC PDB generation). Incremental artifacts are dead weight on throwaway runners.
+# Scoped INSIDE the recipe so local `just ci` behaves identically to CI; `just test`/
+# `just build` keep full debuginfo for real debugging.
 [group('quality')]
 ci:
     cargo fmt --all --check
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo test --workspace
+    CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets -- -D warnings
+    CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo test --workspace
 
 # ---------------------------------------------------------------------------------------------
 # Run / auth (local)
