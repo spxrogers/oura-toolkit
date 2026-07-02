@@ -20,8 +20,25 @@ use oura_toolkit_auth::AuthError;
 
 /// Runtime failure (exit 1).
 pub const EXIT_ERROR: u8 = 1;
+/// Usage failure (exit 2). clap owns invocation SHAPE (unknown flags, missing args); this
+/// code also covers app-level VALUE errors via [`UsageError`], so "fix your invocation"
+/// is one exit code however the bad input was caught.
+pub const EXIT_USAGE: u8 = 2;
 /// Authentication required (exit 4) — scriptable, cf. `gh` exit 4.
 pub const EXIT_AUTH: u8 = 4;
+
+/// Marker for invocation-value errors clap cannot catch (malformed dates, inverted
+/// ranges). Carries the full user-facing message; classified to [`EXIT_USAGE`].
+#[derive(Debug)]
+pub struct UsageError(pub String);
+
+impl std::fmt::Display for UsageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for UsageError {}
 
 /// Classification of a failure: its exit code and an optional actionable hint.
 #[derive(Debug, PartialEq, Eq)]
@@ -34,6 +51,12 @@ pub struct Failure {
 /// remediation hint the library deliberately does not embed in its `Display`.
 pub fn classify(err: &anyhow::Error) -> Failure {
     for cause in err.chain() {
+        if cause.downcast_ref::<UsageError>().is_some() {
+            return Failure {
+                code: EXIT_USAGE,
+                hint: None,
+            };
+        }
         if let Some(auth) = cause.downcast_ref::<AuthError>() {
             match auth {
                 AuthError::NotAuthenticated => {
@@ -158,6 +181,23 @@ mod tests {
             }
         );
         assert_eq!(render_error(&generic), "oura: doing a thing: boom");
+    }
+
+    #[test]
+    fn usage_errors_exit_2_without_hints() {
+        let err = anyhow::Error::new(UsageError("--start x is after --end y".into()))
+            .context("resolving the date range");
+        assert_eq!(
+            classify(&err),
+            Failure {
+                code: EXIT_USAGE,
+                hint: None
+            }
+        );
+        assert_eq!(
+            render_error(&err),
+            "oura: resolving the date range: --start x is after --end y"
+        );
     }
 
     #[test]

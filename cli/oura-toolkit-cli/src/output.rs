@@ -10,11 +10,6 @@
 //! column widths, and styling is plain SGR codes behind a single gate. `--jq`-style
 //! filtering, `--template`, and pager integration are the remainder of #17.
 
-// The rendering surface is consumed by the data commands (#9); until those land it is
-// exercised by this module's tests and the RenderOptions resolution in main.
-// TODO(#9): drop this file-level allow once commands consume the module.
-#![allow(dead_code)]
-
 use std::io::IsTerminal;
 
 /// How a command's result should be rendered.
@@ -126,10 +121,6 @@ impl Table {
         self
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.rows.is_empty()
-    }
-
     /// Render the textual formats. `Json` is not representable here — commands go through
     /// [`render_result`], whose signature forces JSON to come from the data model.
     fn render_text(&self, format: Format, style: Style) -> String {
@@ -194,13 +185,10 @@ pub fn to_json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(value)?)
 }
 
-/// THE single rendering entry point for data commands (#9): dispatches `--json` to the
-/// command's serde data model and everything else to the curated table — so no command
+/// THE single rendering entry point for list-shaped data commands: dispatches `--json` to
+/// the command's serde data model and everything else to the curated table — so no command
 /// author can ever render JSON from re-encoded table cells, by construction.
-///
-/// TODO(#9): add a vertical key/value record layout for single-record commands
-/// (`personal-info`) so their authors aren't tempted to bypass this entry point when a
-/// one-row table reads awkwardly.
+/// Single-record commands use [`render_record`].
 pub fn render_result<T: serde::Serialize>(
     model: &T,
     table: &Table,
@@ -210,6 +198,45 @@ pub fn render_result<T: serde::Serialize>(
         Format::Json => to_json(model),
         other => Ok(table.render_text(other, opts.style)),
     }
+}
+
+/// The single-record sibling of [`render_result`]: a vertical key/value layout for
+/// commands returning one document (`personal-info`). Same dispatch rule — `--json`
+/// serializes the data model; the text formats render sanitized label/value lines
+/// (`Plain` = tab-separated for scripts).
+pub fn render_record<T: serde::Serialize>(
+    model: &T,
+    fields: &[(&str, String)],
+    opts: RenderOptions,
+) -> anyhow::Result<String> {
+    if matches!(opts.format, Format::Json) {
+        return to_json(model);
+    }
+    let label_width = fields
+        .iter()
+        .map(|(label, _)| label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for (label, value) in fields {
+        let value = sanitize(value);
+        match opts.format {
+            Format::Table => {
+                let padded = format!("{label:<label_width$}");
+                out.push_str(&opts.style.dim(&padded));
+                out.push_str("  ");
+                out.push_str(&value);
+            }
+            Format::Plain => {
+                out.push_str(label);
+                out.push('\t');
+                out.push_str(&value);
+            }
+            Format::Json => unreachable!("handled above"),
+        }
+        out.push('\n');
+    }
+    Ok(out)
 }
 
 /// Replace control characters with spaces: rendered output must never carry terminal

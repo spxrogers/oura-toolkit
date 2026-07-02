@@ -33,6 +33,33 @@ fn login_without_credentials_exits_4_with_hint_on_stderr() {
 }
 
 #[test]
+fn data_command_without_tokens_exits_4_with_login_hint() {
+    // The everyday failure mode (#9): a data command before `oura auth login`. The typed
+    // NotAuthenticated must cross the process boundary as exit 4 + the login hint, with
+    // stdout untouched — even when --json was requested.
+    let (mut cmd, _dir) = oura();
+    cmd.args(["sleep", "--json"])
+        .assert()
+        .code(4)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "oura: fetching daily sleep: not authenticated",
+        ))
+        .stderr(predicate::str::contains("hint: run `oura auth login`"));
+}
+
+#[test]
+fn data_command_rejects_an_inverted_date_range() {
+    // Range validation happens before any network/auth work: usage-shaped, exit 2.
+    let (mut cmd, _dir) = oura();
+    cmd.args(["sleep", "--start", "today", "--end", "yesterday"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("after"));
+}
+
+#[test]
 fn unimplemented_mcp_exits_1_with_nothing_on_stdout() {
     // Stream discipline matters double here: stdout is the future JSON-RPC transport.
     let (mut cmd, _dir) = oura();
