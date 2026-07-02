@@ -197,6 +197,10 @@ pub fn to_json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
 /// THE single rendering entry point for data commands (#9): dispatches `--json` to the
 /// command's serde data model and everything else to the curated table — so no command
 /// author can ever render JSON from re-encoded table cells, by construction.
+///
+/// TODO(#9): add a vertical key/value record layout for single-record commands
+/// (`personal-info`) so their authors aren't tempted to bypass this entry point when a
+/// one-row table reads awkwardly.
 pub fn render_result<T: serde::Serialize>(
     model: &T,
     table: &Table,
@@ -208,9 +212,14 @@ pub fn render_result<T: serde::Serialize>(
     }
 }
 
-/// Replace control characters (ESC/CSI/OSC bytes, C1 controls, newlines, tabs, …) with
-/// spaces. Rendered cells and error lines must never carry terminal escape sequences or
-/// forge rows/columns/`hint:` lines — see the CLI contract.
+/// Replace control characters with spaces: rendered output must never carry terminal
+/// escape sequences or forge lines/fields in line-oriented formats.
+///
+/// Scope: Unicode `Cc` (C0 incl. ESC/LF/TAB, DEL, and C1 0x80–0x9F) — everything that can
+/// start an escape sequence or break line/field structure. Format characters (`Cf`: bidi
+/// overrides, zero-width joiners) are deliberately out of scope: they cannot forge
+/// structure or escapes; their only effect is cosmetic glyph reordering of the user's own
+/// data on their own terminal.
 pub fn sanitize(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_control() { ' ' } else { c })
@@ -307,17 +316,14 @@ mod tests {
 
     #[test]
     fn non_ascii_cells_align_by_char_count() {
-        let mut t = Table::new(["TAG", "N"]);
-        t.row(["café", "1"]).row(["plain", "2"]);
+        // The multibyte cell must be the column's WIDTH DRIVER, or byte- and char-counting
+        // produce identical output and the test can't catch a regression: "café" is
+        // 4 chars / 5 bytes, and every other cell in its column is narrower.
+        let mut t = Table::new(["T", "N"]);
+        t.row(["café", "1"]).row(["x", "2"]);
         let rendered = t.render(Format::Table, Style::new(false));
-        // "café" is 4 chars (5 bytes); byte-based widths would pad it one short.
-        assert_eq!(
-            rendered,
-            "TAG    N
-café   1
-plain  2
-"
-        );
+        // Char width = 4; a byte-based width (5) would pad one extra column.
+        assert_eq!(rendered, "T     N\ncafé  1\nx     2\n");
     }
 
     #[test]

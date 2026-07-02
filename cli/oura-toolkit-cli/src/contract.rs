@@ -82,8 +82,11 @@ pub fn render_error(err: &anyhow::Error) -> String {
 
 /// The full stderr report: the error line plus the `hint:` line when the fix is known.
 pub fn render_report(err: &anyhow::Error) -> String {
-    let failure = classify(err);
-    match failure.hint {
+    compose(err, classify(err).hint)
+}
+
+fn compose(err: &anyhow::Error, hint: Option<&'static str>) -> String {
+    match hint {
         Some(hint) => format!("{}\nhint: {hint}", render_error(err)),
         None => render_error(err),
     }
@@ -91,8 +94,9 @@ pub fn render_report(err: &anyhow::Error) -> String {
 
 /// Report a failure to stderr per the contract and return the process exit code.
 pub fn report(err: anyhow::Error) -> ExitCode {
-    eprintln!("{}", render_report(&err));
-    ExitCode::from(classify(&err).code)
+    let failure = classify(&err);
+    eprintln!("{}", compose(&err, failure.hint));
+    ExitCode::from(failure.code)
 }
 
 #[cfg(test)]
