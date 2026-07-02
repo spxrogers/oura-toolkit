@@ -175,20 +175,66 @@ impl DateRange {
     /// Start of the start day / end of the end day, as UTC instants (for the
     /// datetime-parameterized endpoints like heartrate), interpreted in local time.
     pub fn as_utc_bounds(&self) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
-        use chrono::TimeZone as _;
-        let start_local = chrono::Local
-            .from_local_datetime(&self.start.and_hms_opt(0, 0, 0).expect("valid midnight"))
-            .earliest()
-            .expect("local midnight exists");
-        let end_local = chrono::Local
-            .from_local_datetime(&self.end.and_hms_opt(23, 59, 59).expect("valid time"))
-            .latest()
-            .expect("local end-of-day exists");
+        self.utc_bounds_in(&chrono::Local)
+    }
+
+    /// [`Self::as_utc_bounds`] generalized over the timezone, so the conversion —
+    /// including its DST edge cases — is unit-testable without mutating process state.
+    ///
+    /// DST can make a wall-clock time nonexistent (spring-forward gap — some zones
+    /// historically skip midnight itself, e.g. America/Sao_Paulo 2017-10-15) or ambiguous
+    /// (fall-back repeat). Ambiguity resolves outward — earliest start, latest end — to
+    /// keep the requested window maximal. A nonexistent time is nudged INTO the day in
+    /// 15-minute steps until it exists, landing on the first (start) or last (end)
+    /// instant that actually occurred on that local day. Never panics.
+    pub fn utc_bounds_in<Tz: chrono::TimeZone>(
+        &self,
+        tz: &Tz,
+    ) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
+        let start = self
+            .start
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight is a valid time");
+        let end = self
+            .end
+            .and_hms_opt(23, 59, 59)
+            .expect("23:59:59 is a valid time");
         (
-            start_local.with_timezone(&chrono::Utc),
-            end_local.with_timezone(&chrono::Utc),
+            resolve_local(tz, start, true).with_timezone(&chrono::Utc),
+            resolve_local(tz, end, false).with_timezone(&chrono::Utc),
         )
     }
+}
+
+/// Resolve a wall-clock time in `tz`, stepping `forward` (or backward) across a DST gap
+/// until the time exists. Real zone offsets change by 30/45/60/120 minutes — all multiples
+/// of the 15-minute step — so the scan lands exactly on the transition instant. The bound
+/// (100 steps ≈ 25h) is unreachable for any real timezone; the final fallback merely keeps
+/// the function total for a pathological `TimeZone` impl rather than panicking.
+fn resolve_local<Tz: chrono::TimeZone>(
+    tz: &Tz,
+    wall: chrono::NaiveDateTime,
+    forward: bool,
+) -> chrono::DateTime<Tz> {
+    let step = chrono::TimeDelta::minutes(15);
+    let mut candidate = wall;
+    for _ in 0..100 {
+        let resolved = tz.from_local_datetime(&candidate);
+        let picked = if forward {
+            resolved.earliest()
+        } else {
+            resolved.latest()
+        };
+        if let Some(dt) = picked {
+            return dt;
+        }
+        candidate = if forward {
+            candidate + step
+        } else {
+            candidate - step
+        };
+    }
+    tz.from_utc_datetime(&wall)
 }
 
 #[cfg(test)]
@@ -253,6 +299,49 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("did not advance"), "{err}");
+    }
+
+    /// Fixed-offset zone: the documented local 00:00:00 / 23:59:59 window converts to
+    /// exact UTC instants (docs/cli-contract.md → Dates).
+    #[test]
+    fn utc_bounds_convert_the_local_day_window_exactly() {
+        let r = DateRange {
+            start: day("2026-06-26"),
+            end: day("2026-07-02"),
+        };
+        let tz = chrono::FixedOffset::east_opt(5 * 3600 + 1800).unwrap(); // +05:30
+        let (start, end) = r.utc_bounds_in(&tz);
+        assert_eq!(start.to_rfc3339(), "2026-06-25T18:30:00+00:00");
+        assert_eq!(end.to_rfc3339(), "2026-07-02T18:29:59+00:00");
+    }
+
+    /// DST spring-forward gap AT midnight (America/Sao_Paulo 2017-10-15 skipped
+    /// 00:00–00:59): must not panic, and must land on the first instant that actually
+    /// existed that local day (01:00 -02:00).
+    #[test]
+    fn utc_bounds_survive_a_dst_gap_at_local_midnight() {
+        let tz: chrono_tz::Tz = "America/Sao_Paulo".parse().unwrap();
+        let r = DateRange {
+            start: day("2017-10-15"),
+            end: day("2017-10-15"),
+        };
+        let (start, end) = r.utc_bounds_in(&tz);
+        assert_eq!(start.to_rfc3339(), "2017-10-15T03:00:00+00:00");
+        assert_eq!(end.to_rfc3339(), "2017-10-16T01:59:59+00:00");
+    }
+
+    /// DST fall-back fold (Sao_Paulo 2018-02-18 00:00 fell back to 2018-02-17 23:00, so
+    /// 23:00–23:59 happened twice): the end bound resolves to the LATER occurrence,
+    /// keeping the requested window maximal.
+    #[test]
+    fn utc_bounds_resolve_a_dst_fold_outward() {
+        let tz: chrono_tz::Tz = "America/Sao_Paulo".parse().unwrap();
+        let r = DateRange {
+            start: day("2018-02-17"),
+            end: day("2018-02-17"),
+        };
+        let (_, end) = r.utc_bounds_in(&tz);
+        assert_eq!(end.to_rfc3339(), "2018-02-18T02:59:59+00:00"); // 23:59:59 -03:00
     }
 
     /// A server that mints a NEW token every page defeats the non-advancing check; the

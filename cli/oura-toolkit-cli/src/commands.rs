@@ -16,7 +16,8 @@ pub struct Ctx {
     pub render: RenderOptions,
 }
 
-fn opt_num<T: std::fmt::Display>(v: &Option<T>) -> String {
+/// Render an optional field for a table cell: its `Display` form, or `-` when absent.
+fn opt<T: std::fmt::Display>(v: &Option<T>) -> String {
     v.as_ref().map(T::to_string).unwrap_or_else(|| "-".into())
 }
 
@@ -48,10 +49,10 @@ pub async fn sleep(ctx: &Ctx, range: DateRange) -> Result<String> {
         let c = &d.contributors;
         table.row([
             d.day.to_string(),
-            opt_num(&d.score),
-            opt_num(&c.deep_sleep),
-            opt_num(&c.rem_sleep),
-            opt_num(&c.efficiency),
+            opt(&d.score),
+            opt(&c.deep_sleep),
+            opt(&c.rem_sleep),
+            opt(&c.efficiency),
         ]);
     }
     render_result(&docs, &table, ctx.render)
@@ -84,8 +85,8 @@ pub async fn readiness(ctx: &Ctx, range: DateRange) -> Result<String> {
     for d in &docs {
         table.row([
             d.day.to_string(),
-            opt_num(&d.score),
-            opt_num(&d.temperature_deviation),
+            opt(&d.score),
+            opt(&d.temperature_deviation),
         ]);
     }
     render_result(&docs, &table, ctx.render)
@@ -118,7 +119,7 @@ pub async fn activity(ctx: &Ctx, range: DateRange) -> Result<String> {
     for d in &docs {
         table.row([
             d.day.to_string(),
-            opt_num(&d.score),
+            opt(&d.score),
             d.steps.to_string(),
             d.active_calories.to_string(),
         ]);
@@ -153,9 +154,9 @@ pub async fn stress(ctx: &Ctx, range: DateRange) -> Result<String> {
     for d in &docs {
         table.row([
             d.day.to_string(),
-            opt_num(&d.day_summary),
-            opt_num(&d.stress_high),
-            opt_num(&d.recovery_high),
+            opt(&d.day_summary),
+            opt(&d.stress_high),
+            opt(&d.recovery_high),
         ]);
     }
     render_result(&docs, &table, ctx.render)
@@ -267,7 +268,7 @@ pub async fn workouts(ctx: &Ctx, range: DateRange) -> Result<String> {
             d.day.to_string(),
             d.activity.clone(),
             d.intensity.to_string(),
-            opt_num(&d.calories),
+            opt(&d.calories),
         ]);
     }
     render_result(&docs, &table, ctx.render)
@@ -284,11 +285,11 @@ pub async fn personal_info(ctx: &Ctx) -> Result<String> {
     .into_inner();
 
     let fields = [
-        ("Age", opt_num(&info.age)),
-        ("Biological sex", opt_num(&info.biological_sex)),
-        ("Height (m)", opt_num(&info.height)),
-        ("Weight (kg)", opt_num(&info.weight)),
-        ("Email", opt_num(&info.email)),
+        ("Age", opt(&info.age)),
+        ("Biological sex", opt(&info.biological_sex)),
+        ("Height (m)", opt(&info.height)),
+        ("Weight (kg)", opt(&info.weight)),
+        ("Email", opt(&info.email)),
     ];
     render_record(&info, &fields, ctx.render)
 }

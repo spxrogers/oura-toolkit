@@ -32,6 +32,8 @@ uuid = { version = "1", features = ["v4"] }
 # hermetic 401-refresh tests point the token endpoint at wiremock via this seam
 oura-toolkit-auth = { workspace = true, features = ["test-util"] }
 wiremock = "0.6"
+# Real IANA tz data for the DST gap/fold tests on DateRange::utc_bounds_in.
+chrono-tz = "0.10"
 serde_json = { workspace = true }
 tempfile = "3"
 # binary-level contract tests (exit codes / stream discipline) — see docs/cli-contract.md

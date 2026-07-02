@@ -180,9 +180,11 @@ impl Table {
     }
 }
 
-/// Serialize a command's data model as pretty JSON (the `--json` path).
+/// Serialize a command's data model as pretty JSON (the `--json` path), newline-terminated
+/// — `--json` output is a complete text file (POSIX lines end in `\n`), and `jq`-style
+/// consumers and shell prompts expect the terminator.
 pub fn to_json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
-    Ok(serde_json::to_string_pretty(value)?)
+    Ok(serde_json::to_string_pretty(value)? + "\n")
 }
 
 /// THE single rendering entry point for list-shaped data commands: dispatches `--json` to

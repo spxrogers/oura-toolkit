@@ -92,12 +92,12 @@ async fn sleep_paginates_three_pages_with_exact_query_params() {
     // Page 1: no next_token param.
     base()
         .and(wiremock::matchers::query_param_is_missing("next_token"))
-        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], Some("t1")))
+        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], Some("t+1/a==")))
         .expect(1)
         .mount(&server)
         .await;
     base()
-        .and(query_param("next_token", "t1"))
+        .and(query_param("next_token", "t+1/a=="))
         .respond_with(page(vec![sleep_doc("2026-06-27", 81)], Some("t2")))
         .expect(1)
         .mount(&server)
@@ -408,8 +408,29 @@ async fn workouts_map_activity_and_intensity_columns() {
     );
 }
 
+/// Matches iff the request carries `start_datetime`/`end_datetime` equal to the UTC
+/// bounds resolved from [`range`]. The conversion MATH (incl. DST gaps/folds) is pinned
+/// by `utc_bounds_in` unit tests in `api.rs`; this pins that the resolved bounds actually
+/// go on the wire — an implementation sending `None` (whole history) must 404 here.
+struct HeartrateBoundsSent;
+
+impl wiremock::Match for HeartrateBoundsSent {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        let (want_start, want_end) = range().as_utc_bounds();
+        let param = |key: &str| {
+            request
+                .url
+                .query_pairs()
+                .find(|(k, _)| k == key)
+                .and_then(|(_, v)| chrono::DateTime::parse_from_rfc3339(&v).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        };
+        param("start_datetime") == Some(want_start) && param("end_datetime") == Some(want_end)
+    }
+}
+
 /// The heartrate command unwraps the anyOf time-series envelope and sends UTC datetime
-/// bounds derived from the local-date range.
+/// bounds derived from the local-date range (docs/cli-contract.md → Dates).
 #[tokio::test]
 async fn heartrate_unwraps_the_timeseries_envelope() {
     let server = MockServer::start().await;
@@ -417,6 +438,7 @@ async fn heartrate_unwraps_the_timeseries_envelope() {
 
     Mock::given(method("GET"))
         .and(path("/v2/usercollection/heartrate"))
+        .and(HeartrateBoundsSent)
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "data": [
                 {"bpm": 62, "source": "awake", "timestamp": "2026-07-01T10:00:00+00:00",
@@ -457,4 +479,76 @@ async fn personal_info_renders_a_record() {
         out,
         "Age\t34\nBiological sex\tmale\nHeight (m)\t1.8\nWeight (kg)\t76.5\nEmail\tuser@example.com\n"
     );
+}
+
+/// `--json` on a real command is the GENERATED model serialized — pinned as an exact,
+/// newline-terminated golden so the scripting contract (docs/cli-contract.md → Output
+/// formats) covers the real serde path, not just a synthetic struct.
+#[tokio::test]
+async fn personal_info_json_is_the_generated_model_newline_terminated() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/personal_info"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "u-1", "age": 34, "biological_sex": "male",
+            "height": 1.8, "weight": 76.5, "email": "user@example.com"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut ctx = ctx(&server, &dir, fresh_tokens("at-1"));
+    ctx.render = RenderOptions {
+        format: Format::Json,
+        style: Style::new(false),
+    };
+    let out = commands::personal_info(&ctx).await.unwrap();
+    assert_eq!(
+        out,
+        r#"{
+  "age": 34,
+  "biological_sex": "male",
+  "email": "user@example.com",
+  "height": 1.8,
+  "id": "u-1",
+  "weight": 76.5
+}
+"#
+    );
+}
+
+/// Attack test through the REAL command pipeline (release-gate rule 5): hostile bytes in
+/// a server-controlled OPEN string field — terminal escapes, tabs (TSV forgery), newlines
+/// (row forgery) — are neutralized to spaces in the rendered output. `workout.activity`
+/// is the open `String` field; closed enums (e.g. stress `day_summary`) already reject
+/// unknown values at deserialization.
+#[tokio::test]
+async fn hostile_field_bytes_cannot_forge_output_structure() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/workout"))
+        .respond_with(page(
+            vec![serde_json::json!({
+                "id": "w-1", "day": "2026-06-26",
+                "activity": "bad\u{1b}[2Jrun\tning\nx",
+                "intensity": "hard", "calories": 320.5, "source": "manual",
+                "start_datetime": "2026-06-26T07:00:00+00:00",
+                "end_datetime": "2026-06-26T07:45:00+00:00"
+            })],
+            None,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let out = commands::workouts(&ctx(&server, &dir, fresh_tokens("at-1")), range())
+        .await
+        .unwrap();
+    // ESC, tab, and newline each collapse to a space; the only tabs/newlines left are the
+    // structural ones. `[2J` survives as inert text because its ESC is gone.
+    assert_eq!(out, "2026-06-26\tbad [2Jrun ning x\thard\t320.5\n");
 }

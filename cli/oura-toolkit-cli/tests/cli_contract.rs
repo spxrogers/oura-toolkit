@@ -60,6 +60,18 @@ fn data_command_rejects_an_inverted_date_range() {
 }
 
 #[test]
+fn data_command_rejects_a_malformed_date() {
+    // The other UsageError path docs/cli-contract.md names explicitly: a value clap
+    // can't validate is still exit 2, with the accepted forms spelled out.
+    let (mut cmd, _dir) = oura();
+    cmd.args(["sleep", "--start", "not-a-date"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("today, yesterday, or YYYY-MM-DD"));
+}
+
+#[test]
 fn unimplemented_mcp_exits_1_with_nothing_on_stdout() {
     // Stream discipline matters double here: stdout is the future JSON-RPC transport.
     let (mut cmd, _dir) = oura();
