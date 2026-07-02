@@ -85,6 +85,12 @@ gen-rust: spec-overlay
     cargo fmt -p oura-toolkit-api
     @echo "Generated sdks/rust/oura-toolkit-api/src/lib.rs"
 
+# Verify the committed generated client matches the current spec + overlays (CI drift check:
+# catches hand-edits to the generated crate and spec/codegen drift). Needs `just setup`.
+[group('codegen')]
+gen-check: gen-rust
+    git diff --exit-code -- sdks/rust/oura-toolkit-api
+
 # Generate the TypeScript SDK client (openapi-generator) -> sdks/typescript/.
 [group('codegen')]
 gen-ts: spec-overlay

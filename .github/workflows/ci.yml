@@ -1,0 +1,72 @@
+# CI for oura-toolkit (#13).
+#
+# The test job invokes `just ci` and NOTHING else — every build/test/lint step lives in the
+# root justfile, never duplicated in this YAML (see CLAUDE.md → TASK RUNNER). The drift job
+# likewise only runs just recipes; the only raw commands in this file install toolchains,
+# which issue #13 explicitly carves out.
+#
+# Matrix covers ubuntu/macos/windows per the #13 addendum: the CLI ships installers for all
+# three OSes (#11), so all three must compile and pass tests — including the cfg(not(unix))
+# paths that a single-OS CI would never build.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # bash everywhere (including Windows) so just's sh-flavored recipes behave identically.
+    shell: bash
+
+jobs:
+  ci:
+    name: just ci (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: extractions/setup-just@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: just ci
+
+  # Regenerates the Rust SDK client from the vendored spec and fails if the committed
+  # copy differs — catches hand-edits to the generated crate and spec/overlay drift.
+  gen-drift:
+    name: generated-code drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: extractions/setup-just@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo-progenitor
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-progenitor
+          key: cargo-progenitor-${{ runner.os }}-v1
+      - name: Install codegen toolchain (nightly rustfmt + progenitor)
+        # Toolchain installation only (the #13 carve-out). The command guard keeps the
+        # cached cargo-progenitor binary from being rebuilt on every run; bump the cache
+        # key above to force a rebuild.
+        run: |
+          rustup toolchain install nightly --profile minimal --component rustfmt
+          command -v cargo-progenitor >/dev/null || cargo install cargo-progenitor --locked
+      - run: just gen-check
