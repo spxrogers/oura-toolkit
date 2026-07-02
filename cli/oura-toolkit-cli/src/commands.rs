@@ -1,9 +1,15 @@
 //! The data commands (#9): each fetches through the generated client (auth + 401-retry +
 //! pagination from `api.rs`), then renders through the output layer's single entry point —
 //! commands return the rendered string (testable end-to-end against wiremock) and `main`
-//! owns the one `println!`.
+//! owns the one write to stdout.
+//!
+//! Fetching and rendering are split: the `fetch_*` functions return the GENERATED models
+//! and are the shared data plane for BOTH consumers — the CLI's rendered commands here and
+//! the MCP tools (#10), which serialize the same models to JSON. One auth layer, one data
+//! plane, two presentations.
 
 use anyhow::{Context, Result};
+use oura_toolkit_api::types;
 use oura_toolkit_auth::TokenManager;
 
 use crate::api::{paginate, with_auth_retry, DateRange};
@@ -21,10 +27,14 @@ fn opt<T: std::fmt::Display>(v: &Option<T>) -> String {
     v.as_ref().map(T::to_string).unwrap_or_else(|| "-".into())
 }
 
-pub async fn sleep(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_sleep(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicDailySleep>> {
     let (start, end) = (range.start, range.end);
-    let docs = paginate(|token| async move {
-        let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+    paginate(|token| async move {
+        let resp = with_auth_retry(manager, base_url, |client| {
             let token = token.clone();
             async move {
                 client
@@ -42,7 +52,11 @@ pub async fn sleep(ctx: &Ctx, range: DateRange) -> Result<String> {
         Ok((inner.data, inner.next_token))
     })
     .await
-    .context("fetching daily sleep")?;
+    .context("fetching daily sleep")
+}
+
+pub async fn sleep(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let docs = fetch_sleep(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["DAY", "SCORE", "DEEP", "REM", "EFFICIENCY"]);
     for d in &docs {
@@ -58,10 +72,14 @@ pub async fn sleep(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&docs, &table, ctx.render)
 }
 
-pub async fn readiness(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_readiness(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicDailyReadiness>> {
     let (start, end) = (range.start, range.end);
-    let docs = paginate(|token| async move {
-        let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+    paginate(|token| async move {
+        let resp = with_auth_retry(manager, base_url, |client| {
             let token = token.clone();
             async move {
                 client
@@ -79,7 +97,11 @@ pub async fn readiness(ctx: &Ctx, range: DateRange) -> Result<String> {
         Ok((inner.data, inner.next_token))
     })
     .await
-    .context("fetching daily readiness")?;
+    .context("fetching daily readiness")
+}
+
+pub async fn readiness(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let docs = fetch_readiness(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["DAY", "SCORE", "TEMP DEV"]);
     for d in &docs {
@@ -92,10 +114,14 @@ pub async fn readiness(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&docs, &table, ctx.render)
 }
 
-pub async fn activity(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_activity(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicDailyActivity>> {
     let (start, end) = (range.start, range.end);
-    let docs = paginate(|token| async move {
-        let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+    paginate(|token| async move {
+        let resp = with_auth_retry(manager, base_url, |client| {
             let token = token.clone();
             async move {
                 client
@@ -113,7 +139,11 @@ pub async fn activity(ctx: &Ctx, range: DateRange) -> Result<String> {
         Ok((inner.data, inner.next_token))
     })
     .await
-    .context("fetching daily activity")?;
+    .context("fetching daily activity")
+}
+
+pub async fn activity(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let docs = fetch_activity(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["DAY", "SCORE", "STEPS", "ACTIVE CAL"]);
     for d in &docs {
@@ -127,10 +157,14 @@ pub async fn activity(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&docs, &table, ctx.render)
 }
 
-pub async fn stress(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_stress(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicDailyStress>> {
     let (start, end) = (range.start, range.end);
-    let docs = paginate(|token| async move {
-        let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+    paginate(|token| async move {
+        let resp = with_auth_retry(manager, base_url, |client| {
             let token = token.clone();
             async move {
                 client
@@ -148,7 +182,11 @@ pub async fn stress(ctx: &Ctx, range: DateRange) -> Result<String> {
         Ok((inner.data, inner.next_token))
     })
     .await
-    .context("fetching daily stress")?;
+    .context("fetching daily stress")
+}
+
+pub async fn stress(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let docs = fetch_stress(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["DAY", "SUMMARY", "STRESS HIGH", "RECOVERY HIGH"]);
     for d in &docs {
@@ -162,11 +200,15 @@ pub async fn stress(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&docs, &table, ctx.render)
 }
 
-pub async fn heartrate(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_heartrate(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicHeartRateRow>> {
     let (start, end) = range.as_utc_bounds();
-    let rows = paginate(|token| {
+    paginate(|token| {
         async move {
-            let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+            let resp = with_auth_retry(manager, base_url, |client| {
                 let token = token.clone();
                 async move {
                     client
@@ -191,7 +233,11 @@ pub async fn heartrate(ctx: &Ctx, range: DateRange) -> Result<String> {
         }
     })
     .await
-    .context("fetching heart rate")?;
+    .context("fetching heart rate")
+}
+
+pub async fn heartrate(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let rows = fetch_heartrate(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["TIMESTAMP", "BPM", "SOURCE"]);
     for r in &rows {
@@ -204,10 +250,14 @@ pub async fn heartrate(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&rows, &table, ctx.render)
 }
 
-pub async fn sessions(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_sessions(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicSession>> {
     let (start, end) = (range.start, range.end);
-    let docs = paginate(|token| async move {
-        let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+    paginate(|token| async move {
+        let resp = with_auth_retry(manager, base_url, |client| {
             let token = token.clone();
             async move {
                 client
@@ -225,7 +275,11 @@ pub async fn sessions(ctx: &Ctx, range: DateRange) -> Result<String> {
         Ok((inner.data, inner.next_token))
     })
     .await
-    .context("fetching sessions")?;
+    .context("fetching sessions")
+}
+
+pub async fn sessions(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let docs = fetch_sessions(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["DAY", "TYPE", "START", "END"]);
     for d in &docs {
@@ -239,10 +293,14 @@ pub async fn sessions(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&docs, &table, ctx.render)
 }
 
-pub async fn workouts(ctx: &Ctx, range: DateRange) -> Result<String> {
+pub async fn fetch_workouts(
+    manager: &TokenManager,
+    base_url: &str,
+    range: DateRange,
+) -> Result<Vec<types::PublicWorkout>> {
     let (start, end) = (range.start, range.end);
-    let docs = paginate(|token| async move {
-        let resp = with_auth_retry(&ctx.manager, &ctx.base_url, |client| {
+    paginate(|token| async move {
+        let resp = with_auth_retry(manager, base_url, |client| {
             let token = token.clone();
             async move {
                 client
@@ -260,7 +318,11 @@ pub async fn workouts(ctx: &Ctx, range: DateRange) -> Result<String> {
         Ok((inner.data, inner.next_token))
     })
     .await
-    .context("fetching workouts")?;
+    .context("fetching workouts")
+}
+
+pub async fn workouts(ctx: &Ctx, range: DateRange) -> Result<String> {
+    let docs = fetch_workouts(&ctx.manager, &ctx.base_url, range).await?;
 
     let mut table = Table::new(["DAY", "ACTIVITY", "INTENSITY", "CALORIES"]);
     for d in &docs {
@@ -274,15 +336,22 @@ pub async fn workouts(ctx: &Ctx, range: DateRange) -> Result<String> {
     render_result(&docs, &table, ctx.render)
 }
 
-pub async fn personal_info(ctx: &Ctx) -> Result<String> {
-    let info = with_auth_retry(&ctx.manager, &ctx.base_url, |client| async move {
+pub async fn fetch_personal_info(
+    manager: &TokenManager,
+    base_url: &str,
+) -> Result<types::PersonalInfoResponse> {
+    Ok(with_auth_retry(manager, base_url, |client| async move {
         client
             .single_personal_info_document_v2_usercollection_personal_info_get()
             .await
     })
     .await
     .context("fetching personal info")?
-    .into_inner();
+    .into_inner())
+}
+
+pub async fn personal_info(ctx: &Ctx) -> Result<String> {
+    let info = fetch_personal_info(&ctx.manager, &ctx.base_url).await?;
 
     let fields = [
         ("Age", opt(&info.age)),

@@ -26,9 +26,18 @@ anyhow = { workspace = true }
 open = "5"
 rpassword = "7"
 uuid = { version = "1", features = ["v4"] }
-# `oura mcp` (rmcp) is wired in #10.
+# `oura mcp` STDIO server (#10): official MCP SDK. Default features (server + macros) plus
+# stdio transport and schemars-derived tool parameter schemas.
+rmcp = { version = "2.1", features = ["transport-io", "schemars"] }
+schemars = "1"
+
+# build.rs reads spec/openapi.json to emit the MCP tool descriptions (see build.rs).
+[build-dependencies]
+serde_json = { workspace = true }
 
 [dev-dependencies]
+# in-process MCP client for the hermetic `oura mcp` server tests
+rmcp = { version = "2.1", features = ["client", "transport-io", "schemars"] }
 # hermetic 401-refresh tests point the token endpoint at wiremock via this seam
 oura-toolkit-auth = { workspace = true, features = ["test-util"] }
 wiremock = "0.6"
