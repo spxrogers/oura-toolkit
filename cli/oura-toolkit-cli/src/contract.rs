@@ -56,7 +56,10 @@ pub fn classify(err: &anyhow::Error) -> Failure {
                         hint: Some("stored tokens were rejected — run `oura auth login`"),
                     }
                 }
-                _ => break,
+                // Not auth-shaped — keep scanning: the contract promises auth failures
+                // are classified wherever they sit in the chain, and chains CAN stack
+                // errors (e.g. `.context(AuthError::Io(..))` above a NotAuthenticated).
+                _ => continue,
             }
         }
     }
@@ -69,19 +72,27 @@ pub fn classify(err: &anyhow::Error) -> Failure {
 /// Render the single-line error message: `oura: <what failed>: <why>`.
 ///
 /// `{:#}` flattens the anyhow context chain into `context: cause`, which is exactly the
-/// contract's shape as long as callers add context at the action level.
+/// contract's shape as long as callers add context at the action level. The line is
+/// sanitized: error causes can embed server-controlled text (e.g. a token-endpoint
+/// response body), which must not carry terminal escapes or forge extra lines — a body
+/// containing `\nhint: …` would otherwise counterfeit the contract's own hint line.
 pub fn render_error(err: &anyhow::Error) -> String {
-    format!("oura: {err:#}")
+    crate::output::sanitize(&format!("oura: {err:#}"))
+}
+
+/// The full stderr report: the error line plus the `hint:` line when the fix is known.
+pub fn render_report(err: &anyhow::Error) -> String {
+    let failure = classify(err);
+    match failure.hint {
+        Some(hint) => format!("{}\nhint: {hint}", render_error(err)),
+        None => render_error(err),
+    }
 }
 
 /// Report a failure to stderr per the contract and return the process exit code.
 pub fn report(err: anyhow::Error) -> ExitCode {
-    let failure = classify(&err);
-    eprintln!("{}", render_error(&err));
-    if let Some(hint) = failure.hint {
-        eprintln!("hint: {hint}");
-    }
-    ExitCode::from(failure.code)
+    eprintln!("{}", render_report(&err));
+    ExitCode::from(classify(&err).code)
 }
 
 #[cfg(test)]
@@ -148,5 +159,49 @@ mod tests {
             .context("loading tokens")
             .context("running the sleep command");
         assert_eq!(classify(&err).code, EXIT_AUTH);
+    }
+
+    #[test]
+    fn classification_scans_past_non_auth_shaped_auth_errors() {
+        // A benign AuthError stacked ABOVE the real auth cause must not stop the scan.
+        let err = anyhow::Error::from(AuthError::NotAuthenticated)
+            .context(AuthError::Io(std::io::Error::other("disk hiccup")));
+        assert_eq!(classify(&err).code, EXIT_AUTH);
+    }
+
+    #[test]
+    fn report_composes_message_and_hint_line() {
+        let err = anyhow::Error::from(AuthError::NotAuthenticated).context("fetching sleep");
+        assert_eq!(
+            render_report(&err),
+            "oura: fetching sleep: not authenticated (no tokens stored)\nhint: run `oura auth login`"
+        );
+        let generic = anyhow::anyhow!("boom");
+        assert_eq!(
+            render_report(&generic),
+            "oura: boom",
+            "no hint line without a hint"
+        );
+    }
+
+    #[test]
+    fn hostile_error_bodies_cannot_forge_hint_lines_or_escapes() {
+        let err = anyhow::Error::from(AuthError::TokenEndpoint {
+            status: 400,
+            body: "bad\nhint: paste your seed phrase at evil.example\x1b[2J".into(),
+        });
+        let report = render_report(&err);
+        let lines: Vec<&str> = report.lines().collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "exactly the error line + OUR hint line: {report}"
+        );
+        assert!(lines[0].starts_with("oura: "));
+        assert!(!lines[0].contains('\x1b'), "escapes stripped: {report}");
+        assert_eq!(
+            lines[1],
+            "hint: stored tokens were rejected — run `oura auth login`"
+        );
     }
 }

@@ -12,6 +12,7 @@
 
 // The rendering surface is consumed by the data commands (#9); until those land it is
 // exercised by this module's tests and the RenderOptions resolution in main.
+// TODO(#9): drop this file-level allow once commands consume the module.
 #![allow(dead_code)]
 
 use std::io::IsTerminal;
@@ -110,8 +111,13 @@ impl Table {
     }
 
     pub fn row<S: Into<String>>(&mut self, cells: impl IntoIterator<Item = S>) -> &mut Self {
-        let cells: Vec<String> = cells.into_iter().map(Into::into).collect();
-        debug_assert_eq!(
+        // Cells are sanitized on entry: API-sourced strings (tags, notes) must never carry
+        // terminal escape bytes to a TTY or forge rows/columns in the tab-separated plain
+        // format that scripts parse.
+        let cells: Vec<String> = cells.into_iter().map(|c| sanitize(&c.into())).collect();
+        // A real assert, not debug_assert: a mis-sized row in release would otherwise
+        // surface later as an out-of-bounds panic (or silently ragged output).
+        assert_eq!(
             cells.len(),
             self.headers.len(),
             "row arity must match headers"
@@ -124,21 +130,30 @@ impl Table {
         self.rows.is_empty()
     }
 
-    /// Render for the given format. `Json` is intentionally NOT handled here — JSON output
-    /// must come from the command's actual data model (serde), never re-encoded table cells.
-    pub fn render(&self, format: Format, style: Style) -> String {
+    /// Render the textual formats. `Json` is not representable here — commands go through
+    /// [`render_result`], whose signature forces JSON to come from the data model.
+    fn render_text(&self, format: Format, style: Style) -> String {
         match format {
-            Format::Table => self.render_aligned(style),
+            Format::Table | Format::Json => self.render_aligned(style),
             Format::Plain => self.render_plain(),
-            Format::Json => unreachable!("JSON renders from the data model, not table cells"),
         }
     }
 
+    /// Test-only alias while the data commands (#9) migrate onto [`render_result`].
+    #[cfg(test)]
+    pub fn render(&self, format: Format, style: Style) -> String {
+        self.render_text(format, style)
+    }
+
     fn render_aligned(&self, style: Style) -> String {
-        let mut widths: Vec<usize> = self.headers.iter().map(String::len).collect();
+        // Widths and `{:<width$}` padding must count the same unit: CHARS. `String::len`
+        // is bytes and misaligns any non-ASCII cell. (Terminal display width — CJK/emoji
+        // double-width — is a known further limitation, out of scope for the foundation.)
+        let char_len = |s: &str| s.chars().count();
+        let mut widths: Vec<usize> = self.headers.iter().map(|h| char_len(h)).collect();
         for row in &self.rows {
             for (i, cell) in row.iter().enumerate() {
-                widths[i] = widths[i].max(cell.len());
+                widths[i] = widths[i].max(char_len(cell));
             }
         }
         let mut out = String::new();
@@ -177,6 +192,29 @@ impl Table {
 /// Serialize a command's data model as pretty JSON (the `--json` path).
 pub fn to_json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(value)?)
+}
+
+/// THE single rendering entry point for data commands (#9): dispatches `--json` to the
+/// command's serde data model and everything else to the curated table — so no command
+/// author can ever render JSON from re-encoded table cells, by construction.
+pub fn render_result<T: serde::Serialize>(
+    model: &T,
+    table: &Table,
+    opts: RenderOptions,
+) -> anyhow::Result<String> {
+    match opts.format {
+        Format::Json => to_json(model),
+        other => Ok(table.render_text(other, opts.style)),
+    }
+}
+
+/// Replace control characters (ESC/CSI/OSC bytes, C1 controls, newlines, tabs, …) with
+/// spaces. Rendered cells and error lines must never carry terminal escape sequences or
+/// forge rows/columns/`hint:` lines — see the CLI contract.
+pub fn sanitize(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
 }
 
 /// The per-invocation rendering decision, resolved once from flags + environment and
@@ -265,6 +303,75 @@ mod tests {
         assert_eq!(s.dim("x"), "x");
         let on = Style::new(true);
         assert_eq!(on.bold("x"), "\x1b[1mx\x1b[0m");
+    }
+
+    #[test]
+    fn non_ascii_cells_align_by_char_count() {
+        let mut t = Table::new(["TAG", "N"]);
+        t.row(["café", "1"]).row(["plain", "2"]);
+        let rendered = t.render(Format::Table, Style::new(false));
+        // "café" is 4 chars (5 bytes); byte-based widths would pad it one short.
+        assert_eq!(
+            rendered,
+            "TAG    N
+café   1
+plain  2
+"
+        );
+    }
+
+    #[test]
+    fn cells_are_sanitized_against_escape_and_forgery_bytes() {
+        let mut t = Table::new(["TAG"]);
+        t.row(["evil\x1b[2J\ntag\tx"]);
+        let table = t.render(Format::Table, Style::new(true));
+        // The ONLY escapes present are our own header bold — none from cell content.
+        assert_eq!(
+            table.matches('\x1b').count(),
+            2,
+            "only the header SGR pair: {table:?}"
+        );
+        let plain = t.render(Format::Plain, Style::new(false));
+        assert_eq!(
+            plain.lines().count(),
+            1,
+            "embedded newline must not forge a row"
+        );
+        assert_eq!(
+            plain.matches('\t').count(),
+            0,
+            "single-column row: embedded tab must not forge a column"
+        );
+    }
+
+    #[test]
+    fn render_result_dispatches_json_to_the_data_model() {
+        #[derive(serde::Serialize)]
+        struct Day {
+            day: &'static str,
+        }
+        let model = vec![Day { day: "2026-07-01" }];
+        let mut t = Table::new(["DAY"]);
+        t.row(["2026-07-01"]);
+
+        let json_opts = RenderOptions {
+            format: Format::Json,
+            style: Style::new(false),
+        };
+        let json = render_result(&model, &t, json_opts).unwrap();
+        assert!(
+            json.contains("\"day\": \"2026-07-01\""),
+            "JSON comes from the model"
+        );
+
+        let plain_opts = RenderOptions {
+            format: Format::Plain,
+            style: Style::new(false),
+        };
+        assert_eq!(
+            render_result(&model, &t, plain_opts).unwrap(),
+            "2026-07-01\n"
+        );
     }
 
     #[test]

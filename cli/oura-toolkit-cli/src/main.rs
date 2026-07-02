@@ -87,10 +87,12 @@ async fn run() -> anyhow::Result<()> {
             anyhow::bail!("the STDIO MCP server is not yet implemented (see issue #10)");
         }
         None => {
-            // Unreachable in practice: `arg_required_else_help` makes bare `oura` print help
-            // and exit 2 before we get here. Kept as a defensive usage error.
+            // Reachable: `arg_required_else_help` only fires with ZERO args, so a lone
+            // global flag (`oura --json`) parses to no command and lands here. It's a
+            // usage error, so help goes to STDERR (stdout stays results-only) and we
+            // exit 2 like clap's own usage errors.
             use clap::CommandFactory;
-            Cli::command().print_help()?;
+            eprintln!("{}", Cli::command().render_help());
             std::process::exit(2);
         }
     }
