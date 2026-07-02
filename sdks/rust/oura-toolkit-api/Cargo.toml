@@ -11,6 +11,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 # Generated crate: progenitor emits illustrative doc examples that aren't standalone-compilable
 # doctests. The generated code is exercised via the CLI (dogfooding) + sandbox tests, not doctests.

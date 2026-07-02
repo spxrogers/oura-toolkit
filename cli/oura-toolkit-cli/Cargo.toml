@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+# Integration tests assume the monorepo (bundled-spec sync walks to the repo root);
+# they are meaningless inside a published package.
+exclude = ["tests/"]
 
 # The crate is `oura-toolkit-cli` but installs a binary named `oura` (the command users type).
 [[bin]]

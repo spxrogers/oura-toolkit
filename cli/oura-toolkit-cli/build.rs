@@ -8,9 +8,9 @@
 //! field inventory auto-tracks `just spec-fetch` refreshes; a curated operation
 //! disappearing from the spec fails the build (drift guard, not silent decay).
 //!
-//! The spec is located by walking up from the crate directory to the repo root's
-//! `spec/openapi.json` (same walk as oura-toolkit-auth/build.rs; publish-safe bundling is
-//! tracked in #11).
+//! The spec is read from the crate-local bundle `openapi.json` (what ships in the
+//! crates.io package; kept in sync with the repo root's `spec/openapi.json` by
+//! `just spec-fetch` + the bundled-spec test), falling back to a repo-root walk.
 
 use std::{env, fs, path::PathBuf};
 
@@ -73,6 +73,14 @@ fn main() {
         "oura-toolkit-cli build: could not locate `spec/openapi.json` by walking up from the crate dir",
     );
     println!("cargo:rerun-if-changed={}", spec_path.display());
+    // Also watch the repo-root spec when present: an edit there (before `just spec-fetch`
+    // syncs the crate-local bundle) still invalidates build caches instead of silently
+    // building from the stale bundle until the sync test runs.
+    if let Some(root) = root_spec() {
+        if root != spec_path {
+            println!("cargo:rerun-if-changed={}", root.display());
+        }
+    }
 
     let text = fs::read_to_string(&spec_path).expect("read spec/openapi.json");
     let spec: serde_json::Value = serde_json::from_str(&text).expect("parse spec/openapi.json");
@@ -207,9 +215,25 @@ fn snippet(text: &str) -> Option<String> {
 }
 
 fn find_spec() -> Option<PathBuf> {
+    let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
+    // Crate-local bundle first: it is what ships inside the crates.io package (there is
+    // no repo root to walk to there). In the monorepo it's a byte-identical copy of
+    // spec/openapi.json, refreshed by `just spec-fetch` and guarded by the bundled-spec
+    // sync test.
+    let bundled = crate_dir.join("openapi.json");
+    if bundled.is_file() {
+        return Some(bundled);
+    }
+    // Fallback for pre-bundle checkouts.
+    root_spec()
+}
+
+/// The repo root's vendored spec, found by walking up — `None` outside the monorepo
+/// (e.g. building a published package).
+fn root_spec() -> Option<PathBuf> {
     let mut dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
     loop {
-        let candidate = dir.join("spec/openapi.json");
+        let candidate = dir.join("spec").join("openapi.json");
         if candidate.is_file() {
             return Some(candidate);
         }

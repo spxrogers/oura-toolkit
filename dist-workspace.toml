@@ -1,0 +1,34 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app. NPX-FIRST launch (CLAUDE.md → DISTRIBUTION):
+# `npx -y oura-toolkit ...` runs the `oura` binary; brew / shell / powershell are the
+# speed-path alternatives. PowerShell is unblocked by #24 (Windows CI leg is green).
+installers = ["shell", "powershell", "npm", "homebrew"]
+# The npm package that carries the CLI launcher: unscoped `oura-toolkit` (verified free;
+# the @oura-toolkit scope is reserved for the SDK leaves). The plugin (#12) pins
+# `npx -y oura-toolkit@<version> mcp` against this package.
+npm-package = "oura-toolkit"
+# Homebrew formula name + tap. `brew install spxrogers/tap/oura-toolkit`.
+# PREREQUISITES (one-time, manual): the tap repo `spxrogers/homebrew-tap` must exist and
+# CI needs a HOMEBREW_TAP_TOKEN secret with push access to it; npm publishing needs an
+# NPM_TOKEN secret. Until those exist, tag-driven releases still build every installer
+# artifact — only the publish jobs fail.
+formula = "oura-toolkit"
+tap = "spxrogers/homebrew-tap"
+publish-jobs = ["homebrew", "npm"]
+# ACCEPTED UPSTREAM RISK (adversarial review, PR #41): cargo-dist 0.32's npm installer
+# (binary-install.js) downloads the platform binary from GitHub releases over https with
+# NO checksum verification — unlike the shell installer and homebrew formula, which both
+# verify sha256. Inherent to upstream's npm template; revisit when cargo-dist adds
+# integrity checks.
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Where to host releases
+hosting = "github"

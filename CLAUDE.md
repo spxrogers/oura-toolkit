@@ -379,11 +379,29 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 
 ## DISTRIBUTION
 
-- **cargo-dist** ("dist") emits shell + powershell + npm + homebrew installers from one
-  `dist-workspace.toml`, driven by `just release` / `just publish`. **Confirm current
-  cargo-dist version/config format** from its docs.
+- **cargo-dist** ("dist", pinned **0.32.0** in `dist-workspace.toml` — landed 2026-07-02,
+  #11) emits shell + powershell + npm + homebrew installers for the CLI across 5 targets.
+- **Releases are TAG-DRIVEN, not laptop-driven:** bump the workspace version in the root
+  `Cargo.toml` (the single version source — the justfile derives `version` from it, dist
+  versions every installer from it, and mismatched tags fail at plan time) → tag `vX.Y.Z`
+  → push. `.github/workflows/release.yml` (dist-generated, committed, drift-checked by
+  `dist generate --check` inside `just dist-check`) builds all artifacts and runs the
+  npm + homebrew publish jobs. `just release` is a LOCAL smoke build only; `just publish`
+  covers only crates.io (dependency order: api → auth → cli).
+- **One-time prerequisites before the first real release:** create `spxrogers/homebrew-tap`
+  + a `HOMEBREW_TAP_TOKEN` secret with push access, and an `NPM_TOKEN` secret. Until then,
+  tag pushes still build every installer artifact — only the publish jobs fail.
+- **The `release-config` CI job** runs `just dist-check` (plan + generate-drift + the
+  NPX-first assertion on the real npm artifact: name `oura-toolkit`, bin `oura`) and
+  `just publish-check` (the packaged crate builds in an out-of-repo temp dir — the
+  crates.io context; guards the spec-bundle publish fix) on every PR.
+- **Crates.io publishability:** the spec-reading build scripts (auth, CLI) read a
+  crate-local `openapi.json` bundle (refreshed by `just spec-fetch`, sync-guarded by
+  per-crate bundled-spec tests) because a published package has no repo root to walk to.
 - Primary launch is **`npx -y oura-toolkit ...` (NPX-FIRST)**. `brew` / `bun i -g` are
-  speed-path alternatives. **No bunx-first shell shim.**
+  speed-path alternatives. **No bunx-first shell shim.** Known accepted upstream risk:
+  cargo-dist 0.32's npm installer does not checksum-verify the binary it downloads
+  (shell + homebrew do) — noted in `dist-workspace.toml`.
 
 ---
 
