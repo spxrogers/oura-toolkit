@@ -8,9 +8,9 @@
 //! field inventory auto-tracks `just spec-fetch` refreshes; a curated operation
 //! disappearing from the spec fails the build (drift guard, not silent decay).
 //!
-//! The spec is located by walking up from the crate directory to the repo root's
-//! `spec/openapi.json` (same walk as oura-toolkit-auth/build.rs; publish-safe bundling is
-//! tracked in #11).
+//! The spec is read from the crate-local bundle `openapi.json` (what ships in the
+//! crates.io package; kept in sync with the repo root's `spec/openapi.json` by
+//! `just spec-fetch` + the bundled-spec test), falling back to a repo-root walk.
 
 use std::{env, fs, path::PathBuf};
 
@@ -207,9 +207,19 @@ fn snippet(text: &str) -> Option<String> {
 }
 
 fn find_spec() -> Option<PathBuf> {
-    let mut dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
+    let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
+    // Crate-local bundle first: it is what ships inside the crates.io package (there is
+    // no repo root to walk to there). In the monorepo it's a byte-identical copy of
+    // spec/openapi.json, refreshed by `just spec-fetch` and guarded by the bundled-spec
+    // sync test.
+    let bundled = crate_dir.join("openapi.json");
+    if bundled.is_file() {
+        return Some(bundled);
+    }
+    // Fallback: walk up to the repo root's vendored spec (pre-bundle checkouts).
+    let mut dir = crate_dir;
     loop {
-        let candidate = dir.join("spec/openapi.json");
+        let candidate = dir.join("spec").join("openapi.json");
         if candidate.is_file() {
             return Some(candidate);
         }

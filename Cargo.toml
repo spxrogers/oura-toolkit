@@ -51,5 +51,10 @@ anyhow = "1"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 
 # internal crates (directory names match crate names)
-oura-toolkit-api = { path = "sdks/rust/oura-toolkit-api" }
-oura-toolkit-auth = { path = "sdks/rust/oura-toolkit-auth" }
+oura-toolkit-api = { version = "0.1.0", path = "sdks/rust/oura-toolkit-api" }
+oura-toolkit-auth = { version = "0.1.0", path = "sdks/rust/oura-toolkit-auth" }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
