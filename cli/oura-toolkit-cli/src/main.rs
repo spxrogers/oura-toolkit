@@ -161,9 +161,12 @@ async fn run() -> anyhow::Result<()> {
             // Reachable: `arg_required_else_help` only fires with ZERO args, so a lone
             // global flag (`oura --json`) parses to no command and lands here. It's a
             // usage error, so help goes to STDERR (stdout stays results-only) and we
-            // exit 2 like clap's own usage errors.
+            // exit 2 like clap's own usage errors. Best-effort write, like
+            // `contract::report`: a closed stderr must not turn a usage error into a
+            // panic — the exit code is the machine-readable part.
             use clap::CommandFactory;
-            eprintln!("{}", Cli::command().render_help());
+            use std::io::Write as _;
+            let _ = writeln!(std::io::stderr(), "{}", Cli::command().render_help());
             std::process::exit(2);
         }
     }
