@@ -257,12 +257,18 @@ scope mapping in the spec — that lives in prose).
 ### Token store (in oura-toolkit-auth)
 
 - Fixed, invocation-independent XDG path: `$XDG_CONFIG_HOME/oura-toolkit/`
-  (→ `~/.config/oura-toolkit/`), perms **0600**. MUST be identical whether invoked via `npx`,
-  `bunx`, or a brew binary.
-- Store `access_token`, `refresh_token`, `expiry`, **AND** `client_id`/`client_secret`
-  (refresh is a confidential-client call needing the secret).
+  (→ `~/.config/oura-toolkit/`), perms **0600**, atomic writes. MUST be identical whether
+  invoked via `npx`, `bunx`, or a brew binary.
+- **Two records** (split 2026-07-02, #23): `credentials.json` (`client_id`/`client_secret` —
+  exists from `auth setup` onward; refresh is a confidential-client call needing the secret)
+  and `tokens.json` (`access_token`, `refresh_token`, `expiry`, scope). A failed login never
+  loses the pasted secret. (No migration from the earlier combined shape — nothing shipped.)
 - Oura **rotates the refresh_token** on refresh and **invalidates the old one** — you MUST
   persist the newly returned `refresh_token` or the next refresh 400s.
+- **Cross-process safety** (#22): the CLI and the long-running MCP server share this store,
+  so every refresh runs under an exclusive advisory `.lock` (std `File::lock`, MSRV 1.89)
+  and **re-reads the store first** — a rotation another process already performed is adopted
+  instead of re-burned; a refresh 400 is retried once against freshly reloaded disk state.
 
 ---
 

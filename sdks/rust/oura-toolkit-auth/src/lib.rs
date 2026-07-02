@@ -26,4 +26,4 @@ mod store;
 pub use client::{build_authenticated_client, AuthMiddleware, TokenManager};
 pub use error::AuthError;
 pub use oauth::{exchange_code, refresh};
-pub use store::{TokenStore, Tokens};
+pub use store::{ClientCredentials, StoreLock, TokenStore, Tokens};

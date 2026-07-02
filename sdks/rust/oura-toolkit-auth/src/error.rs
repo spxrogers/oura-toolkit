@@ -21,6 +21,11 @@ pub enum AuthError {
     #[error("token endpoint returned no refresh_token on the initial exchange")]
     MissingRefreshToken,
 
+    /// Tokens exist but the client credentials record is missing, so a refresh is impossible
+    /// (confidential client: the token endpoint requires `client_id` + `client_secret`).
+    #[error("no client credentials stored — run `oura auth setup`")]
+    MissingClientCredentials,
+
     /// Filesystem error reading/writing the token store.
     #[error("token store i/o error: {0}")]
     Io(#[from] std::io::Error),

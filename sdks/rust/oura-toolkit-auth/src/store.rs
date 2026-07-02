@@ -1,9 +1,23 @@
-//! Persistent token store at a fixed, invocation-independent XDG path.
+//! Persistent credential store at a fixed, invocation-independent XDG path.
 //!
-//! `$XDG_CONFIG_HOME/oura-toolkit/credentials.json` (→ `~/.config/oura-toolkit/credentials.json`),
-//! written `0600` via an atomic temp-file + rename. The path MUST be identical whether the
-//! CLI is invoked via `npx`, `bunx`, or a brew binary — hence it derives only from the XDG
-//! env, never from the invocation location.
+//! Two records live in `$XDG_CONFIG_HOME/oura-toolkit/` (→ `~/.config/oura-toolkit/`):
+//!
+//! - **`credentials.json`** — [`ClientCredentials`] (the user's own OAuth app id + secret).
+//!   Exists from `oura auth setup` onward, independent of any login.
+//! - **`tokens.json`** — [`Tokens`] (access/refresh/expiry/scope). Exists only after a
+//!   successful login and is rewritten on every refresh rotation.
+//!
+//! Separating the two means a failed or abandoned login never loses the pasted secret, and
+//! `oura auth login` never has to dig client credentials out of a token record (issue #23).
+//!
+//! Everything is written `0600` via an atomic temp-file + rename. The path MUST be identical
+//! whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence it derives only
+//! from the XDG env, never from the invocation location.
+//!
+//! Cross-process coordination: [`TokenStore::lock_exclusive`] takes a blocking advisory lock
+//! on a `.lock` file in the store dir. `TokenManager` holds it across its
+//! reload-refresh-persist critical section so two processes (CLI + MCP server) can share the
+//! store despite Oura invalidating the previous refresh token on every rotation (issue #22).
 
 use std::fs;
 use std::io::Write;
@@ -14,11 +28,29 @@ use time::OffsetDateTime;
 
 use crate::error::AuthError;
 
-/// The persisted credential set. Holds the OAuth tokens **and** the confidential-client
-/// credentials, because refresh requires `client_id` + `client_secret`.
+/// The user's own Oura OAuth application credentials (BYO confidential client).
 ///
-/// `Debug` is implemented manually and REDACTS the token/secret fields, so a stray
-/// `{:?}`/`dbg!` can never leak them into logs (see the "no secrets in logs" rule).
+/// `Debug` is implemented manually and REDACTS the secret, so a stray `{:?}`/`dbg!` can
+/// never leak it into logs (see the "no secrets in logs" rule).
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientCredentials {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+impl std::fmt::Debug for ClientCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientCredentials")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .finish()
+    }
+}
+
+/// The persisted OAuth token set. Client credentials live in their own record
+/// ([`ClientCredentials`]), not here.
+///
+/// `Debug` is implemented manually and REDACTS the token fields.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tokens {
     pub access_token: String,
@@ -27,8 +59,6 @@ pub struct Tokens {
     pub refresh_token: String,
     /// Absolute expiry as a Unix timestamp (seconds).
     pub expires_at: i64,
-    pub client_id: String,
-    pub client_secret: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,58 +79,101 @@ impl std::fmt::Debug for Tokens {
             .field("access_token", &"[REDACTED]")
             .field("refresh_token", &"[REDACTED]")
             .field("expires_at", &self.expires_at)
-            .field("client_id", &self.client_id)
-            .field("client_secret", &"[REDACTED]")
             .field("scope", &self.scope)
             .field("token_type", &self.token_type)
             .finish()
     }
 }
 
-/// Handle to the on-disk credential file.
+/// Handle to the on-disk store directory.
 #[derive(Debug, Clone)]
 pub struct TokenStore {
-    path: PathBuf,
+    dir: PathBuf,
+}
+
+/// An exclusive advisory lock on the store, released on drop (or process exit).
+pub struct StoreLock(fs::File);
+
+impl Drop for StoreLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
 }
 
 impl TokenStore {
     /// Store at the default XDG location.
     pub fn new() -> Result<Self, AuthError> {
-        Ok(Self {
-            path: config_dir()?.join("credentials.json"),
-        })
+        Ok(Self { dir: config_dir()? })
     }
 
     /// Store rooted at an explicit directory (used by tests).
     pub fn with_dir(dir: impl Into<PathBuf>) -> Self {
-        Self {
-            path: dir.into().join("credentials.json"),
-        }
+        Self { dir: dir.into() }
     }
 
-    /// The resolved credential file path.
-    pub fn path(&self) -> &Path {
-        &self.path
+    /// The store directory.
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
-    /// Load credentials, or `None` if the file does not exist yet.
-    pub fn load(&self) -> Result<Option<Tokens>, AuthError> {
-        match fs::read(&self.path) {
+    /// Path of the client-credentials record.
+    pub fn credentials_path(&self) -> PathBuf {
+        self.dir.join("credentials.json")
+    }
+
+    /// Path of the token record.
+    pub fn tokens_path(&self) -> PathBuf {
+        self.dir.join("tokens.json")
+    }
+
+    /// Load the client credentials, or `None` if `auth setup` has never run.
+    pub fn load_credentials(&self) -> Result<Option<ClientCredentials>, AuthError> {
+        match fs::read(self.credentials_path()) {
             Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
 
-    /// Persist credentials atomically with `0600` permissions, creating the parent dir (`0700`)
-    /// if needed.
-    pub fn save(&self, tokens: &Tokens) -> Result<(), AuthError> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-            set_dir_private(parent)?;
+    /// Persist the client credentials (`0600`, atomic).
+    pub fn save_credentials(&self, credentials: &ClientCredentials) -> Result<(), AuthError> {
+        self.ensure_dir()?;
+        let data = serde_json::to_vec_pretty(credentials)?;
+        write_secure(&self.credentials_path(), &data)?;
+        Ok(())
+    }
+
+    /// Load the tokens, or `None` if no login has succeeded yet.
+    pub fn load_tokens(&self) -> Result<Option<Tokens>, AuthError> {
+        match fs::read(self.tokens_path()) {
+            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
         }
+    }
+
+    /// Persist the tokens (`0600`, atomic). Callers refreshing MUST persist the rotated
+    /// refresh token (Oura invalidates the previous one).
+    pub fn save_tokens(&self, tokens: &Tokens) -> Result<(), AuthError> {
+        self.ensure_dir()?;
         let data = serde_json::to_vec_pretty(tokens)?;
-        write_secure(&self.path, &data)?;
+        write_secure(&self.tokens_path(), &data)?;
+        Ok(())
+    }
+
+    /// Take a blocking exclusive advisory lock on the store (std `File::lock`, i.e. flock
+    /// semantics — cooperative between processes that use this method). Hold the returned
+    /// guard across a reload → refresh → persist critical section.
+    pub fn lock_exclusive(&self) -> Result<StoreLock, AuthError> {
+        self.ensure_dir()?;
+        let file = open_owner_only(&self.dir.join(".lock"))?;
+        file.lock()?;
+        Ok(StoreLock(file))
+    }
+
+    fn ensure_dir(&self) -> Result<(), AuthError> {
+        fs::create_dir_all(&self.dir)?;
+        set_dir_private(&self.dir)?;
         Ok(())
     }
 }
@@ -117,6 +190,27 @@ fn config_dir() -> Result<PathBuf, AuthError> {
         return Err(AuthError::NoConfigDir);
     }
     Ok(PathBuf::from(home).join(".config").join("oura-toolkit"))
+}
+
+/// Open (creating if needed) with owner-only perms where supported.
+#[cfg(unix)]
+fn open_owner_only(path: &Path) -> std::io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_owner_only(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
 }
 
 /// Atomic write with owner-only perms: write a temp file, fsync, rename into place.
@@ -166,67 +260,92 @@ fn set_dir_private(_dir: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    fn sample() -> Tokens {
-        Tokens {
-            access_token: "access".into(),
-            refresh_token: "refresh".into(),
-            expires_at: 4_102_444_800, // 2100-01-01
+    pub(crate) fn sample_credentials() -> ClientCredentials {
+        ClientCredentials {
             client_id: "cid".into(),
-            client_secret: "secret".into(),
+            client_secret: "SECRET-CS-789".into(),
+        }
+    }
+
+    pub(crate) fn sample_tokens() -> Tokens {
+        Tokens {
+            access_token: "SECRET-AT-123".into(),
+            refresh_token: "SECRET-RT-456".into(),
+            expires_at: 4_102_444_800, // 2100-01-01
             scope: Some("daily personal".into()),
             token_type: Some("Bearer".into()),
         }
     }
 
     #[test]
-    fn roundtrips_and_is_owner_only() {
+    fn both_records_roundtrip_and_are_owner_only() {
         let dir = tempfile::tempdir().unwrap();
         let store = TokenStore::with_dir(dir.path());
-        assert!(store.load().unwrap().is_none());
+        assert!(store.load_credentials().unwrap().is_none());
+        assert!(store.load_tokens().unwrap().is_none());
 
-        let tokens = sample();
-        store.save(&tokens).unwrap();
-        assert_eq!(store.load().unwrap().unwrap(), tokens);
+        store.save_credentials(&sample_credentials()).unwrap();
+        store.save_tokens(&sample_tokens()).unwrap();
+        assert_eq!(
+            store.load_credentials().unwrap().unwrap(),
+            sample_credentials()
+        );
+        assert_eq!(store.load_tokens().unwrap().unwrap(), sample_tokens());
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(store.path()).unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o600, "credential file must be 0600");
+            for path in [store.credentials_path(), store.tokens_path()] {
+                let mode = fs::metadata(&path).unwrap().permissions().mode();
+                assert_eq!(mode & 0o777, 0o600, "{path:?} must be 0600");
+            }
         }
     }
 
     #[test]
-    fn debug_redacts_secrets() {
-        let mut t = sample();
-        t.access_token = "SECRET-AT-123".into();
-        t.refresh_token = "SECRET-RT-456".into();
-        t.client_secret = "SECRET-CS-789".into();
-        let rendered = format!("{t:?}");
+    fn debug_redacts_secrets_in_both_records() {
+        let creds = format!("{:?}", sample_credentials());
         assert!(
-            !rendered.contains("SECRET-AT-123"),
-            "access token leaked: {rendered}"
+            !creds.contains("SECRET-CS-789"),
+            "client secret leaked: {creds}"
+        );
+        assert!(creds.contains("cid"), "client_id should remain visible");
+
+        let tokens = format!("{:?}", sample_tokens());
+        assert!(
+            !tokens.contains("SECRET-AT-123"),
+            "access token leaked: {tokens}"
         );
         assert!(
-            !rendered.contains("SECRET-RT-456"),
-            "refresh token leaked: {rendered}"
+            !tokens.contains("SECRET-RT-456"),
+            "refresh token leaked: {tokens}"
         );
-        assert!(
-            !rendered.contains("SECRET-CS-789"),
-            "client secret leaked: {rendered}"
-        );
-        assert!(rendered.contains("[REDACTED]"));
-        assert!(
-            rendered.contains("cid"),
-            "non-secret client_id should remain visible"
-        );
+        assert!(tokens.contains("[REDACTED]"));
     }
 
     #[test]
     fn expiry_uses_skew() {
-        let mut t = sample();
+        let mut t = sample_tokens();
         t.expires_at = OffsetDateTime::now_utc().unix_timestamp() + 30;
         assert!(!t.is_expired(0), "30s out, no skew => not expired");
         assert!(t.is_expired(60), "30s out, 60s skew => treated as expired");
+    }
+
+    #[test]
+    fn store_lock_is_exclusive_and_released_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+
+        let guard = store.lock_exclusive().unwrap();
+        // A second handle must not be able to take the lock while the first holds it.
+        let contended = open_owner_only(&dir.path().join(".lock")).unwrap();
+        assert!(
+            matches!(contended.try_lock(), Err(std::fs::TryLockError::WouldBlock)),
+            "second lock must not succeed while held"
+        );
+        drop(contended);
+        drop(guard);
+        let free = open_owner_only(&dir.path().join(".lock")).unwrap();
+        assert!(free.try_lock().is_ok(), "lock must be free after drop");
     }
 }

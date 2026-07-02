@@ -8,7 +8,7 @@
 //! (exchange/refresh/store) all lives in `oura-toolkit-auth`.
 
 use anyhow::{anyhow, bail, Context, Result};
-use oura_toolkit_auth::{exchange_code, metadata, TokenStore, Tokens};
+use oura_toolkit_auth::{exchange_code, metadata, ClientCredentials, TokenStore, Tokens};
 use tokio::net::TcpListener;
 
 use crate::loopback::{self, Request};
@@ -37,27 +37,35 @@ pub async fn setup(port: u16) -> Result<()> {
     // Terminal prompts, no local HTTP surface: the client_id is echoed (it is not a secret);
     // the secret is read with echo disabled.
     println!("Paste the credentials Oura shows for your new application:");
-    let client_id = prompt_required("  Client ID: ")?;
-    let client_secret = prompt_secret_required("  Client Secret (input hidden): ")?;
-    println!("✓ Received credentials — the secret stays on this machine.\n");
+    let credentials = ClientCredentials {
+        client_id: prompt_required("  Client ID: ")?,
+        client_secret: prompt_secret_required("  Client Secret (input hidden): ")?,
+    };
+
+    // Persist the credentials record IMMEDIATELY — if the consent flow below fails or is
+    // abandoned, the pasted secret survives and `oura auth login` can retry without re-setup.
+    let store = TokenStore::new()?;
+    store.save_credentials(&credentials)?;
+    println!(
+        "✓ Credentials saved to {} — `oura auth login` can reuse them any time.\n",
+        store.credentials_path().display()
+    );
 
     println!("Continuing to login…");
-    let tokens = run_authorization(&listener, port, &client_id, &client_secret).await?;
-    persist(&tokens)?;
-    Ok(())
+    let tokens = run_authorization(&listener, port, &credentials).await?;
+    persist(&store, &tokens)
 }
 
-/// `oura auth login` — Authorization Code flow using stored client credentials.
+/// `oura auth login` — Authorization Code flow using the stored client credentials.
 pub async fn login(port: u16) -> Result<()> {
     let store = TokenStore::new()?;
-    let (client_id, client_secret) = match store.load()? {
-        Some(t) => (t.client_id, t.client_secret),
+    let credentials = match store.load_credentials()? {
+        Some(c) => c,
         None => bail!("no client credentials found — run `oura auth setup` first"),
     };
     let listener = bind(port).await?;
-    let tokens = run_authorization(&listener, port, &client_id, &client_secret).await?;
-    persist(&tokens)?;
-    Ok(())
+    let tokens = run_authorization(&listener, port, &credentials).await?;
+    persist(&store, &tokens)
 }
 
 fn redirect_uri(port: u16) -> String {
@@ -113,13 +121,13 @@ fn require_non_empty(input: &str) -> Option<String> {
 async fn run_authorization(
     listener: &TcpListener,
     port: u16,
-    client_id: &str,
-    client_secret: &str,
+    credentials: &ClientCredentials,
 ) -> Result<Tokens> {
     let redirect_uri = redirect_uri(port);
     let state = uuid::Uuid::new_v4().to_string();
     let scopes = metadata::default_scopes();
-    let authorize_url = metadata::authorize_url(client_id, &redirect_uri, &scopes, &state);
+    let authorize_url =
+        metadata::authorize_url(&credentials.client_id, &redirect_uri, &scopes, &state);
 
     println!("Opening your browser to authorize with Oura…");
     println!("If it doesn't open automatically, visit:\n  {authorize_url}\n");
@@ -138,7 +146,7 @@ async fn run_authorization(
     })??;
 
     let http = reqwest::Client::new();
-    exchange_code(&http, client_id, client_secret, &code, &redirect_uri)
+    exchange_code(&http, credentials, &code, &redirect_uri)
         .await
         .context("token exchange with the Oura token endpoint failed")
 }
@@ -217,10 +225,9 @@ fn extract_code_state(req: &Request) -> Option<(String, String)> {
     Some((code, state))
 }
 
-fn persist(tokens: &Tokens) -> Result<()> {
-    let store = TokenStore::new()?;
-    store.save(tokens)?;
-    println!("✓ Done. Credentials saved to {}", store.path().display());
+fn persist(store: &TokenStore, tokens: &Tokens) -> Result<()> {
+    store.save_tokens(tokens)?;
+    println!("✓ Done. Tokens saved to {}", store.tokens_path().display());
     Ok(())
 }
 

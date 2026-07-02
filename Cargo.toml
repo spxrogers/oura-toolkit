@@ -15,7 +15,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.82"
+# 1.89+ for std file locking (File::lock/try_lock), used by the token store's advisory lock.
+rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/spxrogers/oura-toolkit"
 homepage = "https://github.com/spxrogers/oura-toolkit"
