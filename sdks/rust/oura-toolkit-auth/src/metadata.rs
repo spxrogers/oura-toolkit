@@ -10,7 +10,8 @@ include!(concat!(env!("OUT_DIR"), "/oauth_metadata.rs"));
 ///
 /// This is the toolkit's *policy*, not spec metadata — the set of scopes advertised by the
 /// spec lives in [`ALL_SCOPES`]. Each entry is validated against `ALL_SCOPES` by
-/// [`default_scopes`] so a spec change can't silently drift this list.
+/// [`default_scopes`], which FAILS LOUD (panics, naming the missing scope) rather than
+/// silently narrowing the request if a spec refresh ever renames one.
 const DEFAULT_SCOPE_NAMES: &[&str] = &[
     "personal",
     "daily",
@@ -22,11 +23,23 @@ const DEFAULT_SCOPE_NAMES: &[&str] = &[
 ];
 
 /// The default scopes, verified to all exist in the spec-advertised [`ALL_SCOPES`].
+///
+/// # Panics
+///
+/// Panics if a default scope is no longer advertised by the vendored spec — a silent
+/// filter here would quietly shrink the consent we request. (The unit tests catch this in
+/// CI on any spec refresh before it can panic at runtime.)
 pub fn default_scopes() -> Vec<&'static str> {
     DEFAULT_SCOPE_NAMES
         .iter()
         .copied()
-        .filter(|s| ALL_SCOPES.contains(s))
+        .inspect(|s| {
+            assert!(
+                ALL_SCOPES.contains(s),
+                "default scope {s:?} is not advertised by the vendored spec — \
+                 update DEFAULT_SCOPE_NAMES to match the spec's OAuth2 scopes"
+            );
+        })
         .collect()
 }
 

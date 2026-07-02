@@ -16,6 +16,11 @@ pub enum AuthError {
     #[error("token endpoint returned HTTP {status}: {body}")]
     TokenEndpoint { status: u16, body: String },
 
+    /// The authorization-code exchange succeeded but returned no `refresh_token` — persisting
+    /// that state would break the next refresh, so it is rejected up front.
+    #[error("token endpoint returned no refresh_token on the initial exchange")]
+    MissingRefreshToken,
+
     /// Filesystem error reading/writing the token store.
     #[error("token store i/o error: {0}")]
     Io(#[from] std::io::Error),

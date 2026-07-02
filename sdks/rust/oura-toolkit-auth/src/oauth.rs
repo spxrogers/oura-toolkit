@@ -66,10 +66,12 @@ pub(crate) async fn exchange_code_at(
         ("client_secret", client_secret),
     ];
     let resp = post_token(token_url, http, &params).await?;
+    // The initial exchange must return a refresh token — persisting an empty one would only
+    // surface as a baffling 400 on the NEXT refresh, long after the cause. Fail loud now.
+    let refresh_token = resp.refresh_token.ok_or(AuthError::MissingRefreshToken)?;
     Ok(Tokens {
         access_token: resp.access_token,
-        // On the initial exchange a refresh token is always present.
-        refresh_token: resp.refresh_token.unwrap_or_default(),
+        refresh_token,
         expires_at: expires_at(resp.expires_in),
         client_id: client_id.to_string(),
         client_secret: client_secret.to_string(),
@@ -183,6 +185,31 @@ mod tests {
         let http = reqwest::Client::new();
         let refreshed = refresh_at(&server.uri(), &http, &current()).await.unwrap();
         assert_eq!(refreshed.refresh_token, "old_refresh");
+    }
+
+    #[tokio::test]
+    async fn exchange_without_refresh_token_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "new_access",
+                "expires_in": 3600
+            })))
+            .mount(&server)
+            .await;
+
+        let http = reqwest::Client::new();
+        let err = exchange_code_at(
+            &server.uri(),
+            &http,
+            "cid",
+            "secret",
+            "code",
+            "http://localhost:8788/callback",
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AuthError::MissingRefreshToken));
     }
 
     #[tokio::test]

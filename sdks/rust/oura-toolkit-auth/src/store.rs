@@ -16,7 +16,10 @@ use crate::error::AuthError;
 
 /// The persisted credential set. Holds the OAuth tokens **and** the confidential-client
 /// credentials, because refresh requires `client_id` + `client_secret`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Debug` is implemented manually and REDACTS the token/secret fields, so a stray
+/// `{:?}`/`dbg!` can never leak them into logs (see the "no secrets in logs" rule).
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tokens {
     pub access_token: String,
     /// Oura rotates this on every refresh and invalidates the previous value — always persist
@@ -40,6 +43,20 @@ impl Tokens {
     }
 }
 
+impl std::fmt::Debug for Tokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tokens")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &"[REDACTED]")
+            .field("expires_at", &self.expires_at)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("scope", &self.scope)
+            .field("token_type", &self.token_type)
+            .finish()
+    }
+}
+
 /// Handle to the on-disk credential file.
 #[derive(Debug, Clone)]
 pub struct TokenStore {
@@ -54,7 +71,7 @@ impl TokenStore {
         })
     }
 
-    /// Store rooted at an explicit directory (used by tests and `--config-dir` overrides).
+    /// Store rooted at an explicit directory (used by tests).
     pub fn with_dir(dir: impl Into<PathBuf>) -> Self {
         Self {
             path: dir.into().join("credentials.json"),
@@ -177,6 +194,32 @@ mod tests {
             let mode = fs::metadata(store.path()).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600, "credential file must be 0600");
         }
+    }
+
+    #[test]
+    fn debug_redacts_secrets() {
+        let mut t = sample();
+        t.access_token = "SECRET-AT-123".into();
+        t.refresh_token = "SECRET-RT-456".into();
+        t.client_secret = "SECRET-CS-789".into();
+        let rendered = format!("{t:?}");
+        assert!(
+            !rendered.contains("SECRET-AT-123"),
+            "access token leaked: {rendered}"
+        );
+        assert!(
+            !rendered.contains("SECRET-RT-456"),
+            "refresh token leaked: {rendered}"
+        );
+        assert!(
+            !rendered.contains("SECRET-CS-789"),
+            "client secret leaked: {rendered}"
+        );
+        assert!(rendered.contains("[REDACTED]"));
+        assert!(
+            rendered.contains("cid"),
+            "non-secret client_id should remain visible"
+        );
     }
 
     #[test]
