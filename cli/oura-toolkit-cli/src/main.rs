@@ -10,10 +10,12 @@ use clap::{Parser, Subcommand};
 
 /// Oura Ring toolkit — CLI + MCP server for the Oura API v2.
 #[derive(Parser)]
-#[command(name = "oura", version, about, long_about = None)]
+#[command(name = "oura", version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
     /// Run as a STDIO MCP server (see issue #10).
-    #[arg(long, global = true)]
+    // Deliberately NOT `global`: `oura auth login --mcp` must be a usage error, not a silent
+    // mode switch. The flag-vs-subcommand decision is tracked in issue #21.
+    #[arg(long)]
     mcp: bool,
 
     #[command(subcommand)]
@@ -50,9 +52,15 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     if cli.mcp {
-        // The STDIO MCP server is implemented in #10. Nothing may be written to stdout here.
-        eprintln!("oura --mcp: the MCP server is not yet implemented (see issue #10)");
-        return Ok(());
+        // `--mcp` is a mode, not a modifier — combining it with a subcommand is a usage error
+        // (clap can't express a flag/subcommand conflict, so enforce it here).
+        if cli.command.is_some() {
+            eprintln!("oura: --mcp cannot be combined with a subcommand");
+            std::process::exit(2);
+        }
+        // The STDIO MCP server is implemented in #10. Nothing may be written to stdout here,
+        // and an unimplemented mode must exit non-zero (an MCP client must not see success).
+        anyhow::bail!("the STDIO MCP server is not yet implemented (see issue #10)");
     }
 
     match cli.command {
@@ -61,8 +69,11 @@ async fn main() -> anyhow::Result<()> {
             AuthAction::Login { port } => auth::login(port).await,
         },
         None => {
-            eprintln!("oura: no command given. Try `oura auth setup` or `oura --help`.");
-            Ok(())
+            // Unreachable in practice: `arg_required_else_help` makes bare `oura` print help
+            // and exit 2 before we get here. Kept as a defensive usage error.
+            use clap::CommandFactory;
+            Cli::command().print_help()?;
+            std::process::exit(2);
         }
     }
 }
