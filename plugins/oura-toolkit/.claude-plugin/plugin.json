@@ -1,0 +1,15 @@
+{
+  "name": "oura-toolkit",
+  "displayName": "Oura Toolkit",
+  "version": "0.1.0",
+  "description": "Read your Oura Ring data (sleep, readiness, activity, stress, heart rate, sessions, workouts, profile) through a local MCP server, with skills for morning check-ins and weekly wellness reports. Bring your own Oura OAuth app: run `oura auth setup` once, then `oura auth login`.",
+  "author": {
+    "name": "steven rogers",
+    "url": "https://github.com/spxrogers"
+  },
+  "homepage": "https://github.com/spxrogers/oura-toolkit",
+  "repository": "https://github.com/spxrogers/oura-toolkit",
+  "license": "MIT",
+  "keywords": ["oura", "health", "sleep", "readiness", "wellness", "mcp"],
+  "mcpServers": "./.mcp.json"
+}

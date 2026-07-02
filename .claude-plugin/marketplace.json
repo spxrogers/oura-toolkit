@@ -1,0 +1,15 @@
+{
+  "name": "oura-toolkit",
+  "description": "Oura Ring tools for Claude: the oura-toolkit plugin (local MCP server + wellness skills).",
+  "owner": {
+    "name": "steven rogers",
+    "url": "https://github.com/spxrogers"
+  },
+  "plugins": [
+    {
+      "name": "oura-toolkit",
+      "source": "./plugins/oura-toolkit",
+      "description": "Your Oura Ring data in Claude: sleep, readiness, activity, stress, heart rate, sessions and workouts via a local MCP server, plus skills for morning check-ins and wellness reports."
+    }
+  ]
+}

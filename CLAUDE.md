@@ -408,10 +408,21 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 ## PLUGIN
 
 - **ONE** Claude plugin (not two) shipping **BOTH** the MCP server config **AND** skills.
-  Skills call the MCP tools. Standard marketplace layout
-  (`.claude-plugin/marketplace.json` + the plugin's `plugin.json`). The MCP server entry
-  launches `npx -y oura-toolkit@<pinned-version> mcp`. **Check the current Claude
-  plugin/marketplace manifest schema** against Anthropic's docs before writing manifests.
+  Skills call the MCP tools. The MCP server entry launches
+  `npx -y oura-toolkit@<pinned-version> mcp`.
+- **Landed 2026-07-02 (#12), schema-verified against Anthropic's docs:**
+  `.claude-plugin/marketplace.json` lives at the **REPO ROOT** (the docs require it there —
+  `/plugin marketplace add spxrogers/oura-toolkit` resolves it from the repo root and
+  relative plugin sources resolve against the directory containing `.claude-plugin/`;
+  supersedes the earlier `plugins/.claude-plugin/` placement, owner-approved). The plugin
+  itself is `plugins/oura-toolkit/`: `.claude-plugin/plugin.json` (version = workspace
+  version), `.mcp.json` (server `oura` → `npx -y oura-toolkit@<version> mcp`), README, and
+  `skills/` (`morning-checkin`, `wellness-report` — auto-discovered; both handle the
+  auth-required tool error by pointing at `oura auth login`).
+- **Version pins are mechanically guarded** (`just plugin-check`, run by the
+  `release-config` CI job): plugin.json's `version` and .mcp.json's npx pin must equal the
+  workspace version, and both manifests must pass `claude plugin validate --strict`
+  (the CLI is installed in CI via npm for exactly this).
 
 ---
 
@@ -460,9 +471,9 @@ oura-toolkit/
 │   └── go/
 ├── cli/
 │   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, mcp; depends on oura-toolkit-api + oura-toolkit-auth
+├── .claude-plugin/marketplace.json  # at the REPO ROOT — required by the marketplace schema (see PLUGIN)
 ├── plugins/
-│   ├── .claude-plugin/marketplace.json
-│   └── oura-toolkit/             # single plugin (name matches dir): MCP server entry + skills/
+│   └── oura-toolkit/             # single plugin (name matches dir): plugin.json + .mcp.json + skills/
 ├── codegen/                       # overlays + codegen scripts (NO justfile; recipes are in root justfile)
 └── dist-workspace.toml            # cargo-dist config
 ```

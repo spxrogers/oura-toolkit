@@ -87,8 +87,10 @@ jobs:
       - run: just gen-check
 
   # Validates the dist release config (a broken dist-workspace.toml must fail PRs, not
-  # the release tag) and proves the publishable crates build from their PACKAGED form —
-  # the crates.io context with no repo root (the #11 publish-blocker guard).
+  # the release tag), proves the publishable crates build from their PACKAGED form —
+  # the crates.io context with no repo root (the #11 publish-blocker guard) — and guards
+  # the plugin manifests: schema-valid under --strict and version-pinned to the
+  # workspace version (#12).
   release-config:
     name: release config (dist plan + package)
     runs-on: ubuntu-latest
@@ -102,3 +104,6 @@ jobs:
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh
       - run: just dist-check
       - run: just publish-check
+      - name: Install claude CLI (plugin/marketplace schema validation)
+        run: npm install -g @anthropic-ai/claude-code
+      - run: just plugin-check
