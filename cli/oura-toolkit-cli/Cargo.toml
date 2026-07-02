@@ -23,3 +23,6 @@ open = "5"
 rpassword = "7"
 uuid = { version = "1", features = ["v4"] }
 # oura-toolkit-api is wired for data commands in #9; `oura mcp` (rmcp) in #10.
+
+[dev-dependencies]
+tempfile = "3"

@@ -230,9 +230,16 @@ fn extract_code_state(req: &Request) -> Option<(String, String)> {
 
 fn persist(store: &TokenStore, tokens: &Tokens) -> Result<()> {
     // Take the store lock so a login can't interleave with a refresh a concurrently
-    // running MCP server is performing (#22). Brief block at the end of an interactive
-    // flow is fine here.
-    let _lock = store.lock_exclusive()?;
+    // running MCP server is performing (#22). If it's busy, say why we're pausing
+    // (bounded: a peer's refresh holds the lock for at most ~2× its endpoint timeout)
+    // instead of blocking silently.
+    let _lock = match store.try_lock_exclusive()? {
+        Some(lock) => lock,
+        None => {
+            eprintln!("waiting for another oura process to finish refreshing tokens…");
+            store.lock_exclusive()?
+        }
+    };
     store.save_tokens(tokens)?;
     println!("✓ Done. Tokens saved to {}", store.tokens_path().display());
     Ok(())
@@ -280,6 +287,45 @@ mod tests {
     fn missing_code_yields_none() {
         let req = req_with_query(&[("state", "xyz")]);
         assert_eq!(extract_code_state(&req), None);
+    }
+
+    #[test]
+    fn persist_waits_for_the_store_lock_then_saves() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let tokens = Tokens {
+            access_token: "at".into(),
+            refresh_token: "rt".into(),
+            expires_at: 4_102_444_800,
+            scope: None,
+            token_type: None,
+        };
+
+        // Simulate a concurrent MCP-server refresh holding the store lock.
+        let guard = store.lock_exclusive().unwrap();
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let (store2, tokens2) = (store.clone(), tokens.clone());
+        let writer = std::thread::spawn(move || {
+            persist(&store2, &tokens2).unwrap();
+            done_tx.send(()).unwrap();
+        });
+
+        // While the lock is held, persist must block and nothing may be written.
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "persist must not complete while the store lock is held"
+        );
+        assert!(store.load_tokens().unwrap().is_none());
+
+        drop(guard);
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("persist must proceed once the lock is released");
+        writer.join().unwrap();
+        assert_eq!(store.load_tokens().unwrap().unwrap(), tokens);
     }
 
     #[test]

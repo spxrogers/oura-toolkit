@@ -10,9 +10,12 @@
 //! Separating the two means a failed or abandoned login never loses the pasted secret, and
 //! `oura auth login` never has to dig client credentials out of a token record (issue #23).
 //!
-//! Everything is written `0600` via an atomic temp-file + rename. The path MUST be identical
-//! whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence it derives only
-//! from the XDG env, never from the invocation location.
+//! Everything is written `0600` via an atomic, uniquely named temp-file + rename. The path
+//! MUST be identical whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence
+//! it derives only from the XDG env, never from the invocation location. Caveat: a crash
+//! between temp-write and rename can orphan a `0600` `.tmp*` file (containing record JSON)
+//! in the store dir; no worse an exposure than the records themselves, but worth knowing
+//! when auditing the directory (broader secret-hygiene work is tracked in #26).
 //!
 //! Cross-process coordination: [`TokenStore::lock_exclusive`] takes a blocking advisory lock
 //! on a `.lock` file in the store dir. `TokenManager` holds it across its
@@ -92,6 +95,7 @@ pub struct TokenStore {
 }
 
 /// An exclusive advisory lock on the store, released on drop (or process exit).
+#[must_use = "the store lock releases as soon as the guard is dropped — bind it for the critical section"]
 pub struct StoreLock(fs::File);
 
 impl Drop for StoreLock {
@@ -182,6 +186,19 @@ impl TokenStore {
         let file = open_owner_only(&self.dir.join(".lock"))?;
         file.lock()?;
         Ok(StoreLock(file))
+    }
+
+    /// Non-blocking variant of [`Self::lock_exclusive`]: `Ok(None)` if another process
+    /// currently holds the lock. Lets interactive callers print a "waiting…" notice before
+    /// falling back to the blocking acquire.
+    pub fn try_lock_exclusive(&self) -> Result<Option<StoreLock>, AuthError> {
+        self.ensure_dir()?;
+        let file = open_owner_only(&self.dir.join(".lock"))?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(StoreLock(file))),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+            Err(std::fs::TryLockError::Error(e)) => Err(e.into()),
+        }
     }
 
     fn ensure_dir(&self) -> Result<(), AuthError> {

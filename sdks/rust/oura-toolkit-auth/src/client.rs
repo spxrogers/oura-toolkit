@@ -33,9 +33,10 @@ use crate::store::{ClientCredentials, TokenStore, Tokens};
 /// Refresh this many seconds before the token's actual expiry.
 const DEFAULT_SKEW_SECS: i64 = 60;
 
-/// Hard timeout on token-endpoint calls. This also BOUNDS how long the store's exclusive
+/// Hard timeout on each token-endpoint call. This bounds how long the store's exclusive
 /// lock can be held (the refresh runs under it) — without it, one process's stalled refresh
-/// would wedge every other process waiting on the lock.
+/// would wedge every other process waiting on the lock. Worst case is ~2× this value: the
+/// 400-retry arm can chain a second endpoint call under the same lock.
 const TOKEN_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Owns the current tokens and the machinery to keep them fresh. Shared (behind `Arc`) by the
@@ -95,6 +96,9 @@ impl TokenManager {
     }
 
     /// Return a valid access token, refreshing (and persisting the rotation) if needed.
+    ///
+    /// Must be called within a **tokio runtime**: refresh acquires the store lock on the
+    /// runtime's blocking pool (calling from a non-tokio executor panics at that point).
     pub async fn access_token(&self) -> Result<String, AuthError> {
         let mut guard = self.tokens.lock().await;
         let expired = match guard.as_ref() {
@@ -110,6 +114,8 @@ impl TokenManager {
     /// Force a refresh regardless of expiry (used by callers on a 401), persisting the
     /// rotation. If another process already rotated, its fresher tokens are adopted instead
     /// of burning that rotation with a second refresh.
+    ///
+    /// Must be called within a **tokio runtime** (see [`Self::access_token`]).
     pub async fn force_refresh(&self) -> Result<(), AuthError> {
         let mut guard = self.tokens.lock().await;
         self.refresh_critical_section(&mut guard).await
@@ -136,7 +142,11 @@ impl TokenManager {
         let store = self.store.clone();
         let _lock = tokio::task::spawn_blocking(move || store.lock_exclusive())
             .await
-            .map_err(|e| AuthError::Io(std::io::Error::other(e)))??;
+            .map_err(|e| {
+                AuthError::Io(std::io::Error::other(format!(
+                    "store lock task failed: {e}"
+                )))
+            })??;
 
         if let Some(disk) = self.store.load_tokens()? {
             let mem_access = guard.as_ref().map(|t| t.access_token.as_str());
@@ -432,6 +442,52 @@ mod tests {
         let m = test_manager(&server, store.clone(), Some(expired_tokens("r1")));
         assert_eq!(m.access_token().await.unwrap(), "r3-access");
         assert_eq!(store.load_tokens().unwrap().unwrap().refresh_token, "r3");
+    }
+
+    /// The cross-process liveness guarantee: a hung token endpoint must not hold the store
+    /// lock beyond the endpoint timeout. Uses the same-module seam to shrink the timeout.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hung_endpoint_times_out_and_releases_the_lock() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"access_token": "late", "expires_in": 3600}))
+                    .set_delay(std::time::Duration::from_secs(30)),
+            )
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_tokens(&expired_tokens("r1")).unwrap();
+
+        let mut m = TokenManager::from_parts(
+            TokenStore::with_dir(dir.path()),
+            Some(credentials()),
+            Some(expired_tokens("r1")),
+        );
+        m.token_url = server.uri();
+        m.http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(250))
+            .build()
+            .unwrap();
+
+        let started = std::time::Instant::now();
+        let err = m.access_token().await.unwrap_err();
+        assert!(
+            matches!(err, AuthError::Http(_)),
+            "expected timeout error, got {err:?}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "timeout must bound the stall"
+        );
+        // The lock must be free again — another process's refresh can proceed.
+        assert!(
+            store.try_lock_exclusive().unwrap().is_some(),
+            "lock must be released after a timed-out refresh"
+        );
     }
 
     #[tokio::test]
