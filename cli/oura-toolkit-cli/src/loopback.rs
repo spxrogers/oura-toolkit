@@ -43,8 +43,13 @@ pub async fn read_request(stream: &mut TcpStream) -> Result<Request> {
     let head = String::from_utf8_lossy(&buf[..header_end]).into_owned();
     let mut req = parse_head(&head)?;
 
-    // Read the body if the request declares one (POST from the paste box).
+    // Read the body if the request declares one (POST from the paste box). The declared
+    // length is attacker-controlled (anything can connect to the loopback port), so cap it
+    // BEFORE allocating/reading rather than trusting the header.
     if let Some(len) = content_length(&head) {
+        if len > MAX_REQUEST_BYTES {
+            bail!("request body exceeded {MAX_REQUEST_BYTES} bytes");
+        }
         let mut body = buf[header_end + 4..].to_vec();
         while body.len() < len {
             let n = stream.read(&mut chunk).await?;
@@ -146,5 +151,31 @@ mod tests {
     #[test]
     fn escapes_html() {
         assert_eq!(escape("<a>&\"'"), "&lt;a&gt;&amp;&quot;'");
+    }
+
+    #[tokio::test]
+    async fn rejects_oversized_declared_body() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::{TcpListener, TcpStream};
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let client = tokio::spawn(async move {
+            let mut s = TcpStream::connect(addr).await.unwrap();
+            s.write_all(
+                b"POST /save HTTP/1.1\r\nHost: localhost\r\nContent-Length: 999999999\r\n\r\n",
+            )
+            .await
+            .unwrap();
+            s // keep the connection open so the server side decides, not EOF
+        });
+
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let err = read_request(&mut stream).await.unwrap_err();
+        assert!(
+            err.to_string().contains("body exceeded"),
+            "oversized Content-Length must be rejected before reading: {err}"
+        );
+        drop(client.await.unwrap());
     }
 }
