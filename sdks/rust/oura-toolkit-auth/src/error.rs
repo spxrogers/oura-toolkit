@@ -16,7 +16,7 @@ pub enum AuthError {
 
     /// Could not resolve the config directory from the platform's environment.
     #[cfg(windows)]
-    #[error("could not determine the config directory (%APPDATA% unset)")]
+    #[error("could not determine the config directory (%LOCALAPPDATA% unset)")]
     NoConfigDir,
 
     /// The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh token).

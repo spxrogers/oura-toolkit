@@ -258,10 +258,13 @@ scope mapping in the spec — that lives in prose).
 
 - Fixed, invocation-independent path: `$XDG_CONFIG_HOME/oura-toolkit/`
   (→ `~/.config/oura-toolkit/`) on Unix/macOS (locked; deliberately NOT
-  `~/Library/Application Support`), `%APPDATA%\oura-toolkit\` on Windows (#24). Perms
-  **0600** + atomic writes on Unix; on Windows protection comes from `%APPDATA%`'s
-  user-private profile ACLs (the chmods are no-ops there). MUST be identical whether
-  invoked via `npx`, `bunx`, or a brew binary.
+  `~/Library/Application Support`), `%LOCALAPPDATA%\oura-toolkit\` on Windows (#24 —
+  **Local, not Roaming**: roaming profiles sync `%APPDATA%` to file servers/backups, which
+  would copy plaintext secrets off the machine). Perms **0600** + atomic writes on Unix; on
+  Windows protection comes from `%LOCALAPPDATA%`'s user-private ACLs (the chmods are no-ops
+  there); DPAPI/keyring is #26. Empty or relative env values are ignored (a relative base
+  would make secret placement cwd-dependent). MUST be identical whether invoked via `npx`,
+  `bunx`, or a brew binary.
 - **Two records** (split 2026-07-02, #23): `credentials.json` (`client_id`/`client_secret` —
   exists from `auth setup` onward; refresh is a confidential-client call needing the secret)
   and `tokens.json` (`access_token`, `refresh_token`, `expiry`, scope). A failed login never
