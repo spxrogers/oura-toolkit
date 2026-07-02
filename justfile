@@ -156,7 +156,7 @@ ci:
 mcp:
     cargo run -p oura-toolkit-cli -- --mcp
 
-# Guided Oura OAuth app registration (loopback paste box), then chain into login.
+# Guided Oura OAuth app registration (terminal prompts), then chain into login.
 [group('run')]
 auth-setup:
     cargo run -p oura-toolkit-cli -- auth setup

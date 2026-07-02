@@ -1,11 +1,11 @@
 //! Interactive OAuth flows — the browser + loopback consent that lives ONLY in the CLI.
 //!
 //! `setup` guides the user through registering their own Oura OAuth app (BYO confidential
-//! credentials), collects `client_id`/`client_secret` via a localhost paste box (the secret
-//! never leaves the machine), then chains into `login`. `login` runs the Authorization Code
-//! flow against a fixed loopback `redirect_uri`, catches the code, and exchanges it via
-//! `oura-toolkit-auth`. The non-interactive token machinery (exchange/refresh/store) all lives
-//! in `oura-toolkit-auth`.
+//! credentials) and collects `client_id`/`client_secret` via terminal prompts — the secret is
+//! read with echo disabled and never leaves this process except to Oura's token endpoint.
+//! `login` runs the Authorization Code flow against a fixed loopback `redirect_uri`, catches
+//! the code, and exchanges it via `oura-toolkit-auth`. The non-interactive token machinery
+//! (exchange/refresh/store) all lives in `oura-toolkit-auth`.
 
 use anyhow::{anyhow, bail, Context, Result};
 use oura_toolkit_auth::{exchange_code, metadata, TokenStore, Tokens};
@@ -16,7 +16,7 @@ use crate::loopback::{self, Request};
 /// How long `auth login` waits for the browser callback before giving up.
 const CALLBACK_TIMEOUT_SECS: u64 = 300;
 
-/// `oura auth setup` — register an app (paste box), then log in.
+/// `oura auth setup` — register an app (terminal prompts), then log in.
 pub async fn setup(port: u16) -> Result<()> {
     let redirect_uri = redirect_uri(port);
     let scopes = metadata::default_scopes();
@@ -30,18 +30,15 @@ pub async fn setup(port: u16) -> Result<()> {
     println!("  • Redirect URI     : {redirect_uri}");
     println!("  • Scopes           : {scope_str}\n");
 
+    // Bind the callback listener up front so a port conflict fails fast, before the user
+    // has typed anything.
     let listener = bind(port).await?;
-    let paste_url = format!("http://localhost:{port}/");
-    println!("Then paste your Client ID and Client Secret into:\n  {paste_url}\n");
-    let _ = open::that(&paste_url);
 
-    // Per-run anti-CSRF nonce: while the paste box listens, any webpage the user visits could
-    // fire a cross-origin form POST at /save — only the form we served knows the nonce.
-    let nonce = uuid::Uuid::new_v4().to_string();
-    let (client_id, client_secret) =
-        collect_credentials(&listener, &redirect_uri, &scope_str, &nonce)
-            .await
-            .context("collecting client credentials")?;
+    // Terminal prompts, no local HTTP surface: the client_id is echoed (it is not a secret);
+    // the secret is read with echo disabled.
+    println!("Paste the credentials Oura shows for your new application:");
+    let client_id = prompt_required("  Client ID: ")?;
+    let client_secret = prompt_secret_required("  Client Secret (input hidden): ")?;
     println!("✓ Received credentials — the secret stays on this machine.\n");
 
     println!("Continuing to login…");
@@ -79,89 +76,37 @@ async fn bind(port: u16) -> Result<TcpListener> {
         })
 }
 
-/// Serve the paste box until the user submits non-empty credentials with a valid nonce.
-async fn collect_credentials(
-    listener: &TcpListener,
-    redirect_uri: &str,
-    scopes: &str,
-    nonce: &str,
-) -> Result<(String, String)> {
+/// Prompt (echoed) until the user enters a non-empty value.
+fn prompt_required(label: &str) -> Result<String> {
+    use std::io::Write as _;
     loop {
-        let (mut stream, _) = listener.accept().await?;
-        let req = match loopback::read_request(&mut stream).await {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        match (req.method.as_str(), req.path.as_str()) {
-            ("GET", "/") => {
-                let page = paste_page(redirect_uri, scopes, nonce);
-                loopback::respond_html(&mut stream, "200 OK", &page)
-                    .await
-                    .ok();
-            }
-            ("POST", "/save") => {
-                // Reject POSTs that don't carry the nonce we embedded in the served form —
-                // they didn't come from our page (drive-by cross-origin form post).
-                if req.form.get("nonce").map(String::as_str) != Some(nonce) {
-                    loopback::respond_html(
-                        &mut stream,
-                        "403 Forbidden",
-                        &page_message(
-                            "Rejected",
-                            "<p>This submission did not come from the form this run served. \
-                             <a href=\"/\">Reload the form</a> and try again.</p>",
-                        ),
-                    )
-                    .await
-                    .ok();
-                    continue;
-                }
-                let id = req
-                    .form
-                    .get("client_id")
-                    .map(|s| s.trim())
-                    .unwrap_or_default();
-                let secret = req
-                    .form
-                    .get("client_secret")
-                    .map(|s| s.trim())
-                    .unwrap_or_default();
-                if id.is_empty() || secret.is_empty() {
-                    loopback::respond_html(
-                        &mut stream,
-                        "400 Bad Request",
-                        &page_message(
-                            "Both fields are required.",
-                            "<p><a href=\"/\">Go back</a></p>",
-                        ),
-                    )
-                    .await
-                    .ok();
-                    continue;
-                }
-                loopback::respond_html(
-                    &mut stream,
-                    "200 OK",
-                    &page_message(
-                        "Credentials received ✓",
-                        "<p>Return to your terminal — continuing to authorize with Oura.</p>",
-                    ),
-                )
-                .await
-                .ok();
-                return Ok((id.to_string(), secret.to_string()));
-            }
-            _ => {
-                loopback::respond_html(
-                    &mut stream,
-                    "404 Not Found",
-                    &page_message("Not found", ""),
-                )
-                .await
-                .ok();
-            }
+        print!("{label}");
+        std::io::stdout().flush()?;
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line)? == 0 {
+            bail!("stdin closed before a value was entered");
+        }
+        match require_non_empty(&line) {
+            Some(value) => return Ok(value),
+            None => eprintln!("A value is required."),
         }
     }
+}
+
+/// Prompt with echo DISABLED until the user enters a non-empty value.
+fn prompt_secret_required(label: &str) -> Result<String> {
+    loop {
+        let line = rpassword::prompt_password(label).context("reading the secret")?;
+        match require_non_empty(&line) {
+            Some(value) => return Ok(value),
+            None => eprintln!("A value is required."),
+        }
+    }
+}
+
+fn require_non_empty(input: &str) -> Option<String> {
+    let value = input.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 /// Open the authorize URL and catch the callback code, then exchange for tokens.
@@ -279,29 +224,6 @@ fn persist(tokens: &Tokens) -> Result<()> {
     Ok(())
 }
 
-fn paste_page(redirect_uri: &str, scopes: &str, nonce: &str) -> String {
-    format!(
-        r#"<!doctype html><html><head><meta charset="utf-8"><title>oura-toolkit setup</title>
-<style>body{{font:15px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}}
-label{{display:block;margin:1rem 0 .25rem;font-weight:600}}input{{width:100%;padding:.5rem;font:inherit}}
-button{{margin-top:1.5rem;padding:.6rem 1.2rem;font:inherit;cursor:pointer}}code{{background:#f2f2f2;padding:.1rem .3rem}}</style>
-</head><body>
-<h1>Connect your Oura app</h1>
-<p>Register an app at <code>cloud.ouraring.com/oauth/applications</code> with Redirect URI
-<code>{redirect}</code> and scopes <code>{scopes}</code>, then paste its credentials below.
-They are sent only to this local page and never leave your machine.</p>
-<form method="POST" action="/save">
-<input type="hidden" name="nonce" value="{nonce}">
-<label for="cid">Client ID</label><input id="cid" name="client_id" autocomplete="off" required>
-<label for="sec">Client Secret</label><input id="sec" name="client_secret" type="password" autocomplete="off" required>
-<button type="submit">Save &amp; continue</button>
-</form></body></html>"#,
-        redirect = loopback::escape(redirect_uri),
-        scopes = loopback::escape(scopes),
-        nonce = loopback::escape(nonce),
-    )
-}
-
 fn page_message(title: &str, body_html: &str) -> String {
     format!(
         r#"<!doctype html><html><head><meta charset="utf-8"><title>oura-toolkit</title>
@@ -326,7 +248,6 @@ mod tests {
             method: "GET".into(),
             path: "/callback".into(),
             query,
-            form: HashMap::new(),
         }
     }
 
@@ -347,65 +268,11 @@ mod tests {
         assert_eq!(extract_code_state(&req), None);
     }
 
-    async fn post_form(addr: std::net::SocketAddr, body: &str) -> String {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use tokio::net::TcpStream;
-        let req = format!(
-            "POST /save HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let mut c = TcpStream::connect(addr).await.unwrap();
-        c.write_all(req.as_bytes()).await.unwrap();
-        let mut resp = String::new();
-        c.read_to_string(&mut resp).await.unwrap();
-        resp
-    }
-
-    #[tokio::test]
-    async fn paste_box_requires_nonce_then_captures_credentials() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use tokio::net::TcpStream;
-
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            collect_credentials(
-                &listener,
-                "http://localhost:8788/callback",
-                "daily personal",
-                "test-nonce",
-            )
-            .await
-        });
-
-        // GET / returns the paste form carrying the nonce.
-        let mut c = TcpStream::connect(addr).await.unwrap();
-        c.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-            .await
-            .unwrap();
-        let mut page = String::new();
-        c.read_to_string(&mut page).await.unwrap();
-        assert!(page.contains("Client ID"), "form should render");
-        assert!(page.contains("test-nonce"), "form should embed the nonce");
-
-        // A drive-by POST without the nonce is rejected and the flow keeps waiting.
-        let rejected = post_form(addr, "client_id=evil&client_secret=evil&nonce=wrong").await;
-        assert!(
-            rejected.contains("403"),
-            "bad nonce must be rejected: {rejected}"
-        );
-
-        // POST /save with the nonce completes the flow.
-        let ack = post_form(
-            addr,
-            "client_id=cid123&client_secret=sec%2F456&nonce=test-nonce",
-        )
-        .await;
-        assert!(ack.contains("received"), "should acknowledge receipt");
-
-        let (id, secret) = server.await.unwrap().unwrap();
-        assert_eq!(id, "cid123");
-        assert_eq!(secret, "sec/456"); // percent-decoded
+    #[test]
+    fn prompt_values_are_trimmed_and_required() {
+        assert_eq!(require_non_empty("  cid-123 \n"), Some("cid-123".into()));
+        assert_eq!(require_non_empty("   \n"), None);
+        assert_eq!(require_non_empty(""), None);
     }
 
     #[tokio::test]

@@ -1,9 +1,11 @@
-//! A minimal single-purpose loopback HTTP server for the interactive OAuth flows.
+//! A minimal single-purpose loopback HTTP listener for the interactive OAuth flows.
 //!
-//! This is NOT a general HTTP client/transport (which the toolkit never hand-writes) — it is the
-//! tiny localhost listener the OAuth spec requires: it reads one request, hands back the parsed
-//! method/path/query/form, and writes a small HTML page. Bodies are `application/x-www-form-
-//! urlencoded` (the paste box). Everything stays on 127.0.0.1.
+//! This is NOT a general HTTP client/transport (which the toolkit never hand-writes) — it is
+//! the tiny localhost listener the OAuth loopback redirect requires: it reads one request's
+//! head, hands back the parsed method/path/query, and writes a small HTML page. It is
+//! deliberately GET-only — request bodies are never read (credentials arrive via terminal
+//! prompts, not HTTP), which keeps the surface to "parse one request line". Everything stays
+//! on 127.0.0.1.
 
 use std::collections::HashMap;
 
@@ -11,18 +13,20 @@ use anyhow::{bail, Context, Result};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
+/// Cap on the request head (request line + headers). Anything can connect to the loopback
+/// port, so never trust a peer to terminate its request.
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 
-/// A parsed HTTP request (only the parts the OAuth flows need).
+/// A parsed HTTP request (only the parts the OAuth callback needs).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Request {
     pub method: String,
     pub path: String,
     pub query: HashMap<String, String>,
-    pub form: HashMap<String, String>,
 }
 
-/// Read and parse one request from a connection.
+/// Read one request's head from a connection and parse it. Any body is ignored — the
+/// callback flow only ever needs the request line's query parameters.
 pub async fn read_request(stream: &mut TcpStream) -> Result<Request> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 2048];
@@ -41,32 +45,10 @@ pub async fn read_request(stream: &mut TcpStream) -> Result<Request> {
     };
 
     let head = String::from_utf8_lossy(&buf[..header_end]).into_owned();
-    let mut req = parse_head(&head)?;
-
-    // Read the body if the request declares one (POST from the paste box). The declared
-    // length is attacker-controlled (anything can connect to the loopback port), so cap it
-    // BEFORE allocating/reading rather than trusting the header.
-    if let Some(len) = content_length(&head) {
-        if len > MAX_REQUEST_BYTES {
-            bail!("request body exceeded {MAX_REQUEST_BYTES} bytes");
-        }
-        let mut body = buf[header_end + 4..].to_vec();
-        while body.len() < len {
-            let n = stream.read(&mut chunk).await?;
-            if n == 0 {
-                break;
-            }
-            body.extend_from_slice(&chunk[..n]);
-        }
-        body.truncate(len);
-        if req.method == "POST" {
-            req.form = parse_urlencoded(&String::from_utf8_lossy(&body));
-        }
-    }
-    Ok(req)
+    parse_head(&head)
 }
 
-/// Parse the request line + headers (no body).
+/// Parse the request line (headers and any body are irrelevant to the callback flow).
 fn parse_head(head: &str) -> Result<Request> {
     let mut lines = head.split("\r\n");
     let request_line = lines.next().context("empty request")?;
@@ -82,15 +64,7 @@ fn parse_head(head: &str) -> Result<Request> {
         method,
         path,
         query: parse_urlencoded(&query_str),
-        form: HashMap::new(),
     })
-}
-
-fn content_length(head: &str) -> Option<usize> {
-    head.split("\r\n")
-        .filter_map(|l| l.split_once(':'))
-        .find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
-        .and_then(|(_, v)| v.trim().parse().ok())
 }
 
 fn parse_urlencoded(s: &str) -> HashMap<String, String> {
@@ -136,16 +110,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_percent_encoded_form_body() {
-        let form = parse_urlencoded("client_id=abc&client_secret=s%2Fecret%3D");
-        assert_eq!(form.get("client_id").unwrap(), "abc");
-        assert_eq!(form.get("client_secret").unwrap(), "s/ecret=");
-    }
-
-    #[test]
-    fn reads_content_length() {
-        let head = "POST /save HTTP/1.1\r\nHost: localhost\r\nContent-Length: 42\r\n";
-        assert_eq!(content_length(head), Some(42));
+    fn parses_percent_encoded_query() {
+        let req = parse_head("GET /callback?code=a%2Fb%3D&state=x%20y HTTP/1.1").unwrap();
+        assert_eq!(req.query.get("code").unwrap(), "a/b=");
+        assert_eq!(req.query.get("state").unwrap(), "x y");
     }
 
     #[test]
@@ -154,7 +122,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_oversized_declared_body() {
+    async fn rejects_unterminated_oversized_head() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::{TcpListener, TcpStream};
 
@@ -162,19 +130,21 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let client = tokio::spawn(async move {
             let mut s = TcpStream::connect(addr).await.unwrap();
-            s.write_all(
-                b"POST /save HTTP/1.1\r\nHost: localhost\r\nContent-Length: 999999999\r\n\r\n",
-            )
-            .await
-            .unwrap();
-            s // keep the connection open so the server side decides, not EOF
+            // Stream endless header bytes with no terminating blank line.
+            let junk = vec![b'a'; 8 * 1024];
+            for _ in 0..16 {
+                if s.write_all(&junk).await.is_err() {
+                    break;
+                }
+            }
+            s
         });
 
         let (mut stream, _) = listener.accept().await.unwrap();
         let err = read_request(&mut stream).await.unwrap_err();
         assert!(
-            err.to_string().contains("body exceeded"),
-            "oversized Content-Length must be rejected before reading: {err}"
+            err.to_string().contains("headers exceeded"),
+            "unterminated head must be capped: {err}"
         );
         drop(client.await.unwrap());
     }

@@ -20,5 +20,6 @@ reqwest = { workspace = true }
 url = { workspace = true }
 anyhow = { workspace = true }
 open = "5"
+rpassword = "7"
 uuid = { version = "1", features = ["v4"] }
 # oura-toolkit-api is wired for data commands in #9; --mcp (rmcp) in #10.

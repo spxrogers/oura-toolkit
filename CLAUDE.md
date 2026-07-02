@@ -241,10 +241,11 @@ scope mapping in the spec — that lives in prose).
 
 - **`oura auth setup`** — guided registration. Open
   `cloud.ouraring.com/oauth/applications` in the **USER'S OWN default browser**, print the
-  exact values to paste (app name, redirect URI, scopes), then serve a tiny paste box on
-  the loopback listener so the user pastes `client_id`/`client_secret` into a localhost
-  page that POSTs back to us. **Secret never leaves the machine.** Chain into `auth login`
-  on success.
+  exact values to paste (app name, redirect URI, scopes), then collect
+  `client_id`/`client_secret` via **terminal prompts** (the secret with echo disabled,
+  gh-style). No local HTTP form: the loopback listener exists only for the OAuth callback
+  and is GET-only. **Secret never leaves the machine.** Chain into `auth login` on
+  success. (Supersedes the earlier localhost paste-box design — decided 2026-07-02.)
 - **`oura auth login`** — Authorization Code flow. Loopback HTTP listener on **FIXED
   default port 8788** (`redirect_uri http://localhost:8788/callback`, `--port` override).
   Oura requires the `redirect_uri` to be **pre-registered and match EXACTLY**. Open the

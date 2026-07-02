@@ -33,7 +33,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum AuthAction {
-    /// Guided Oura OAuth app registration (loopback paste box), then login.
+    /// Guided Oura OAuth app registration (terminal prompts), then login.
     Setup {
         /// Loopback port for the redirect URI (must match your registered app).
         #[arg(long, default_value_t = 8788)]
