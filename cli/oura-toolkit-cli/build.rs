@@ -73,6 +73,14 @@ fn main() {
         "oura-toolkit-cli build: could not locate `spec/openapi.json` by walking up from the crate dir",
     );
     println!("cargo:rerun-if-changed={}", spec_path.display());
+    // Also watch the repo-root spec when present: an edit there (before `just spec-fetch`
+    // syncs the crate-local bundle) still invalidates build caches instead of silently
+    // building from the stale bundle until the sync test runs.
+    if let Some(root) = root_spec() {
+        if root != spec_path {
+            println!("cargo:rerun-if-changed={}", root.display());
+        }
+    }
 
     let text = fs::read_to_string(&spec_path).expect("read spec/openapi.json");
     let spec: serde_json::Value = serde_json::from_str(&text).expect("parse spec/openapi.json");
@@ -216,8 +224,14 @@ fn find_spec() -> Option<PathBuf> {
     if bundled.is_file() {
         return Some(bundled);
     }
-    // Fallback: walk up to the repo root's vendored spec (pre-bundle checkouts).
-    let mut dir = crate_dir;
+    // Fallback for pre-bundle checkouts.
+    root_spec()
+}
+
+/// The repo root's vendored spec, found by walking up — `None` outside the monorepo
+/// (e.g. building a published package).
+fn root_spec() -> Option<PathBuf> {
+    let mut dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
     loop {
         let candidate = dir.join("spec").join("openapi.json");
         if candidate.is_file() {

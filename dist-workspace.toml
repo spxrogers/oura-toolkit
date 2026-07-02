@@ -23,6 +23,11 @@ npm-package = "oura-toolkit"
 formula = "oura-toolkit"
 tap = "spxrogers/homebrew-tap"
 publish-jobs = ["homebrew", "npm"]
+# ACCEPTED UPSTREAM RISK (adversarial review, PR #41): cargo-dist 0.32's npm installer
+# (binary-install.js) downloads the platform binary from GitHub releases over https with
+# NO checksum verification — unlike the shell installer and homebrew formula, which both
+# verify sha256. Inherent to upstream's npm template; revisit when cargo-dist adds
+# integrity checks.
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Where to host releases
