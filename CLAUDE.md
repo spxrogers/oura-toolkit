@@ -256,8 +256,11 @@ scope mapping in the spec — that lives in prose).
 
 ### Token store (in oura-toolkit-auth)
 
-- Fixed, invocation-independent XDG path: `$XDG_CONFIG_HOME/oura-toolkit/`
-  (→ `~/.config/oura-toolkit/`), perms **0600**, atomic writes. MUST be identical whether
+- Fixed, invocation-independent path: `$XDG_CONFIG_HOME/oura-toolkit/`
+  (→ `~/.config/oura-toolkit/`) on Unix/macOS (locked; deliberately NOT
+  `~/Library/Application Support`), `%APPDATA%\oura-toolkit\` on Windows (#24). Perms
+  **0600** + atomic writes on Unix; on Windows protection comes from `%APPDATA%`'s
+  user-private profile ACLs (the chmods are no-ops there). MUST be identical whether
   invoked via `npx`, `bunx`, or a brew binary.
 - **Two records** (split 2026-07-02, #23): `credentials.json` (`client_id`/`client_secret` —
   exists from `auth setup` onward; refresh is a confidential-client call needing the secret)

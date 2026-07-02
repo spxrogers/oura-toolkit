@@ -1,6 +1,13 @@
-//! Persistent credential store at a fixed, invocation-independent XDG path.
+//! Persistent credential store at a fixed, invocation-independent per-platform path:
+//! `$XDG_CONFIG_HOME/oura-toolkit/` (→ `~/.config/oura-toolkit/`) on Unix/macOS,
+//! `%APPDATA%\oura-toolkit\` on Windows.
 //!
-//! Two records live in `$XDG_CONFIG_HOME/oura-toolkit/` (→ `~/.config/oura-toolkit/`):
+//! File protection: on Unix the records and their parent dir are chmod'd `0600`/`0700`. On
+//! Windows those chmods are no-ops — protection comes from `%APPDATA%`'s inherited profile
+//! ACLs, which are user-private by default (same model the OS uses for other per-user
+//! secrets). No extra ACL surgery is attempted.
+//!
+//! Two records live in the store dir:
 //!
 //! - **`credentials.json`** — [`ClientCredentials`] (the user's own OAuth app id + secret).
 //!   Exists from `oura auth setup` onward, independent of any login.
@@ -10,9 +17,10 @@
 //! Separating the two means a failed or abandoned login never loses the pasted secret, and
 //! `oura auth login` never has to dig client credentials out of a token record (issue #23).
 //!
-//! Everything is written `0600` via an atomic, uniquely named temp-file + rename. The path
-//! MUST be identical whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence
-//! it derives only from the XDG env, never from the invocation location. Caveat: a crash
+//! Everything is written via an atomic, uniquely named temp-file + rename. The path MUST be
+//! identical whether the CLI is invoked via `npx`, `bunx`, or a brew binary — hence it
+//! derives only from the platform env (`XDG_CONFIG_HOME`/`HOME`, or `APPDATA`), never from
+//! the invocation location. Caveat: a crash
 //! between temp-write and rename can orphan a `0600` `.tmp*` file (containing record JSON)
 //! in the store dir; no worse an exposure than the records themselves, but worth knowing
 //! when auditing the directory (broader secret-hygiene work is tracked in #26).
@@ -208,18 +216,36 @@ impl TokenStore {
     }
 }
 
-/// `$XDG_CONFIG_HOME/oura-toolkit`, falling back to `$HOME/.config/oura-toolkit`.
+/// The fixed, invocation-independent config dir:
+///
+/// - **Unix (incl. macOS):** `$XDG_CONFIG_HOME/oura-toolkit`, falling back to
+///   `$HOME/.config/oura-toolkit`. The XDG path is a locked decision (CLAUDE.md) — it must
+///   be identical under npx/bunx/brew, and deliberately does NOT follow macOS's
+///   `~/Library/Application Support` convention.
+/// - **Windows:** `%APPDATA%\oura-toolkit` (the roaming profile dir; user-private via
+///   profile ACLs — see the module docs on file protection).
 fn config_dir() -> Result<PathBuf, AuthError> {
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        if !xdg.is_empty() {
+    config_dir_from(&|key| std::env::var(key).ok().filter(|v| !v.is_empty()))
+}
+
+/// Testable core of [`config_dir`]: resolves from an injected env lookup, so the per-OS
+/// branches are unit-tested on the CI matrix without racy `env::set_var` calls.
+fn config_dir_from(env: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, AuthError> {
+    #[cfg(windows)]
+    {
+        return env("APPDATA")
+            .map(|appdata| PathBuf::from(appdata).join("oura-toolkit"))
+            .ok_or(AuthError::NoConfigDir);
+    }
+    #[cfg(not(windows))]
+    {
+        if let Some(xdg) = env("XDG_CONFIG_HOME") {
             return Ok(PathBuf::from(xdg).join("oura-toolkit"));
         }
+        env("HOME")
+            .map(|home| PathBuf::from(home).join(".config").join("oura-toolkit"))
+            .ok_or(AuthError::NoConfigDir)
     }
-    let home = std::env::var("HOME").map_err(|_| AuthError::NoConfigDir)?;
-    if home.is_empty() {
-        return Err(AuthError::NoConfigDir);
-    }
-    Ok(PathBuf::from(home).join(".config").join("oura-toolkit"))
 }
 
 /// Open (creating if needed) with owner-only perms where supported.
@@ -339,6 +365,74 @@ mod tests {
             "refresh token leaked: {tokens}"
         );
         assert!(tokens.contains("[REDACTED]"));
+    }
+
+    #[cfg(not(windows))]
+    mod unix_config_dir {
+        use super::super::*;
+
+        fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+            move |key| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.to_string())
+            }
+        }
+
+        #[test]
+        fn prefers_xdg_config_home() {
+            let dir =
+                config_dir_from(&env(&[("XDG_CONFIG_HOME", "/xdg"), ("HOME", "/home/u")])).unwrap();
+            assert_eq!(dir, PathBuf::from("/xdg/oura-toolkit"));
+        }
+
+        #[test]
+        fn falls_back_to_home_dot_config() {
+            let dir = config_dir_from(&env(&[("HOME", "/home/u")])).unwrap();
+            assert_eq!(dir, PathBuf::from("/home/u/.config/oura-toolkit"));
+        }
+
+        #[test]
+        fn errors_when_neither_is_set() {
+            assert!(matches!(
+                config_dir_from(&env(&[])),
+                Err(AuthError::NoConfigDir)
+            ));
+        }
+    }
+
+    #[cfg(windows)]
+    mod windows_config_dir {
+        use super::super::*;
+
+        fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+            move |key| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.to_string())
+            }
+        }
+
+        #[test]
+        fn uses_appdata() {
+            let dir = config_dir_from(&env(&[("APPDATA", r"C:\Users\u\AppData\Roaming")])).unwrap();
+            assert_eq!(
+                dir,
+                PathBuf::from(r"C:\Users\u\AppData\Roaming").join("oura-toolkit")
+            );
+        }
+
+        #[test]
+        fn errors_without_appdata_and_names_the_right_var() {
+            let err = config_dir_from(&env(&[])).unwrap_err();
+            assert!(matches!(err, AuthError::NoConfigDir));
+            assert!(
+                err.to_string().contains("%APPDATA%"),
+                "Windows users must not be told about Unix env vars: {err}"
+            );
+        }
     }
 
     #[test]
