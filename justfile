@@ -163,11 +163,18 @@ coverage:
         --fail-under-lines {{coverage_floor}} --summary-only
 
 # What CI runs — and nothing else: fmt-check + lint + test.
+#
+# The env prefixes are build-speed config, not behavior: the release gate never uses
+# debuginfo (failures print messages; nobody attaches a debugger to CI), and stripping it
+# roughly halves compile+link time and cache size — the dominant cost of the Windows leg
+# (MSVC PDB generation). Incremental artifacts are dead weight on throwaway runners.
+# Scoped INSIDE the recipe so local `just ci` behaves identically to CI; `just test`/
+# `just build` keep full debuginfo for real debugging.
 [group('quality')]
 ci:
     cargo fmt --all --check
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo test --workspace
+    CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets -- -D warnings
+    CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo test --workspace
 
 # ---------------------------------------------------------------------------------------------
 # Run / auth (local)
