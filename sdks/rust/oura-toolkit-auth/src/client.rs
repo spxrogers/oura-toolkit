@@ -444,10 +444,12 @@ mod tests {
         assert_eq!(store.load_tokens().unwrap().unwrap().refresh_token, "r3");
     }
 
-    /// The cross-process liveness guarantee: a hung token endpoint must not hold the store
-    /// lock beyond the endpoint timeout. Uses the same-module seam to shrink the timeout.
+    /// The cross-process liveness guarantee, both halves: the lock is genuinely HELD while
+    /// the refresh is in flight (a peer would block), and a hung endpoint releases it at
+    /// the timeout instead of wedging peers forever. Uses the same-module seam to shrink
+    /// the timeout.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn hung_endpoint_times_out_and_releases_the_lock() {
+    async fn hung_endpoint_holds_the_lock_then_times_out_and_releases_it() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(
@@ -468,22 +470,42 @@ mod tests {
             Some(expired_tokens("r1")),
         );
         m.token_url = server.uri();
+        // 2s timeout: long enough to observe the lock being held mid-flight without racing,
+        // short enough to keep the test fast.
         m.http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(250))
+            .timeout(std::time::Duration::from_secs(2))
             .build()
             .unwrap();
 
         let started = std::time::Instant::now();
-        let err = m.access_token().await.unwrap_err();
+        let refresh = tokio::spawn(async move { m.access_token().await });
+
+        // While the refresh stalls on the hung endpoint, the lock must be observed HELD
+        // (this is what a second process would block on). Poll until we see it; if the
+        // lock were never taken, this loop exhausts and fails.
+        let mut observed_held = false;
+        for _ in 0..100 {
+            if store.try_lock_exclusive().unwrap().is_none() {
+                observed_held = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            observed_held,
+            "the store lock must be held during an in-flight refresh"
+        );
+
+        // The stalled refresh must time out (bounded) and release the lock.
+        let err = refresh.await.unwrap().unwrap_err();
         assert!(
             matches!(err, AuthError::Http(_)),
             "expected timeout error, got {err:?}"
         );
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
+            started.elapsed() < std::time::Duration::from_secs(15),
             "timeout must bound the stall"
         );
-        // The lock must be free again — another process's refresh can proceed.
         assert!(
             store.try_lock_exclusive().unwrap().is_some(),
             "lock must be released after a timed-out refresh"

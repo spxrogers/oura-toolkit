@@ -290,6 +290,23 @@ mod tests {
     }
 
     #[test]
+    fn persist_fast_path_saves_immediately_when_uncontended() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let tokens = Tokens {
+            access_token: "at".into(),
+            refresh_token: "rt".into(),
+            expires_at: 4_102_444_800,
+            scope: None,
+            token_type: None,
+        };
+        persist(&store, &tokens).unwrap();
+        assert_eq!(store.load_tokens().unwrap().unwrap(), tokens);
+        // The fast path must leave the lock free (guard dropped, not leaked).
+        assert!(store.try_lock_exclusive().unwrap().is_some());
+    }
+
+    #[test]
     fn persist_waits_for_the_store_lock_then_saves() {
         let dir = tempfile::tempdir().unwrap();
         let store = TokenStore::with_dir(dir.path());
