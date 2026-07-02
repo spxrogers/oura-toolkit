@@ -227,8 +227,8 @@ impl TokenStore {
 ///   `~/Library/Application Support` convention.
 /// - **Windows:** `%LOCALAPPDATA%\oura-toolkit`. Local, NOT roaming: roaming profiles sync
 ///   `%APPDATA%` to file servers and profile backups at logoff, which would copy plaintext
-///   OAuth secrets off the machine. `%LOCALAPPDATA%` stays machine-local and is equally
-///   invocation-independent.
+///   OAuth secrets off the machine. `%LOCALAPPDATA%` is not roamed by default and is
+///   equally invocation-independent.
 fn config_dir() -> Result<PathBuf, AuthError> {
     config_dir_from(&|key| std::env::var(key).ok())
 }

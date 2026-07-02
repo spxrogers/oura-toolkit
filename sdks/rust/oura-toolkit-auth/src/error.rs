@@ -11,12 +11,16 @@ pub enum AuthError {
 
     /// Could not resolve the config directory from the platform's environment.
     #[cfg(not(windows))]
-    #[error("could not determine the config directory ($XDG_CONFIG_HOME / $HOME unset)")]
+    #[error(
+        "could not determine the config directory ($XDG_CONFIG_HOME / $HOME unset or not an absolute path)"
+    )]
     NoConfigDir,
 
     /// Could not resolve the config directory from the platform's environment.
     #[cfg(windows)]
-    #[error("could not determine the config directory (%LOCALAPPDATA% unset)")]
+    #[error(
+        "could not determine the config directory (%LOCALAPPDATA% unset or not an absolute path)"
+    )]
     NoConfigDir,
 
     /// The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh token).
