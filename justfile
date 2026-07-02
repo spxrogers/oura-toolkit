@@ -22,8 +22,8 @@ overlaid_spec   := build_dir / "openapi.overlaid.json"
 # Rust-only down-convert (3.1 -> 3.0.3) fed to progenitor.
 progenitor_spec := build_dir / "openapi.progenitor.json"
 
-# Workspace version (kept in sync with Cargo.toml [workspace.package].version).
-version := "0.1.0"
+# Workspace version, derived from Cargo.toml [workspace.package].version (single source).
+version := `sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n1`
 
 # Show available recipes (default recipe).
 default:
@@ -154,17 +154,17 @@ ci:
 # Run the CLI (oura) as a STDIO MCP server.
 [group('run')]
 mcp:
-    cargo run -p oura-toolkit-cli ----mcp
+    cargo run -p oura-toolkit-cli -- --mcp
 
 # Guided Oura OAuth app registration (loopback paste box), then chain into login.
 [group('run')]
 auth-setup:
-    cargo run -p oura-toolkit-cli --auth setup
+    cargo run -p oura-toolkit-cli -- auth setup
 
 # Authorization Code login (loopback listener on :8788).
 [group('run')]
 auth-login:
-    cargo run -p oura-toolkit-cli --auth login
+    cargo run -p oura-toolkit-cli -- auth login
 
 # ---------------------------------------------------------------------------------------------
 # Release / publish
