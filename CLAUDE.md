@@ -301,11 +301,14 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
    wiremock for HTTP, tempdirs for stores, injected env lookups (never racy
    `env::set_var`). Live-sandbox integration lives ONLY behind `just test-sandbox` and
    never gates CI.
-3. **Break-verified guard tests.** A test that guards a property must FAIL when the
-   property is broken. When authoring one, neuter the code, watch the test fail with a
-   message naming the contract, restore. A test that passes either way is worse than no
-   test — it manufactures release confidence (see the self-masking unicode test caught in
-   PR #34's review loop).
+3. **Break-verified guard tests, and load-bearing assertions everywhere.** A test that
+   guards a property must FAIL when the property is broken: when authoring one, neuter the
+   code, watch the test fail with a message naming the contract, restore. More generally,
+   every test's assertions must be load-bearing — pinned to the specific behavior claimed,
+   not "it returned Ok" / "output is non-empty" / a substring so loose anything matches.
+   Reviewing a test means asking "what wrong implementation would still pass this?" — if
+   the answer is "plenty", the test manufactures release confidence and is worse than no
+   test (see the self-masking unicode test caught in PR #34's review loop).
 4. **Real concurrency for concurrency claims.** Locking/liveness/rotation guarantees are
    tested with genuinely concurrent tasks or lock-holders, never sequential approximations
    that would pass with a no-op lock (see PR #31's review loop).
@@ -318,11 +321,16 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 7. **The user-facing contract is enforced at the binary level.** Exit codes, stream
    discipline, and error/hint shape are asserted by spawning the real `oura` binary
    (`cli/oura-toolkit-cli/tests/`), not only by unit-testing the classifier.
-8. **Coverage floor (ratchet).** `just coverage` (cargo-llvm-cov) enforces a minimum
-   line-coverage floor on the hand-written crates (the generated client is excluded — it
-   is exercised through its consumers and the drift check). CI runs it as its own job.
-   Lowering the floor is a deliberate, reviewed decision; raising it after test additions
-   is encouraged. The floor lives in the justfile (`coverage_floor`).
+8. **Coverage floor (ratchet) — a tripwire, never a target.** `just coverage`
+   (cargo-llvm-cov) enforces a minimum line-coverage floor on the hand-written crates (the
+   generated client is excluded — it is exercised through its consumers and the drift
+   check). CI runs it as its own job. Lowering the floor is a deliberate, reviewed
+   decision; raising it after test additions is encouraged. The floor lives in the
+   justfile (`coverage_floor`). **Coverage measures execution, not verification** — a line
+   counts as covered even if no assertion would catch it misbehaving, so the floor only
+   detects the *absence* of testing; rules 1 and 3 are what make the tests worth anything.
+   Never add an assertion-free test to move the number: that converts a visible gap into
+   invisible false confidence, which is strictly worse.
 
 ---
 
