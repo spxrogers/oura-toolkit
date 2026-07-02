@@ -81,6 +81,9 @@ pub fn render_error(err: &anyhow::Error) -> String {
 }
 
 /// The full stderr report: the error line plus the `hint:` line when the fix is known.
+/// Test-only entry — production goes through [`report`]; both delegate to [`compose`], so
+/// what the tests pin is exactly what ships.
+#[cfg(test)]
 pub fn render_report(err: &anyhow::Error) -> String {
     compose(err, classify(err).hint)
 }
