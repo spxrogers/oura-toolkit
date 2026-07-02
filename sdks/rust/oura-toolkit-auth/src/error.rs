@@ -3,9 +3,10 @@
 /// Errors from the token store, the token endpoint, and the auth middleware.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
-    /// No credentials on disk. Callers (CLI/MCP) turn this into a "run `oura auth login`"
-    /// message; the MCP server surfaces it as a structured tool error.
-    #[error("not authenticated — run `oura auth login`")]
+    /// No tokens available. The library deliberately does not embed remediation hints in
+    /// `Display` — callers own the UX: the CLI maps this to "run `oura auth login`", the
+    /// MCP server to a structured tool error saying the same.
+    #[error("not authenticated (no tokens stored)")]
     NotAuthenticated,
 
     /// Could not resolve the config directory ($XDG_CONFIG_HOME or $HOME).
@@ -23,7 +24,8 @@ pub enum AuthError {
 
     /// Tokens exist but the client credentials record is missing, so a refresh is impossible
     /// (confidential client: the token endpoint requires `client_id` + `client_secret`).
-    #[error("no client credentials stored — run `oura auth setup`")]
+    /// Callers own the remediation hint (the CLI maps this to "run `oura auth setup`").
+    #[error("no client credentials stored")]
     MissingClientCredentials,
 
     /// Filesystem error reading/writing the token store.

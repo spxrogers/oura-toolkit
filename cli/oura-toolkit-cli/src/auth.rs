@@ -145,7 +145,10 @@ async fn run_authorization(
         )
     })??;
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("building the HTTP client")?;
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
         .context("token exchange with the Oura token endpoint failed")
@@ -226,6 +229,10 @@ fn extract_code_state(req: &Request) -> Option<(String, String)> {
 }
 
 fn persist(store: &TokenStore, tokens: &Tokens) -> Result<()> {
+    // Take the store lock so a login can't interleave with a refresh a concurrently
+    // running MCP server is performing (#22). Brief block at the end of an interactive
+    // flow is fine here.
+    let _lock = store.lock_exclusive()?;
     store.save_tokens(tokens)?;
     println!("✓ Done. Tokens saved to {}", store.tokens_path().display());
     Ok(())

@@ -154,6 +154,11 @@ impl TokenStore {
 
     /// Persist the tokens (`0600`, atomic). Callers refreshing MUST persist the rotated
     /// refresh token (Oura invalidates the previous one).
+    ///
+    /// Concurrent writers cannot corrupt the record (unique temp file + atomic rename;
+    /// last-writer-wins) — but **rotation coordination** is not automatic: anything that
+    /// refreshes and rewrites tokens must do so under [`Self::lock_exclusive`], as
+    /// `TokenManager` does, or it can burn a rotation another process just persisted.
     pub fn save_tokens(&self, tokens: &Tokens) -> Result<(), AuthError> {
         self.ensure_dir()?;
         let data = serde_json::to_vec_pretty(tokens)?;
@@ -161,9 +166,17 @@ impl TokenStore {
         Ok(())
     }
 
-    /// Take a blocking exclusive advisory lock on the store (std `File::lock`, i.e. flock
-    /// semantics — cooperative between processes that use this method). Hold the returned
-    /// guard across a reload → refresh → persist critical section.
+    /// Take a **blocking** exclusive lock on the store; hold the returned guard across a
+    /// reload → refresh → persist critical section (see `TokenManager`).
+    ///
+    /// Semantics (std `File::lock`): advisory `flock` on Unix, `LockFileEx` on Windows —
+    /// either way it is **cooperative**: it excludes only other holders of this method, not
+    /// arbitrary writers. Mutual exclusion also rests on the `.lock` file's inode
+    /// continuity — deleting the file while a process holds the lock lets the next locker
+    /// acquire a fresh inode and defeats coordination.
+    ///
+    /// This blocks the calling thread; from async code, acquire it on a blocking pool
+    /// (`spawn_blocking`) as `TokenManager` does.
     pub fn lock_exclusive(&self) -> Result<StoreLock, AuthError> {
         self.ensure_dir()?;
         let file = open_owner_only(&self.dir.join(".lock"))?;
@@ -213,35 +226,23 @@ fn open_owner_only(path: &Path) -> std::io::Result<fs::File> {
         .open(path)
 }
 
-/// Atomic write with owner-only perms: write a temp file, fsync, rename into place.
-#[cfg(unix)]
+/// Atomic write with owner-only perms: write a **uniquely named** temp file in the same
+/// directory, fsync, rename into place. The unique name (vs a fixed `*.tmp`) means two
+/// concurrent writers — say a locked refresh and an `oura auth login` — can never truncate
+/// each other's in-flight temp file; the atomic rename makes the outcome last-writer-wins,
+/// never a corrupt mix.
 fn write_secure(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let tmp = path.with_extension("tmp");
+    let dir = path.parent().expect("store paths always have a parent dir");
+    // NamedTempFile creates with a random name and 0600 perms (on Unix).
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    tmp.write_all(data)?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(path).map_err(|e| e.error)?;
+    #[cfg(unix)]
     {
-        let mut f = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
-    fs::rename(&tmp, path)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn write_secure(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, path)?;
     Ok(())
 }
 
@@ -321,6 +322,18 @@ mod tests {
             "refresh token leaked: {tokens}"
         );
         assert!(tokens.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn corrupt_record_errors_instead_of_panicking() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        fs::create_dir_all(dir.path()).unwrap();
+        fs::write(store.tokens_path(), b"{not json").unwrap();
+        assert!(
+            matches!(store.load_tokens(), Err(AuthError::Serde(_))),
+            "corrupt tokens.json must surface a typed parse error"
+        );
     }
 
     #[test]

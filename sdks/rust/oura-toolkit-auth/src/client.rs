@@ -33,6 +33,11 @@ use crate::store::{ClientCredentials, TokenStore, Tokens};
 /// Refresh this many seconds before the token's actual expiry.
 const DEFAULT_SKEW_SECS: i64 = 60;
 
+/// Hard timeout on token-endpoint calls. This also BOUNDS how long the store's exclusive
+/// lock can be held (the refresh runs under it) — without it, one process's stalled refresh
+/// would wedge every other process waiting on the lock.
+const TOKEN_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Owns the current tokens and the machinery to keep them fresh. Shared (behind `Arc`) by the
 /// CLI's SDK calls and the MCP server's tool calls — one auth layer, two consumers.
 pub struct TokenManager {
@@ -56,6 +61,12 @@ impl TokenManager {
     }
 
     /// Construct from an explicit store + optional in-memory records.
+    ///
+    /// Both records are independently optional because both partial states are legitimate:
+    /// credentials-without-tokens is `auth setup` completed but no login yet (refresh-able
+    /// once tokens arrive), and tokens-without-credentials is a caller-supplied token (e.g.
+    /// a future `OURA_ACCESS_TOKEN` override, #20) that can be used until expiry but not
+    /// refreshed ([`AuthError::MissingClientCredentials`]).
     pub fn from_parts(
         store: TokenStore,
         credentials: Option<ClientCredentials>,
@@ -65,14 +76,20 @@ impl TokenManager {
             store,
             credentials,
             tokens: Mutex::new(tokens),
-            // A plain client (no auth middleware) for token-endpoint calls, to avoid recursion.
-            http: reqwest::Client::new(),
+            // A plain client (no auth middleware) for token-endpoint calls, to avoid
+            // recursion. The timeout is load-bearing: the call runs under the store's
+            // exclusive lock, so an unbounded hang would block other processes too.
+            http: reqwest::Client::builder()
+                .timeout(TOKEN_ENDPOINT_TIMEOUT)
+                .build()
+                .expect("default reqwest client"),
             skew_secs: DEFAULT_SKEW_SECS,
             token_url: TOKEN_URL.to_string(),
         }
     }
 
-    /// Whether any tokens are loaded (does not validate them).
+    /// Whether tokens are loaded (does not validate them, and does not imply a refresh is
+    /// possible — refresh additionally needs the client-credentials record).
     pub async fn is_authenticated(&self) -> bool {
         self.tokens.lock().await.is_some()
     }
@@ -112,9 +129,14 @@ impl TokenManager {
             .as_ref()
             .ok_or(AuthError::MissingClientCredentials)?;
 
-        // Blocking flock, held only for the short reload/refresh/persist window; contention
-        // is rare (two processes refreshing the same expired token at the same moment).
-        let _lock = self.store.lock_exclusive()?;
+        // The lock acquisition is a blocking syscall that can wait on another process's
+        // refresh, so it must not sit on an executor thread (on a current-thread runtime it
+        // would halt the whole process — e.g. a stdio MCP server's JSON-RPC loop). Acquire
+        // it on the blocking pool; the hold duration is bounded by TOKEN_ENDPOINT_TIMEOUT.
+        let store = self.store.clone();
+        let _lock = tokio::task::spawn_blocking(move || store.lock_exclusive())
+            .await
+            .map_err(|e| AuthError::Io(std::io::Error::other(e)))??;
 
         if let Some(disk) = self.store.load_tokens()? {
             let mem_access = guard.as_ref().map(|t| t.access_token.as_str());
@@ -317,6 +339,99 @@ mod tests {
         // rotation rather than burn r2 with another endpoint call.
         b.force_refresh().await.unwrap();
         assert_eq!(b.access_token().await.unwrap(), "fresh-access");
+    }
+
+    /// The lock's reason to exist: two managers refreshing CONCURRENTLY must serialize and
+    /// produce exactly one endpoint call — the loser adopts the winner's persisted rotation.
+    /// (Sequential versions of this test would pass even with a no-op lock.)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_refreshes_serialize_to_a_single_endpoint_call() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("refresh_token=r1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "fresh-access",
+                "refresh_token": "r2",
+                "expires_in": 3600
+            })))
+            .expect(1) // a concurrent double-refresh would send r1 twice (or burn r2)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_tokens(&expired_tokens("r1")).unwrap();
+
+        let a = std::sync::Arc::new(test_manager(
+            &server,
+            store.clone(),
+            Some(expired_tokens("r1")),
+        ));
+        let b = std::sync::Arc::new(test_manager(
+            &server,
+            store.clone(),
+            Some(expired_tokens("r1")),
+        ));
+
+        let (ra, rb) = tokio::join!(a.access_token(), b.access_token());
+        assert_eq!(ra.unwrap(), "fresh-access");
+        assert_eq!(rb.unwrap(), "fresh-access");
+        assert_eq!(store.load_tokens().unwrap().unwrap().refresh_token, "r2");
+    }
+
+    /// The 400-retry arm: a rotation performed by a writer NOT holding the lock lands on
+    /// disk after our reload but before our request is answered. The endpoint 400s the
+    /// stale token; the manager must reload, see the fresher refresh token, and retry once
+    /// with it — successfully.
+    #[tokio::test]
+    async fn refresh_400_retries_once_against_fresher_disk_state() {
+        struct RotateDiskThen400 {
+            store: TokenStore,
+        }
+        impl wiremock::Respond for RotateDiskThen400 {
+            fn respond(&self, _req: &wiremock::Request) -> ResponseTemplate {
+                // Simulate an uncoordinated writer rotating to r2 while our r1 request is
+                // in flight, then reject the (now stale) r1.
+                self.store
+                    .save_tokens(&Tokens {
+                        access_token: "r2-access".into(),
+                        refresh_token: "r2".into(),
+                        expires_at: 0, // expired, so the retry must actually refresh
+                        scope: None,
+                        token_type: None,
+                    })
+                    .unwrap();
+                ResponseTemplate::new(400).set_body_string("invalid_grant")
+            }
+        }
+
+        let server = MockServer::start().await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_tokens(&expired_tokens("r1")).unwrap();
+
+        Mock::given(method("POST"))
+            .and(body_string_contains("refresh_token=r1"))
+            .respond_with(RotateDiskThen400 {
+                store: store.clone(),
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("refresh_token=r2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "r3-access",
+                "refresh_token": "r3",
+                "expires_in": 3600
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let m = test_manager(&server, store.clone(), Some(expired_tokens("r1")));
+        assert_eq!(m.access_token().await.unwrap(), "r3-access");
+        assert_eq!(store.load_tokens().unwrap().unwrap().refresh_token, "r3");
     }
 
     #[tokio::test]
