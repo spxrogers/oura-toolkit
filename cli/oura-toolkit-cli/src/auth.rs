@@ -59,10 +59,11 @@ pub async fn setup(port: u16) -> Result<()> {
 /// `oura auth login` — Authorization Code flow using the stored client credentials.
 pub async fn login(port: u16) -> Result<()> {
     let store = TokenStore::new()?;
-    let credentials = match store.load_credentials()? {
-        Some(c) => c,
-        None => bail!("no client credentials found — run `oura auth setup` first"),
-    };
+    // Typed error (not a bail! string) so the contract classifier can map it to exit 4
+    // with the `oura auth setup` hint (#21).
+    let credentials = store
+        .load_credentials()?
+        .ok_or(oura_toolkit_auth::AuthError::MissingClientCredentials)?;
     let listener = bind(port).await?;
     let tokens = run_authorization(&listener, port, &credentials).await?;
     persist(&store, &tokens)

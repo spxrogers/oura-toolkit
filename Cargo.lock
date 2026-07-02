@@ -1022,6 +1022,8 @@ dependencies = [
  "oura-toolkit-auth",
  "reqwest",
  "rpassword",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "url",
