@@ -60,7 +60,7 @@ enum Command {
     Activity(RangeArgs),
     /// Daily stress summaries.
     Stress(RangeArgs),
-    /// Heart-rate time series (5-minute granularity).
+    /// Heart-rate time series (frequent bpm samples).
     Heartrate(RangeArgs),
     /// Moment/session records (meditation, naps, …).
     Sessions(RangeArgs),
@@ -68,7 +68,7 @@ enum Command {
     Workouts(RangeArgs),
     /// Your Oura profile (age, height, weight, …).
     PersonalInfo,
-    /// Run as a STDIO MCP server (see issue #10).
+    /// Run as a STDIO MCP server (8 read-only Oura data tools).
     // A subcommand, not a `--mcp` flag: modes and modifiers don't mix, and clap makes the
     // nonsense states unrepresentable. Decided 2026-07-02 (#21).
     Mcp,
