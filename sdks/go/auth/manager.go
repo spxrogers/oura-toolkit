@@ -66,10 +66,18 @@ func LoadManager() (*Manager, error) {
 // token that can be used until expiry but not refreshed (ErrMissingClientCredentials).
 func NewManager(store *Store, creds *ClientCredentials, tokens *Tokens) *Manager {
 	return &Manager{
-		store:    store,
-		creds:    creds,
-		tokens:   tokens,
-		http:     &http.Client{Timeout: tokenEndpointTimeout},
+		store:  store,
+		creds:  creds,
+		tokens: tokens,
+		http: &http.Client{
+			Timeout: tokenEndpointTimeout,
+			// Refuse to follow redirects: a confidential client must never re-POST its
+			// client_secret to a redirect target. Returning ErrUseLastResponse hands the
+			// 3xx back so refreshTokens surfaces it as a TokenEndpointError instead.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		skew:     defaultSkew,
 		tokenURL: TokenURL,
 	}
@@ -113,6 +121,10 @@ func (m *Manager) ForceRefresh(ctx context.Context) error {
 // the package example). The refresh token is deliberately NOT copied into the returned
 // oauth2.Token — the data plane only needs the Bearer value, and rotation stays this
 // package's job.
+//
+// A refresh triggered here uses a background context — it is NOT cancellable by the
+// caller's request context; it is bounded only by the token-endpoint timeout (the hard 30s
+// that also bounds how long the store lock is held).
 func (m *Manager) Token() (*oauth2.Token, error) {
 	if _, err := m.AccessToken(context.Background()); err != nil {
 		return nil, err

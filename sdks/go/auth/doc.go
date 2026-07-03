@@ -1,6 +1,6 @@
 // Package auth is the hand-written Go auth companion for the oura-toolkit Go SDK.
 //
-// It mirrors the Rust companion (sdks/rust/oura-toolkit-auth) behavior for behavior:
+// It mirrors the Rust companion (sdks/rust/oura-toolkit-auth) behavior-for-behavior:
 //
 //   - Token store: two records at the fixed, invocation-independent per-platform config
 //     dir — credentials.json (the user's own OAuth app id + secret; BYO confidential

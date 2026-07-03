@@ -102,14 +102,14 @@ func (s *Store) CredentialsPath() string { return filepath.Join(s.dir, "credenti
 func (s *Store) TokensPath() string { return filepath.Join(s.dir, "tokens.json") }
 
 // LoadCredentials returns the client credentials, or (nil, nil) if `oura auth setup` has
-// never run.
+// never run. A record that exists but is malformed, null, or missing a required field is a
+// typed *StoreFormatError — never a silently zero-valued struct.
 func (s *Store) LoadCredentials() (*ClientCredentials, error) {
-	var c ClientCredentials
-	ok, err := s.loadJSON(s.CredentialsPath(), &c)
+	data, ok, err := s.readRecord(s.CredentialsPath())
 	if err != nil || !ok {
 		return nil, err
 	}
-	return &c, nil
+	return parseCredentials(data)
 }
 
 // SaveCredentials persists the client credentials (0600, atomic).
@@ -117,14 +117,16 @@ func (s *Store) SaveCredentials(c *ClientCredentials) error {
 	return s.saveJSON(s.CredentialsPath(), c)
 }
 
-// LoadTokens returns the tokens, or (nil, nil) if no login has succeeded yet.
+// LoadTokens returns the tokens, or (nil, nil) if no login has succeeded yet. A record
+// that exists but is malformed, null, or missing/wrong-typed on a required field is a typed
+// *StoreFormatError — never a silently zero-valued struct that IsAuthenticated would then
+// report as authenticated.
 func (s *Store) LoadTokens() (*Tokens, error) {
-	var t Tokens
-	ok, err := s.loadJSON(s.TokensPath(), &t)
+	data, ok, err := s.readRecord(s.TokensPath())
 	if err != nil || !ok {
 		return nil, err
 	}
-	return &t, nil
+	return parseTokens(data)
 }
 
 // SaveTokens persists the tokens (0600, atomic). Callers refreshing MUST persist the
@@ -135,18 +137,108 @@ func (s *Store) SaveTokens(t *Tokens) error {
 	return s.saveJSON(s.TokensPath(), t)
 }
 
-func (s *Store) loadJSON(path string, into any) (bool, error) {
+// readRecord reads a store record's raw bytes. (nil, false, nil) means the record is ABSENT
+// (never logged in / never set up — not an error); a present-but-unreadable record (e.g.
+// the path is a directory) is a typed i/o error. Parsing/validation is the caller's job.
+func (s *Store) readRecord(path string) ([]byte, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("token store i/o error: %w", err)
+		return nil, false, fmt.Errorf("token store i/o error: %w", err)
 	}
+	return data, true, nil
+}
+
+// parseCredentials validates a credentials record: both fields are required strings. A
+// missing field, a null (the JSON literal null decodes every pointer to nil), or a
+// wrong-typed field is a typed *StoreFormatError — mirroring the Rust companion's serde
+// deserialize, which rejects all three.
+func parseCredentials(data []byte) (*ClientCredentials, error) {
+	var w struct {
+		ClientID     *string `json:"client_id"`
+		ClientSecret *string `json:"client_secret"`
+	}
+	if err := strictUnmarshal(data, &w); err != nil {
+		return nil, err
+	}
+	clientID, err := requireStr(w.ClientID, "client_id", "credentials")
+	if err != nil {
+		return nil, err
+	}
+	clientSecret, err := requireStr(w.ClientSecret, "client_secret", "credentials")
+	if err != nil {
+		return nil, err
+	}
+	return &ClientCredentials{ClientID: clientID, ClientSecret: clientSecret}, nil
+}
+
+// parseTokens validates a tokens record: access_token/refresh_token are required strings and
+// expires_at is a required integer; scope/token_type are optional strings. A missing or
+// wrong-typed required field, or the JSON literal null, is a typed *StoreFormatError. Using
+// pointer fields makes "absent" distinguishable from a present zero value, and a JSON bool
+// or string in expires_at fails the *int64 decode (Rust i64 parity).
+func parseTokens(data []byte) (*Tokens, error) {
+	var w struct {
+		AccessToken  *string `json:"access_token"`
+		RefreshToken *string `json:"refresh_token"`
+		ExpiresAt    *int64  `json:"expires_at"`
+		Scope        *string `json:"scope"`
+		TokenType    *string `json:"token_type"`
+	}
+	if err := strictUnmarshal(data, &w); err != nil {
+		return nil, err
+	}
+	access, err := requireStr(w.AccessToken, "access_token", "tokens")
+	if err != nil {
+		return nil, err
+	}
+	refresh, err := requireStr(w.RefreshToken, "refresh_token", "tokens")
+	if err != nil {
+		return nil, err
+	}
+	expiresAt, err := requireInt(w.ExpiresAt, "expires_at", "tokens")
+	if err != nil {
+		return nil, err
+	}
+	t := &Tokens{AccessToken: access, RefreshToken: refresh, ExpiresAt: expiresAt}
+	if w.Scope != nil {
+		t.Scope = *w.Scope
+	}
+	if w.TokenType != nil {
+		t.TokenType = *w.TokenType
+	}
+	return t, nil
+}
+
+// strictUnmarshal maps any JSON error (syntax, or a wrong-typed field caught by the shadow
+// struct's typed pointers) to a typed *StoreFormatError. json.Unmarshal messages name the
+// character/field/type, never the value, so no secret can leak.
+func strictUnmarshal(data []byte, into any) error {
 	if err := json.Unmarshal(data, into); err != nil {
-		return false, fmt.Errorf("token store format error: %w", err)
+		return &StoreFormatError{msg: err.Error()}
 	}
-	return true, nil
+	return nil
+}
+
+// requireStr enforces presence of a required string field (a nil pointer is a missing field
+// OR an explicit JSON null — both rejected, matching serde). Names the field, never its
+// value.
+func requireStr(p *string, field, record string) (string, error) {
+	if p == nil {
+		return "", &StoreFormatError{msg: fmt.Sprintf("%s record missing required field %q", record, field)}
+	}
+	return *p, nil
+}
+
+// requireInt enforces presence of a required integer field. Names the field, never its
+// value.
+func requireInt(p *int64, field, record string) (int64, error) {
+	if p == nil {
+		return 0, &StoreFormatError{msg: fmt.Sprintf("%s record missing required field %q", record, field)}
+	}
+	return *p, nil
 }
 
 func (s *Store) saveJSON(path string, v any) error {

@@ -55,9 +55,27 @@ func refreshTokens(
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: string(body)}
 	}
 
-	var tr tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	// Bound the success-path read too (a hostile 2xx could stream unboundedly).
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
 		return nil, fmt.Errorf("token endpoint response error: %w", err)
+	}
+
+	// A hostile or broken 2xx body must fail as the typed *TokenEndpointError, never a raw
+	// decode error detonating downstream and never a half-populated token persisted to the
+	// store (an empty access_token or a zero expiry would only resurface as a baffling 400
+	// on the NEXT refresh, long after the cause — fail loud here, leaving the store
+	// untouched). The Body is a FIXED, secret-free description: the raw response is NOT
+	// echoed, since a partial 2xx payload may carry token material.
+	var tr tokenResponse
+	if err := json.Unmarshal(body, &tr); err != nil {
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response was not valid JSON"}
+	}
+	if tr.AccessToken == "" {
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response missing access_token"}
+	}
+	if tr.ExpiresIn <= 0 {
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response missing or invalid expires_in"}
 	}
 
 	refreshed := &Tokens{

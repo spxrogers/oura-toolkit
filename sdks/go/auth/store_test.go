@@ -148,6 +148,65 @@ func TestCorruptRecordErrorsInsteadOfNil(t *testing.T) {
 	}
 }
 
+// A record that is syntactically valid JSON but not a complete, correctly-typed record of
+// its type — a partial object, the literal null, or a wrong-typed field — must load as
+// (nil, *StoreFormatError), NEVER as a zero-valued struct with a nil error. If it loaded as
+// a zero struct, LoadManager would build a manager whose IsAuthenticated() lies (reporting
+// empty tokens as present) or whose refresh sends an empty client_id/secret. This mirrors
+// the Rust companion's serde deserialize, which rejects all of these.
+func TestLoadRejectsIncompleteOrMistypedRecords(t *testing.T) {
+	cases := []struct {
+		name    string
+		tokens  bool // true → write tokens.json, false → credentials.json
+		content string
+	}{
+		{"tokens: partial (only scope)", true, `{"scope":"daily"}`},
+		{"tokens: literal null", true, `null`},
+		{"tokens: expires_at as string", true, `{"access_token":"a","refresh_token":"r","expires_at":"soon"}`},
+		{"tokens: expires_at as bool", true, `{"access_token":"a","refresh_token":"r","expires_at":true}`},
+		{"tokens: missing refresh_token", true, `{"access_token":"a","expires_at":1}`},
+		{"tokens: access_token as number", true, `{"access_token":42,"refresh_token":"r","expires_at":1}`},
+		{"tokens: null required field", true, `{"access_token":null,"refresh_token":"r","expires_at":1}`},
+		{"credentials: partial (only client_id)", false, `{"client_id":"cid"}`},
+		{"credentials: literal null", false, `null`},
+		{"credentials: client_secret wrong type", false, `{"client_id":"cid","client_secret":123}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := NewStoreAt(t.TempDir())
+			path := store.CredentialsPath()
+			if tc.tokens {
+				path = store.TokensPath()
+			}
+			if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var loadErr error
+			if tc.tokens {
+				tok, err := store.LoadTokens()
+				if tok != nil {
+					t.Fatalf("an invalid tokens record must load as (nil, error), got %#v", tok)
+				}
+				loadErr = err
+			} else {
+				creds, err := store.LoadCredentials()
+				if creds != nil {
+					t.Fatalf("an invalid credentials record must load as (nil, error), got %#v", creds)
+				}
+				loadErr = err
+			}
+			var sfe *StoreFormatError
+			if !errors.As(loadErr, &sfe) {
+				t.Fatalf("invalid record must be a typed *StoreFormatError, got %T: %v", loadErr, loadErr)
+			}
+			if !strings.Contains(loadErr.Error(), "token store format error") {
+				t.Fatalf("format error message drifted: %v", loadErr)
+			}
+		})
+	}
+}
+
 func envLookup(pairs map[string]string) func(string) (string, bool) {
 	return func(key string) (string, bool) {
 		v, ok := pairs[key]
