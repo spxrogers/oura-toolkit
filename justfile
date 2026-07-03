@@ -242,6 +242,14 @@ sdk-test-java:
 sdk-check-csharp:
     dotnet build --nologo -v quiet sdks/csharp/api/src/OuraToolkit.Api
 
+# HAND-WRITTEN C# auth companion tests (hermetic: mock HttpMessageHandler + temp-dir
+# stores; run by the sdk-compile CI job). The csproj version must match the workspace
+# version — same single-source rule as sdks/python (see gen-py).
+[group('codegen')]
+sdk-test-csharp:
+    @grep -q '<Version>{{version}}</Version>' sdks/csharp/auth/src/OuraToolkit.Auth/OuraToolkit.Auth.csproj || { echo "sdks/csharp/auth csproj version does not match workspace {{version}} — update it"; exit 1; }
+    dotnet test --nologo -v quiet sdks/csharp/auth/tests/OuraToolkit.Auth.Tests
+
 # ---------------------------------------------------------------------------------------------
 # Build / test / quality
 # ---------------------------------------------------------------------------------------------
@@ -264,17 +272,18 @@ test-sandbox:
     cargo test -p oura-toolkit-cli --test sandbox -- --ignored
 
 # Breadth-SDK live smokes against the sandbox (network; opt-in, never CI): each generated
-# client makes a real request and parses the typed response. TS/Python/Go/Java today; the
-# C# smoke arrives with its auth companion (#15). Builds via the sdk-check recipes first
-# (Java needs `install`, a superset of sdk-check-java's compile, so the smoke's pom can
-# resolve com.ouratoolkit:api from the local repo).
+# client makes a real request and parses the typed response — TS/Python/Go/Java/C# today.
+# Builds via the sdk-check recipes first (Java needs `install`, a superset of
+# sdk-check-java's compile, so the smoke's pom can resolve com.ouratoolkit:api from the
+# local repo).
 [group('build')]
-test-sandbox-sdks: sdk-check-ts sdk-check-py sdk-check-go
+test-sandbox-sdks: sdk-check-ts sdk-check-py sdk-check-go sdk-check-csharp
     node codegen/smoke/smoke.cjs
     {{build_dir}}/py-venv/bin/python codegen/smoke/smoke.py
     cd codegen/smoke/go-smoke && go run .
     cd sdks/java/api && mvn --quiet -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true install
     cd codegen/smoke/java-smoke && mvn --quiet -Dapi.version={{version}} compile exec:java
+    dotnet run --project codegen/smoke/csharp-smoke
 
 # Format sources.
 [group('quality')]

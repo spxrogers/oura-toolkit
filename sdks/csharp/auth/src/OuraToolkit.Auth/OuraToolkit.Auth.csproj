@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Hand-written auth companion (token store, refresh with rotation, spec-pinned OAuth
+       metadata) for the generated OuraToolkit.Api client. NOT generated: `just gen` never
+       touches sdks/*/auth. Runtime dependencies are BCL only (System.Text.Json,
+       System.Net.Http) — no transport is hand-written here; data-plane HTTP stays in the
+       generated client, and the single token-endpoint POST is the OAuth flow itself. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>OuraToolkit.Auth</AssemblyName>
+    <PackageId>OuraToolkit.Auth</PackageId>
+    <RootNamespace>OuraToolkit.Auth</RootNamespace>
+    <!-- Version must equal the workspace version (root Cargo.toml, the single version
+         source) — enforced by `just sdk-test-csharp`, same rule as sdks/python. -->
+    <Version>0.1.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Authors>oura-toolkit</Authors>
+    <Description>Non-interactive OAuth2 auth companion (token store + refresh with rotation) for the OuraToolkit.Api client. Bring your own Oura OAuth app credentials.</Description>
+    <RepositoryUrl>https://github.com/spxrogers/oura-toolkit</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OuraToolkit.Auth.Tests" />
+  </ItemGroup>
+
+</Project>

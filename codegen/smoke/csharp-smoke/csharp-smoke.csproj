@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Smoke-only console project (never published): references the generated C# client
+       by project path; run via `just test-sandbox-sdks`, never CI. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CsharpSmoke</RootNamespace>
+    <AssemblyName>csharp-smoke</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj" />
+  </ItemGroup>
+
+</Project>
