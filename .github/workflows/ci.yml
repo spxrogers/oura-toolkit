@@ -101,6 +101,7 @@ jobs:
       - run: just sdk-test-py
       - run: just sdk-test-go
       - run: just sdk-test-ts
+      - run: just sdk-test-java
 
   # Validates the dist release config (a broken dist-workspace.toml must fail PRs, not
   # the release tag), proves the publishable crates build from their PACKAGED form —

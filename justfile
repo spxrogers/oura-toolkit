@@ -228,6 +228,14 @@ sdk-test-go:
 sdk-check-java:
     cd sdks/java/api && mvn --quiet -DskipTests compile
 
+# Java auth-companion unit tests (sdks/java/auth — hermetic: loopback token endpoint via
+# jdk.httpserver, @TempDir stores, injected env lookups). The grep guard mirrors gen-py's:
+# the hand-written pom's version must match the workspace version (single version source).
+[group('codegen')]
+sdk-test-java:
+    @grep -A1 '<artifactId>auth</artifactId>' sdks/java/auth/pom.xml | grep -q '<version>{{version}}</version>' || { echo "sdks/java/auth/pom.xml version does not match workspace {{version}} — update it"; exit 1; }
+    cd sdks/java/auth && mvn --quiet test
+
 # Requires the dotnet SDK (absent locally is a real failure, not a skip — CI has it; a
 # silent skip here would let a broken C# client ship).
 [group('codegen')]
@@ -256,13 +264,17 @@ test-sandbox:
     cargo test -p oura-toolkit-cli --test sandbox -- --ignored
 
 # Breadth-SDK live smokes against the sandbox (network; opt-in, never CI): each generated
-# client makes a real request and parses the typed response. TS/Python/Go today; Java/C#
-# smokes arrive with their auth companions (#15). Builds via the sdk-check recipes first.
+# client makes a real request and parses the typed response. TS/Python/Go/Java today; the
+# C# smoke arrives with its auth companion (#15). Builds via the sdk-check recipes first
+# (Java needs `install`, a superset of sdk-check-java's compile, so the smoke's pom can
+# resolve com.ouratoolkit:api from the local repo).
 [group('build')]
 test-sandbox-sdks: sdk-check-ts sdk-check-py sdk-check-go
     node codegen/smoke/smoke.cjs
     {{build_dir}}/py-venv/bin/python codegen/smoke/smoke.py
     cd codegen/smoke/go-smoke && go run .
+    cd sdks/java/api && mvn --quiet -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true install
+    cd codegen/smoke/java-smoke && mvn --quiet -Dapi.version={{version}} compile exec:java
 
 # Format sources.
 [group('quality')]

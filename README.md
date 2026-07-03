@@ -145,12 +145,12 @@ companion (token store + refresh). What exists today:
 | TypeScript | `sdks/typescript/api` | `@oura-toolkit/auth` ✅ | `@oura-toolkit/api` (npm) |
 | Python | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` ✅ | `oura-toolkit` (PyPI) |
 | Go | `sdks/go` | `sdks/go/auth` ✅ | module `github.com/spxrogers/oura-toolkit/sdks/go` |
-| Java | `sdks/java/api` | planned | `com.ouratoolkit:api` (Maven Central) |
+| Java | `sdks/java/api` | `com.ouratoolkit:auth` ✅ | `com.ouratoolkit:api` (Maven Central) |
 | C# | `sdks/csharp/api` | planned | `OuraToolkit.Api` (NuGet) |
 
 The breadth clients are compile-checked and drift-checked in CI, and smoke-tested against
-Oura's live sandbox (TypeScript, Python and Go today; Java/C# smokes arrive with their
-auth companions), but **not yet published** to their registries — consume them from
+Oura's live sandbox (TypeScript, Python, Go and Java today; the C# smoke arrives with its
+auth companion), but **not yet published** to their registries — consume them from
 source for now. Until each language's auth companion lands, supply your own access token.
 
 ## Developing
