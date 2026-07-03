@@ -105,5 +105,7 @@ jobs:
       - run: just dist-check
       - run: just publish-check
       - name: Install claude CLI (plugin/marketplace schema validation)
-        run: npm install -g @anthropic-ai/claude-code
+        # Pinned like dist above: schema drift arrives via deliberate bumps, not
+        # surprise CI breakage on unrelated PRs.
+        run: npm install -g @anthropic-ai/claude-code@2.1.199
       - run: just plugin-check

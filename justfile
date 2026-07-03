@@ -248,7 +248,10 @@ publish-check:
 [group('release')]
 plugin-check:
     jq -e --arg v "{{version}}" '.version == $v' plugins/oura-toolkit/.claude-plugin/plugin.json > /dev/null || { echo "plugin.json version is not {{version}} — sync it to the workspace Cargo.toml"; exit 1; }
-    jq -e --arg v "{{version}}" '.mcpServers.oura.args | index("oura-toolkit@" + $v) != null' plugins/oura-toolkit/.mcp.json > /dev/null || { echo ".mcp.json must pin npx to oura-toolkit@{{version}} — sync it to the workspace Cargo.toml"; exit 1; }
+    jq -e --arg v "{{version}}" '.mcpServers.oura.args == ["-y", "oura-toolkit@" + $v, "mcp"]' plugins/oura-toolkit/.mcp.json > /dev/null || { echo ".mcp.json args must be exactly [-y, oura-toolkit@{{version}}, mcp] — a mispositioned pin would make npx execute the wrong package"; exit 1; }
+    # `claude plugin validate .` does NOT resolve marketplace source paths (break-verified:
+    # a nonexistent source passes strict) — assert the linkage ourselves.
+    jq -r '.plugins[].source' .claude-plugin/marketplace.json | while read -r src; do test -f "$src/.claude-plugin/plugin.json" || { echo "marketplace source $src has no plugin manifest — broken marketplace->plugin linkage"; exit 1; }; done
     claude plugin validate plugins/oura-toolkit --strict
     claude plugin validate . --strict
 

@@ -11,8 +11,9 @@ info) plus two skills — `/morning-checkin` and `/wellness-report`.
 /plugin install oura-toolkit@oura-toolkit
 ```
 
-The MCP server runs locally via `npx -y oura-toolkit@<version> mcp` — your data flows
-only between your machine and the Oura API.
+The MCP server runs locally via `npx -y oura-toolkit@<version> mcp`: the server itself
+talks only to the Oura API, and your credentials never leave your machine. Tool results
+are then read by Claude like any other tool output — that's what powers the skills.
 
 ## One-time authentication (bring your own Oura app)
 
