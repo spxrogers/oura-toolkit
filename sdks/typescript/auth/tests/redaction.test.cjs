@@ -76,3 +76,21 @@ test("redaction does not break the real accessors (the store still gets real val
   assert.equal(tokens().accessToken(), AT);
   assert.equal(tokens().refreshToken(), RT);
 });
+
+test("TokenManager never leaks credentials or tokens through any rendering (Python repr parity)", () => {
+  const dir = require("node:fs").mkdtempSync(
+    require("node:path").join(require("node:os").tmpdir(), "oura-toolkit-auth-mgr-")
+  );
+  const manager = new auth.TokenManager({
+    store: new auth.TokenStore(dir),
+    credentials: creds(),
+    tokens: tokens(),
+  });
+  // The Python companion pins `repr(TokenManager)` free of secrets; the TS analogue is
+  // that a stray console.log / JSON.stringify of the manager never surfaces token material.
+  for (const [name, rendered] of renderings(manager)) {
+    for (const secret of [CS, AT, RT]) {
+      assert.ok(!rendered.includes(secret), `TokenManager leaked a secret via ${name}: ${rendered}`);
+    }
+  }
+});

@@ -51,7 +51,9 @@ export class StoreFormatError extends AuthError {
 
 /**
  * The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh token)
- * or a malformed success body.
+ * or a malformed/hostile 2xx success body. For a broken 2xx the {@link status} is the
+ * (2xx) response status and {@link body} is a FIXED, secret-free description — the raw
+ * response is never echoed, since a partial 2xx payload may carry token material.
  */
 export class TokenEndpointError extends AuthError {
   readonly status: number;
@@ -62,5 +64,24 @@ export class TokenEndpointError extends AuthError {
     this.name = "TokenEndpointError";
     this.status = status;
     this.body = body;
+  }
+}
+
+/**
+ * A transport-level failure talking to the token endpoint: the request never produced an
+ * HTTP response — a network error, an aborted/timed-out call, or a REFUSED redirect (a
+ * confidential client must never re-POST its `client_secret` to a 3xx `Location`). The
+ * TypeScript mirror of the Rust companion's `AuthError::Http` variant, so callers catching
+ * {@link AuthError} never miss a stalled or hijacked token-endpoint call. The message
+ * carries no secret material (fetch's own errors describe the transport, not the body).
+ */
+export class TokenEndpointTransportError extends AuthError {
+  /** The underlying `fetch` rejection (e.g. a `TimeoutError`/`AbortError` DOMException). */
+  readonly cause?: unknown;
+
+  constructor(detail: string, cause?: unknown) {
+    super(`token endpoint transport error: ${detail}`);
+    this.name = "TokenEndpointTransportError";
+    this.cause = cause;
   }
 }

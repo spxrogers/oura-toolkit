@@ -15,6 +15,7 @@ export {
   NotAuthenticatedError,
   StoreFormatError,
   TokenEndpointError,
+  TokenEndpointTransportError,
 } from "./errors";
 export { ALL_SCOPES, AUTHORIZE_URL, DEFAULT_SCOPES, TOKEN_URL } from "./metadata";
 export {

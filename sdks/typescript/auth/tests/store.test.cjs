@@ -113,6 +113,19 @@ test(
   }
 );
 
+test("a record path that is a DIRECTORY throws a typed StoreFormatError, not a raw EISDIR", (t) => {
+  const dir = tempStoreDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const store = new auth.TokenStore(dir);
+
+  // A directory where a record file should be (e.g. a botched restore) must surface as the
+  // typed StoreFormatError callers already handle, not an opaque OS error leaking out raw.
+  fs.mkdirSync(path.join(dir, "tokens.json"));
+  fs.mkdirSync(path.join(dir, "credentials.json"));
+  assert.throws(() => store.loadTokens(), auth.StoreFormatError);
+  assert.throws(() => store.loadCredentials(), auth.StoreFormatError);
+});
+
 test("atomic write: a save never leaves a temp file behind", (t) => {
   const dir = tempStoreDir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

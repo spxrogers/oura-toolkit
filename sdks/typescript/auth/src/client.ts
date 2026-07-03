@@ -29,10 +29,10 @@
  */
 
 import {
-  AuthError,
   MissingClientCredentialsError,
   NotAuthenticatedError,
   TokenEndpointError,
+  TokenEndpointTransportError,
 } from "./errors";
 import { TOKEN_URL } from "./metadata";
 import { ClientCredentials, EnvLookup, Tokens, TokenStore } from "./store";
@@ -206,26 +206,61 @@ export class TokenManager {
       client_id: credentials.clientId,
       client_secret: credentials.clientSecret(),
     });
-    const response = await fetch(this.#tokenUrl, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-      signal: AbortSignal.timeout(this.#timeoutMs),
-    });
+    let response: Response;
+    try {
+      response = await fetch(this.#tokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+        // Confidential client: NEVER follow a redirect. Node's default (`follow`) would
+        // re-POST this body — including client_secret — to a 307/308 `Location`, leaking
+        // it to whatever that URL is. `error` makes fetch reject on any 3xx, so the
+        // redirect target is never contacted. Mirrors the Go client's `CheckRedirect ->
+        // http.ErrUseLastResponse`.
+        redirect: "error",
+        signal: AbortSignal.timeout(this.#timeoutMs),
+      });
+    } catch (e) {
+      // No HTTP response was produced: a network failure, an aborted/timed-out call, or
+      // the refused redirect above. Surface it as a typed AuthError subclass (mirrors the
+      // Rust companion's AuthError::Http) so callers catching AuthError don't miss it, and
+      // so it never reaches the 400-reload-retry arm (that keys on TokenEndpointError.400).
+      throw new TokenEndpointTransportError(describeFetchError(e, this.#timeoutMs), e);
+    }
+    const status = response.status;
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new TokenEndpointError(response.status, text);
+      throw new TokenEndpointError(status, text);
     }
+    // A hostile or broken 2xx body must fail as the typed TokenEndpointError, never a raw
+    // decode error detonating downstream and never a half-populated token persisted to the
+    // store: an empty access_token would be a blank Bearer, and a zero/negative expiry
+    // would only resurface as a baffling 400 on the NEXT refresh (long after Oura already
+    // invalidated the refresh token we just spent — a burn). The status is the (2xx)
+    // response status so the caller's 400-retry arm never misfires, and the body is a
+    // FIXED, secret-free description (a partial 2xx payload may carry token material).
+    // Mirrors go/auth/oauth.go and python .../auth/manager.py.
     let json: unknown;
     try {
       json = await response.json();
-    } catch (e) {
-      throw new AuthError(`token endpoint returned malformed JSON: ${(e as Error).message}`);
+    } catch {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response was not valid JSON");
+    }
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response was not a JSON object");
     }
     const resp = json as Partial<TokenResponse>;
-    if (typeof resp.access_token !== "string" || typeof resp.expires_in !== "number") {
-      throw new AuthError(
-        "token endpoint response is missing access_token/expires_in"
+    if (typeof resp.access_token !== "string" || resp.access_token === "") {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response missing access_token");
+    }
+    if (
+      typeof resp.expires_in !== "number" ||
+      !Number.isFinite(resp.expires_in) ||
+      resp.expires_in <= 0
+    ) {
+      throw new TokenEndpointError(
+        status,
+        "token-endpoint 2xx response missing or invalid expires_in"
       );
     }
     return new Tokens({
@@ -238,6 +273,22 @@ export class TokenManager {
       tokenType: typeof resp.token_type === "string" ? resp.token_type : current.tokenType,
     });
   }
+}
+
+/**
+ * A secret-free description of a `fetch` rejection for {@link TokenEndpointTransportError}.
+ * `fetch` errors describe the transport (timeout, network, redirect), never the request
+ * body, so this can never echo `client_secret`.
+ */
+function describeFetchError(e: unknown, timeoutMs: number): string {
+  if (e !== null && typeof e === "object" && "name" in e) {
+    const name = String((e as { name: unknown }).name);
+    if (name === "TimeoutError") return `request timed out after ${timeoutMs}ms`;
+    if (name === "AbortError") return "request aborted";
+    const message = "message" in e ? String((e as { message: unknown }).message) : "";
+    return message ? `${name}: ${message}` : name;
+  }
+  return "request failed";
 }
 
 /**

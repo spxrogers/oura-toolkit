@@ -208,9 +208,27 @@ test("token-endpoint calls have a hard timeout (default pinned to 30s)", async (
 
   const m = manager(endpoint, store, expiredTokens("r1"), { timeoutMs: 200 });
   const started = Date.now();
+  // The timeout is a fetch rejection (a DOMException, not an HTTP response). It must be
+  // WRAPPED into a typed AuthError subclass — otherwise a caller doing `try { ... } catch
+  // (e) { if (e instanceof AuthError) ... }` would miss a stalled token endpoint entirely.
   await assert.rejects(
     () => m.accessToken(),
-    (e) => e.name === "TimeoutError" || e.name === "AbortError"
+    (e) => {
+      assert.ok(e instanceof auth.AuthError, `a timeout must surface as an AuthError, got ${e}`);
+      assert.ok(
+        e instanceof auth.TokenEndpointTransportError,
+        "a transport failure must be the TokenEndpointTransportError variant"
+      );
+      // The underlying cause is preserved and IS the abort/timeout (load-bearing: proves
+      // the wrapper wrapped a real timeout, not some unrelated error).
+      assert.ok(
+        e.cause && (e.cause.name === "TimeoutError" || e.cause.name === "AbortError"),
+        `the wrapped cause must be the abort/timeout, got ${e.cause && e.cause.name}`
+      );
+      // Secret hygiene: the wrapper message never carries request material.
+      assert.ok(!e.message.includes("SECRET"), "transport error must not leak secrets");
+      return true;
+    }
   );
   assert.ok(Date.now() - started < 5000, "the timeout must bound the stall");
 });
@@ -224,6 +242,163 @@ test("absent records produce the typed not-authenticated / missing-credentials e
   const noCreds = new auth.TokenManager({ store, tokens: expiredTokens("r1") });
   assert.equal(noCreds.isAuthenticated(), true);
   await assert.rejects(() => noCreds.accessToken(), auth.MissingClientCredentialsError);
+});
+
+// A raw 2xx endpoint that writes `body` verbatim (bypasses tokenJson's JSON.stringify so
+// we can send non-JSON, empty, and hand-built hostile payloads).
+async function raw2xxEndpoint(t, body, status = 200) {
+  const endpoint = await startTokenEndpoint((_params, res) => {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(body);
+  });
+  t.after(endpoint.close);
+  return endpoint;
+}
+
+// TESTING & VERIFICATION rule 5 (attack test): a hostile or broken 2xx must fail as the
+// typed TokenEndpointError, must NEVER yield or persist a token, and — the burn-prevention
+// guarantee — must leave the store's still-valid refresh token UNTOUCHED. (A half-parsed
+// 2xx overwriting r1 with garbage would 400 every future refresh, long after Oura already
+// invalidated r1.) Mirrors go/auth/oauth_test.go and python test_manager's 2xx attack set.
+for (const [name, body] of [
+  ["non-JSON body", "not json at all"],
+  ["empty body", ""],
+  ["empty object", "{}"],
+  ["missing access_token", JSON.stringify({ refresh_token: "r2-INJECTED", expires_in: 3600 })],
+  ["empty access_token", JSON.stringify({ access_token: "", expires_in: 3600 })],
+  ["missing expires_in", JSON.stringify({ access_token: "a2-INJECTED", refresh_token: "r2-INJECTED" })],
+  ["string expires_in", JSON.stringify({ access_token: "a2-INJECTED", expires_in: "3600" })],
+  ["zero expires_in", JSON.stringify({ access_token: "a2-INJECTED", expires_in: 0 })],
+  ["negative expires_in", JSON.stringify({ access_token: "a2-INJECTED", expires_in: -100 })],
+  ["array body", JSON.stringify([{ access_token: "a2-INJECTED", expires_in: 3600 }])],
+]) {
+  test(`hostile 2xx (${name}): typed error, no token, store left untouched`, async (t) => {
+    const endpoint = await raw2xxEndpoint(t, body);
+    const store = withTempStore(t);
+    store.saveTokens(expiredTokens("r1"));
+
+    const m = manager(endpoint, store, expiredTokens("r1"));
+    let thrown;
+    await assert.rejects(
+      () => m.accessToken(),
+      (e) => {
+        thrown = e;
+        assert.ok(
+          e instanceof auth.TokenEndpointError,
+          `a hostile 2xx must surface a typed TokenEndpointError, got ${e}`
+        );
+        // The 2xx status is preserved so the manager's 400-reload-retry arm never misfires.
+        assert.equal(e.status, 200, "the 2xx status must be preserved, not rewritten to 400");
+        // The fixed description never echoes response material (a partial 2xx may carry
+        // token bytes). If the payload smuggled tokens, they must not reach the error body.
+        assert.ok(
+          !e.body.includes("INJECTED"),
+          `the typed error body must not echo response material: ${e.body}`
+        );
+        return true;
+      }
+    );
+    // accessToken must reject, never resolve to a blank/garbage Bearer.
+    assert.ok(thrown, "expected a rejection, not a resolved token");
+
+    // Burn-prevention: disk still holds the original, still-valid r1 record verbatim.
+    const disk = store.loadTokens();
+    assert.equal(disk.refreshToken(), "r1", "hostile 2xx must not overwrite the refresh token");
+    assert.equal(disk.accessToken(), "stale-access-r1", "hostile 2xx must not touch the store");
+
+    // A non-400 failure must NOT trigger the reload-retry arm (exactly one endpoint call).
+    assert.equal(endpoint.requests.length, 1, "a hostile 2xx must not trigger the retry arm");
+  });
+}
+
+test("a 2xx that OMITS refresh_token keeps the previous refresh token (rotation fallback)", async (t) => {
+  // Oura always rotates, but the fallback must be exercised: the server may omit it, and
+  // we must keep r1 rather than persist an empty refresh token (which would 400 next time).
+  const endpoint = await startTokenEndpoint((_params, res) => {
+    tokenJson(res, { access_token: "kept-refresh-access", expires_in: 3600 });
+  });
+  t.after(endpoint.close);
+  const store = withTempStore(t);
+  store.saveTokens(expiredTokens("r1"));
+
+  const m = manager(endpoint, store, expiredTokens("r1"));
+  assert.equal(await m.accessToken(), "kept-refresh-access");
+
+  const disk = store.loadTokens();
+  assert.equal(disk.accessToken(), "kept-refresh-access", "the new access token is persisted");
+  assert.equal(
+    disk.refreshToken(),
+    "r1",
+    "an omitted refresh_token must fall back to the prior one, never blank it"
+  );
+});
+
+test("confidential client REFUSES token-endpoint redirects (client_secret never re-POSTed)", async (t) => {
+  // If the token endpoint 307s, Node's default fetch would re-POST the form body —
+  // client_secret included — to the Location. `redirect:"error"` must reject instead, so
+  // the redirect target is never contacted and the secret cannot leak there. 307 (not 302)
+  // preserves the method+body, which is precisely the leak we are refusing.
+  const target = await startTokenEndpoint((_params, res) => {
+    // A successful-looking refresh: if we ever reach here, the client wrongly followed and
+    // handed this server client_id/client_secret.
+    tokenJson(res, { access_token: "leaked-access", refresh_token: "r2", expires_in: 3600 });
+  });
+  t.after(target.close);
+  const redirector = await startTokenEndpoint((_params, res) => {
+    res.writeHead(307, { location: target.url });
+    res.end();
+  });
+  t.after(redirector.close);
+
+  const store = withTempStore(t);
+  store.saveTokens(expiredTokens("r1"));
+  const m = manager(redirector, store, expiredTokens("r1"));
+
+  await assert.rejects(
+    () => m.accessToken(),
+    (e) => {
+      assert.ok(
+        e instanceof auth.AuthError,
+        `a refused redirect must surface as an AuthError, got ${e}`
+      );
+      return true;
+    }
+  );
+  // THE guarantee: the secret never reached the redirect target.
+  assert.equal(
+    target.requests.length,
+    0,
+    "confidential client must NOT re-POST client_secret to a redirect target"
+  );
+  // A refused redirect rotates nothing — disk keeps its original refresh token.
+  assert.equal(store.loadTokens().refreshToken(), "r1", "a refused redirect leaves the store untouched");
+});
+
+test("a rejected refresh does not poison the mutex: a later accessToken() re-attempts", async (t) => {
+  // The in-process mutex must swallow a rejection so the NEXT critical section still runs.
+  // If the chain propagated the failure, the second call would reuse the rejected promise
+  // and never retry — a single transient 400 would wedge the manager forever.
+  let call = 0;
+  const endpoint = await startTokenEndpoint((_params, res) => {
+    call += 1;
+    if (call === 1) {
+      res.writeHead(400);
+      res.end("invalid_grant");
+    } else {
+      tokenJson(res, { access_token: "recovered", refresh_token: "r2", expires_in: 3600 });
+    }
+  });
+  t.after(endpoint.close);
+  const store = withTempStore(t);
+  store.saveTokens(expiredTokens("r1"));
+
+  const m = manager(endpoint, store, expiredTokens("r1"));
+  // First attempt: the endpoint 400s and disk has not moved past r1 => surfaces, no retry.
+  await assert.rejects(() => m.accessToken(), auth.TokenEndpointError);
+  // Second attempt: the mutex was not poisoned, so this RE-RUNS the refresh and succeeds.
+  assert.equal(await m.accessToken(), "recovered", "a later call must re-attempt, not reuse the rejection");
+  assert.equal(endpoint.requests.length, 2, "the second call made its own endpoint request");
+  assert.equal(store.loadTokens().refreshToken(), "r2", "the recovered rotation is persisted");
 });
 
 test("accessTokenProvider is a Configuration-compatible async accessToken function", async (t) => {

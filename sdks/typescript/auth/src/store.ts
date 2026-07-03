@@ -282,7 +282,13 @@ function readRecord(filePath: string): Record<string, unknown> | null {
   try {
     raw = fs.readFileSync(filePath, "utf8");
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    // A directory (or other non-file) where a record should be is a malformed store, not
+    // an opaque OS error — surface it as the typed StoreFormatError callers already handle.
+    if (code === "EISDIR") {
+      throw new StoreFormatError(`${filePath} is a directory, not a token-store file`);
+    }
     throw e;
   }
   let parsed: unknown;
