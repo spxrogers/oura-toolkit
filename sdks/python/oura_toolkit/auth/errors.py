@@ -32,17 +32,13 @@ class MissingClientCredentialsError(AuthError):
         super().__init__("no client credentials stored")
 
 
-class MissingRefreshTokenError(AuthError):
-    """The token endpoint returned no ``refresh_token`` where one is required —
-    persisting that state would break the next refresh, so it is rejected up front."""
-
-    def __init__(self) -> None:
-        super().__init__("token endpoint returned no refresh_token")
-
-
 class TokenEndpointError(AuthError):
     """The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh
-    token). ``body`` is the server's response text, verbatim."""
+    token), or a 2xx body that did not parse as the expected token shape.
+
+    ``body`` is the server's response text for genuine non-2xx errors; for a malformed
+    2xx body it is a fixed, secret-free description of the defect (the raw body is NOT
+    echoed, since it may carry token material)."""
 
     def __init__(self, status: int, body: str) -> None:
         super().__init__(f"token endpoint returned HTTP {status}: {body}")

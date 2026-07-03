@@ -29,7 +29,6 @@ Example — a client that keeps its Bearer token fresh across calls::
 from .errors import (
     AuthError,
     MissingClientCredentialsError,
-    MissingRefreshTokenError,
     NoConfigDirError,
     NotAuthenticatedError,
     StoreFormatError,
@@ -53,7 +52,6 @@ __all__ = [
     "ClientCredentials",
     "DEFAULT_SKEW_SECS",
     "MissingClientCredentialsError",
-    "MissingRefreshTokenError",
     "NoConfigDirError",
     "NotAuthenticatedError",
     "StoreFormatError",

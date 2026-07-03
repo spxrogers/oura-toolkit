@@ -41,13 +41,19 @@ RAW_FLOCK_HOLDER = textwrap.dedent(
 )
 
 # A second PROCESS sharing the store: refreshes via its own TokenManager against the
-# parent's mock endpoint and prints the access token it ends up with.
+# parent's mock endpoint and prints the access token it ends up with. Before attempting
+# the refresh it drops a unique "started" sentinel in argv[3] so the parent's slow
+# handler can block deterministically until BOTH processes are live and contending for
+# the store lock (no fixed sleep window — see the test's slow_rotate).
 CONCURRENT_REFRESHER = textwrap.dedent(
     """
-    import sys
+    import os, sys
     from oura_toolkit.auth import ClientCredentials, TokenManager, TokenStore, Tokens
 
-    store_dir, token_url = sys.argv[1], sys.argv[2]
+    store_dir, token_url, started_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+    # Announce liveness BEFORE touching the lock, so the sentinel appears whether this
+    # process wins the lock or blocks waiting for it.
+    open(os.path.join(started_dir, str(os.getpid())), "w").close()
     manager = TokenManager(
         TokenStore(store_dir),
         ClientCredentials(client_id="cid", client_secret="secret"),
@@ -124,14 +130,26 @@ class TestTwoProcessRefresh:
     def test_concurrent_refreshes_across_processes_make_one_endpoint_call(
         self, token_endpoint, tmp_path: Path
     ) -> None:
-        # The lock's reason to exist: with the endpoint slowed so the two refreshes
-        # overlap, a no-op lock lets BOTH processes send r1 (the second replay hits
-        # the handler's 500 arm and the call count assertion). With a real lock the
-        # loser blocks, reloads, and adopts — exactly one endpoint call.
+        # The lock's reason to exist: the endpoint blocks the FIRST refresh until BOTH
+        # child processes are live and contending, guaranteeing overlap DETERMINISTICALLY
+        # (no fixed sleep). A no-op lock then lets both send r1 — the second replay is
+        # visible in the endpoint's request count. With a real lock the loser blocks,
+        # reloads, and adopts, so exactly one request ever reaches the endpoint.
+        started_dir = tmp_path / "started"
+        started_dir.mkdir()
+
         def slow_rotate(form):
             if form.get("refresh_token") != "r1":
                 return (500, {"error": f"unexpected refresh_token {form!r}"})
-            time.sleep(0.5)
+            # Hold this (winning) refresh open until both children have announced they
+            # are alive — i.e. the loser is now blocked on the store lock (real lock) or
+            # racing us to the endpoint (no-op lock). Hard 10s escape so a hang fails the
+            # test rather than wedging the suite.
+            deadline = time.monotonic() + 10.0
+            while len(list(started_dir.iterdir())) < 2:
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
             return (
                 200,
                 {
@@ -155,6 +173,7 @@ class TestTwoProcessRefresh:
                     CONCURRENT_REFRESHER,
                     str(tmp_path),
                     token_endpoint.url,
+                    str(started_dir),
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

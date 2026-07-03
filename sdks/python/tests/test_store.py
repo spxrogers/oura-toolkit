@@ -108,6 +108,77 @@ class TestStoreSchema:
             store.load_tokens()
 
 
+class TestStoreFieldValidation:
+    """Field TYPES are validated at LOAD, not just presence (ISSUE B): a wrong-typed
+    field is a typed StoreFormatError at load time (Rust: serde rejects it), never a
+    TypeError detonating later (e.g. `is_expired` on a string ``expires_at``)."""
+
+    def test_expires_at_as_string_is_a_typed_format_error(
+        self, tmp_path: Path
+    ) -> None:
+        store = TokenStore(tmp_path)
+        os.makedirs(tmp_path, exist_ok=True)
+        store.tokens_path.write_text(
+            json.dumps(
+                {"access_token": "a", "refresh_token": "r", "expires_at": "notint"}
+            )
+        )
+        with pytest.raises(StoreFormatError):
+            store.load_tokens()
+
+    def test_expires_at_as_bool_is_a_typed_format_error(self, tmp_path: Path) -> None:
+        # bool is a subclass of int in Python, but a JSON boolean is not a valid i64
+        # (Rust rejects it); guard the subclass hole explicitly.
+        store = TokenStore(tmp_path)
+        os.makedirs(tmp_path, exist_ok=True)
+        store.tokens_path.write_text(
+            json.dumps({"access_token": "a", "refresh_token": "r", "expires_at": True})
+        )
+        with pytest.raises(StoreFormatError):
+            store.load_tokens()
+
+    def test_access_token_as_number_is_a_typed_format_error(
+        self, tmp_path: Path
+    ) -> None:
+        store = TokenStore(tmp_path)
+        os.makedirs(tmp_path, exist_ok=True)
+        store.tokens_path.write_text(
+            json.dumps({"access_token": 123, "refresh_token": "r", "expires_at": 1})
+        )
+        with pytest.raises(StoreFormatError):
+            store.load_tokens()
+
+    def test_literal_null_tokens_file_is_a_typed_format_error(
+        self, tmp_path: Path
+    ) -> None:
+        # A file whose whole content is the JSON literal `null` is NOT "absent" (which
+        # loads as None); it is a corrupt record. Rust's serde rejects null for the
+        # Tokens struct — before this fix json.loads("null") -> None read as absent.
+        store = TokenStore(tmp_path)
+        os.makedirs(tmp_path, exist_ok=True)
+        store.tokens_path.write_text("null")
+        with pytest.raises(StoreFormatError):
+            store.load_tokens()
+
+    def test_genuinely_absent_tokens_file_still_loads_as_none(
+        self, tmp_path: Path
+    ) -> None:
+        # The flip side of the null fix: a file that does not exist is still None, not
+        # an error (this is "not logged in yet").
+        store = TokenStore(tmp_path / "never-created")
+        assert store.load_tokens() is None
+
+    def test_store_path_that_is_a_directory_surfaces_a_typed_error(
+        self, tmp_path: Path
+    ) -> None:
+        # A non-FileNotFound OSError (here: tokens.json is a DIRECTORY) must be a typed
+        # StoreFormatError, never a raw OSError escaping to the caller.
+        store = TokenStore(tmp_path)
+        os.makedirs(store.tokens_path)  # tokens.json is a directory
+        with pytest.raises(StoreFormatError):
+            store.load_tokens()
+
+
 @pytest.mark.skipif(os.name == "nt", reason="0600/0700 modes are Unix hygiene")
 class TestUnixFileHygiene:
     def test_records_are_0600_and_dir_is_0700(self, tmp_path: Path) -> None:

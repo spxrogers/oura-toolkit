@@ -1,7 +1,7 @@
 """Persistent credential store at the fixed, invocation-independent per-platform path.
 
-Same store, same records, same bytes as the Rust ``oura-toolkit-auth`` crate (the CLI and
-its MCP server) — this module is a co-tenant, not a fork:
+Same store, same records, same JSON shape as the Rust ``oura-toolkit-auth`` crate (the CLI
+and its MCP server) — this module is a co-tenant, not a fork:
 
 - ``$XDG_CONFIG_HOME/oura-toolkit/`` (-> ``~/.config/oura-toolkit/``) on Unix/macOS,
   ``%LOCALAPPDATA%\\oura-toolkit\\`` on Windows (Local, NOT Roaming: roaming profiles sync
@@ -45,6 +45,55 @@ _IS_WINDOWS = os.name == "nt"
 
 EnvLookup = Callable[[str], Optional[str]]
 
+#: Sentinel distinguishing an ABSENT store record (file not found) from a record whose
+#: content is the JSON literal ``null`` — the latter is a format error (Rust parity: serde
+#: rejects ``null`` for a struct), the former is simply "not logged in yet".
+_MISSING = object()
+
+
+def _require_str(data: dict, field: str, *, record: str) -> str:
+    """Presence + type check for a required string field (Rust serde rejects both a
+    missing field and a wrong-typed one at load). Names the field, never the value, so
+    the message can never leak a secret."""
+    try:
+        value = data[field]
+    except KeyError as e:
+        raise StoreFormatError(f"{record} record missing field {field!r}") from e
+    if not isinstance(value, str):
+        raise StoreFormatError(
+            f"{record} record field {field!r} must be a string, "
+            f"got {type(value).__name__}"
+        )
+    return value
+
+
+def _optional_str(data: dict, field: str, *, record: str) -> Optional[str]:
+    """Type check for an optional string field: absent/``null`` is fine, a wrong type is
+    a format error. Names the field, never the value."""
+    value = data.get(field)
+    if value is not None and not isinstance(value, str):
+        raise StoreFormatError(
+            f"{record} record field {field!r} must be a string or absent, "
+            f"got {type(value).__name__}"
+        )
+    return value
+
+
+def _require_int(data: dict, field: str, *, record: str) -> int:
+    """Presence + type check for a required integer field. ``bool`` is a subclass of
+    ``int`` but JSON booleans are NOT valid here (Rust i64 rejects them), so they are
+    excluded. Names the field, never the value."""
+    try:
+        value = data[field]
+    except KeyError as e:
+        raise StoreFormatError(f"{record} record missing field {field!r}") from e
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise StoreFormatError(
+            f"{record} record field {field!r} must be an integer, "
+            f"got {type(value).__name__}"
+        )
+    return value
+
 
 @dataclass(frozen=True, repr=False)
 class ClientCredentials:
@@ -66,12 +115,10 @@ class ClientCredentials:
     def _from_json_dict(cls, data: object) -> "ClientCredentials":
         if not isinstance(data, dict):
             raise StoreFormatError("credentials record is not a JSON object")
-        try:
-            return cls(
-                client_id=data["client_id"], client_secret=data["client_secret"]
-            )
-        except KeyError as e:
-            raise StoreFormatError(f"credentials record missing field {e}") from e
+        return cls(
+            client_id=_require_str(data, "client_id", record="credentials"),
+            client_secret=_require_str(data, "client_secret", record="credentials"),
+        )
 
 
 @dataclass(frozen=True, repr=False)
@@ -120,16 +167,13 @@ class Tokens:
     def _from_json_dict(cls, data: object) -> "Tokens":
         if not isinstance(data, dict):
             raise StoreFormatError("tokens record is not a JSON object")
-        try:
-            return cls(
-                access_token=data["access_token"],
-                refresh_token=data["refresh_token"],
-                expires_at=data["expires_at"],
-                scope=data.get("scope"),
-                token_type=data.get("token_type"),
-            )
-        except KeyError as e:
-            raise StoreFormatError(f"tokens record missing field {e}") from e
+        return cls(
+            access_token=_require_str(data, "access_token", record="tokens"),
+            refresh_token=_require_str(data, "refresh_token", record="tokens"),
+            expires_at=_require_int(data, "expires_at", record="tokens"),
+            scope=_optional_str(data, "scope", record="tokens"),
+            token_type=_optional_str(data, "token_type", record="tokens"),
+        )
 
 
 def config_dir(env: EnvLookup = os.environ.get) -> Path:
@@ -289,7 +333,7 @@ class TokenStore:
     def load_credentials(self) -> Optional[ClientCredentials]:
         """The client credentials, or ``None`` if ``oura auth setup`` has never run."""
         data = self._read_record(self.credentials_path)
-        return None if data is None else ClientCredentials._from_json_dict(data)
+        return None if data is _MISSING else ClientCredentials._from_json_dict(data)
 
     def save_credentials(self, credentials: ClientCredentials) -> None:
         """Persist the client credentials (``0600``, atomic)."""
@@ -301,7 +345,7 @@ class TokenStore:
     def load_tokens(self) -> Optional[Tokens]:
         """The tokens, or ``None`` if no login has succeeded yet."""
         data = self._read_record(self.tokens_path)
-        return None if data is None else Tokens._from_json_dict(data)
+        return None if data is _MISSING else Tokens._from_json_dict(data)
 
     def save_tokens(self, tokens: Tokens) -> None:
         """Persist the tokens (``0600``, atomic). Callers refreshing MUST persist the
@@ -352,11 +396,18 @@ class TokenStore:
             os.chmod(self._dir, 0o700)
 
     @staticmethod
-    def _read_record(path: Path) -> Optional[object]:
+    def _read_record(path: Path) -> object:
+        """Read + JSON-parse a record. Returns :data:`_MISSING` when the file does not
+        exist (not an error — "not logged in yet"); any OTHER read failure (e.g. the
+        path is a directory) is a typed :class:`StoreFormatError`, never a raw
+        ``OSError``. The parsed value (which may be the JSON literal ``null``) is
+        returned as-is; the caller's ``_from_json_dict`` rejects a non-object."""
         try:
             raw = path.read_bytes()
         except FileNotFoundError:
-            return None
+            return _MISSING
+        except OSError as e:
+            raise StoreFormatError(f"cannot read store record {path.name}: {e}") from e
         try:
             return json.loads(raw)
         except ValueError as e:
@@ -364,5 +415,6 @@ class TokenStore:
 
 
 def _to_json_bytes(data: dict) -> bytes:
-    # Pretty-printed like the Rust crate's `serde_json::to_vec_pretty`.
-    return json.dumps(data, indent=2).encode("utf-8")
+    # Pretty-printed to match the Rust crate's `serde_json::to_vec_pretty` JSON shape;
+    # ensure_ascii=False keeps non-ASCII as UTF-8 (serde_json does not \u-escape either).
+    return json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")

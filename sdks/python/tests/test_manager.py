@@ -115,6 +115,44 @@ class TestRefresh:
         assert on_disk.scope == "daily"  # carried over like the Rust `or_else`
         assert on_disk.token_type == "Bearer"
 
+    def test_refresh_treats_explicit_null_scope_and_token_type_as_omitted(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        # A present-but-null scope/token_type is NOT a new value: fall back to the
+        # current ones (Rust: `resp.scope.or_else(|| current.scope)`). The old
+        # `.get("scope", current.scope)` handed back None for a present null key.
+        token_endpoint.handler = lambda form: (
+            200,
+            {
+                "access_token": "fresh-access",
+                "refresh_token": "r2",
+                "expires_in": 3600,
+                "scope": None,
+                "token_type": None,
+            },
+        )
+        store = TokenStore(tmp_path)
+        manager = manager_for(
+            token_endpoint,
+            store,
+            Tokens(
+                access_token="stale",
+                refresh_token="r1",
+                expires_at=0,
+                scope="daily personal",
+                token_type="Bearer",
+            ),
+        )
+        assert manager.access_token() == "fresh-access"
+        on_disk = store.load_tokens()
+        assert on_disk is not None
+        assert on_disk.scope == "daily personal", (
+            "explicit null scope must fall back to the current scope, not become None"
+        )
+        assert on_disk.token_type == "Bearer", (
+            "explicit null token_type must fall back to the current one"
+        )
+
     def test_proactive_refresh_uses_the_skew_window(
         self, token_endpoint, tmp_path: Path
     ) -> None:
@@ -137,6 +175,55 @@ class TestRefresh:
         skewed = manager_for(token_endpoint, store, soon)
         assert skewed.access_token() == "fresh-access"
         assert len(token_endpoint.requests) == 1
+
+
+class TestHostileTokenEndpointBodies:
+    """A 2xx token-endpoint response whose body is broken or hostile must surface as the
+    typed TokenEndpointError — never a raw JSONDecodeError/KeyError/ValueError detonating
+    downstream (Rust parity: `resp.json::<TokenResponse>()?` -> AuthError::Serde) — and
+    the surfaced message must NEVER echo token material (CLAUDE.md rule 5; ISSUE A)."""
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "this is not json at all",  # non-JSON body
+            "",  # empty body
+            {"expires_in": 3600},  # missing access_token
+            {"refresh_token": "r2", "expires_in": 3600},  # still missing access_token
+            {
+                "access_token": "SECRET-AT-123",
+                "expires_in": "not-a-number",
+            },  # non-numeric expires_in (body carries a secret access token)
+            {"access_token": "SECRET-AT-123"},  # missing expires_in
+        ],
+        ids=[
+            "non-json",
+            "empty",
+            "missing-access-token",
+            "missing-access-token-2",
+            "non-numeric-expires-in",
+            "missing-expires-in",
+        ],
+    )
+    def test_malformed_2xx_body_raises_typed_error_without_leaking_secrets(
+        self, token_endpoint, tmp_path: Path, body: object
+    ) -> None:
+        token_endpoint.handler = lambda form: (200, body)
+        store = TokenStore(tmp_path)
+        manager = manager_for(token_endpoint, store, expired_tokens("r1"))
+
+        with pytest.raises(TokenEndpointError) as excinfo:
+            manager.access_token()
+
+        message = str(excinfo.value)
+        for secret in ("SECRET-AT-123", "stale-access-r1", "secret"):
+            assert secret not in message, (
+                f"the malformed-body error leaked {secret!r}: {message}"
+            )
+        # The broken response must not have been persisted as a usable token.
+        assert store.load_tokens() is None, (
+            "a malformed token-endpoint body must never be written to the store"
+        )
 
 
 class TestCrossProcessProtocol:

@@ -54,9 +54,21 @@ class MockTokenEndpoint:
             def log_message(self, *args: object) -> None:  # silence stderr noise
                 pass
 
+        # Bind an ephemeral port (0) so parallel test processes never collide, and let
+        # in-flight handler threads be daemonic so a slow/blocking handler can never wedge
+        # shutdown. Block until serve_forever has actually started before handing the
+        # fixture out, so the first request can never race the server loop's startup.
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _RequestHandler)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._server.daemon_threads = True
+        self._started = threading.Event()
+
+        def _serve() -> None:
+            self._started.set()
+            self._server.serve_forever(poll_interval=0.02)
+
+        self._thread = threading.Thread(target=_serve, daemon=True)
         self._thread.start()
+        assert self._started.wait(timeout=5), "mock token endpoint failed to start"
 
     @property
     def url(self) -> str:
@@ -70,6 +82,7 @@ class MockTokenEndpoint:
     def shutdown(self) -> None:
         self._server.shutdown()
         self._server.server_close()
+        self._thread.join(timeout=5)
 
 
 @pytest.fixture()

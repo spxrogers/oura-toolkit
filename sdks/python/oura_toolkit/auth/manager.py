@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlencode
 
 import urllib3
@@ -35,6 +35,9 @@ from .errors import (
     TokenEndpointError,
 )
 from .store import ClientCredentials, TokenStore, Tokens
+
+if TYPE_CHECKING:  # pragma: no cover
+    from oura_toolkit.api.configuration import Configuration
 
 #: Refresh this many seconds before the token's actual expiry.
 DEFAULT_SKEW_SECS = 60
@@ -122,7 +125,7 @@ class TokenManager:
         with self._mutex:
             self._refresh_critical_section()
 
-    def configuration(self) -> "object":
+    def configuration(self) -> "Configuration":
         """A ready ``oura_toolkit.api.Configuration`` whose ``access_token`` is
         sourced from this manager on every read — each request through the generated
         client carries a proactively refreshed Bearer token.
@@ -217,13 +220,49 @@ class TokenManager:
             raise TokenEndpointError(
                 resp.status, resp.data.decode("utf-8", errors="replace")
             )
-        payload = json.loads(resp.data)
+        # A hostile/broken 2xx body must surface as the typed TokenEndpointError, never
+        # a raw JSONDecodeError/KeyError/ValueError detonating downstream (mirrors the
+        # Rust crate's `resp.json::<TokenResponse>()?` -> AuthError::Serde mapping). The
+        # error body is a FIXED, secret-free description — the raw response is NOT echoed,
+        # since a partial 2xx body may carry token material.
+        try:
+            payload = json.loads(resp.data)
+        except ValueError as e:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response was not valid JSON"
+            ) from e
+        if not isinstance(payload, dict):
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response was not a JSON object"
+            )
+        try:
+            access_token = payload["access_token"]
+        except KeyError as e:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response missing 'access_token'"
+            ) from e
+        if not isinstance(access_token, str):
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response 'access_token' was not a string"
+            )
+        try:
+            expires_in = int(payload["expires_in"])
+        except KeyError as e:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response missing 'expires_in'"
+            ) from e
+        except (TypeError, ValueError) as e:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response 'expires_in' was not numeric"
+            ) from e
         rotated = payload.get("refresh_token")
         return Tokens(
-            access_token=payload["access_token"],
+            access_token=access_token,
             # Persist the rotated token; keep the old one only if the server omits it.
             refresh_token=rotated if rotated is not None else current.refresh_token,
-            expires_at=int(time.time()) + int(payload["expires_in"]),
-            scope=payload.get("scope", current.scope),
-            token_type=payload.get("token_type", current.token_type),
+            expires_at=int(time.time()) + expires_in,
+            # Explicit null is treated like omission (Rust: `resp.scope.or_else(...)`) —
+            # `.get(k, default)` would hand back None for a present-but-null key.
+            scope=payload.get("scope") or current.scope,
+            token_type=payload.get("token_type") or current.token_type,
         )
