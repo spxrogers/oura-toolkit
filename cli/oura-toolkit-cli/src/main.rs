@@ -60,7 +60,7 @@ enum Command {
     Activity(RangeArgs),
     /// Daily stress summaries.
     Stress(RangeArgs),
-    /// Heart-rate time series (5-minute granularity).
+    /// Heart-rate time series (frequent bpm samples).
     Heartrate(RangeArgs),
     /// Moment/session records (meditation, naps, …).
     Sessions(RangeArgs),

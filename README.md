@@ -2,8 +2,8 @@
 
 Your [Oura Ring](https://ouraring.com) data, everywhere you work: a fast Rust CLI
 (`oura`), a local [MCP](https://modelcontextprotocol.io) server for AI assistants, a
-Claude plugin with wellness skills, and (coming) generated SDKs for TypeScript, Python,
-Go and Rust — all driven by Oura's own OpenAPI spec.
+Claude plugin with wellness skills, and generated SDKs (Rust today; TypeScript, Python
+and Go planned) — all driven by Oura's own OpenAPI spec.
 
 ```
 $ oura sleep
@@ -43,8 +43,9 @@ Shell and PowerShell installers ship with every
 [GitHub release](https://github.com/spxrogers/oura-toolkit/releases). Whichever route you
 choose, the command is `oura` (via npx: `npx -y oura-toolkit <args>`).
 
-> **Pre-release note:** package registries populate with the first tagged release. Until
-> then, build from source: `cargo install --git https://github.com/spxrogers/oura-toolkit oura-toolkit-cli`.
+> **Pre-release note:** the npx / brew / bun paths — and the MCP + plugin routes below,
+> which launch via npx — activate with the first tagged release. Until then, build from
+> source: `cargo install --git https://github.com/spxrogers/oura-toolkit oura-toolkit-cli`.
 
 ## One-time setup: register your Oura app and log in
 
@@ -58,18 +59,19 @@ oura auth setup
 
 which does the following, interactively:
 
-1. Opens <https://cloud.ouraring.com/oauth/applications> in your browser. Create an app
-   with:
-   - **App name**: anything (e.g. `my-oura-toolkit`)
+1. Opens <https://cloud.ouraring.com/oauth/applications> in your browser and prints the
+   exact values to enter on Oura's form:
+   - **Application name**: anything (e.g. `oura-toolkit`)
    - **Redirect URI**: `http://localhost:8788/callback` — must match exactly
+   - **Scopes**: `personal daily heartrate workout tag session spo2Daily`
 2. Prompts for the app's **client id** and **client secret** in the terminal (the secret
    with hidden input — it never leaves your machine).
-3. Chains straight into `oura auth login`: your browser opens Oura's consent page
-   (scopes requested: `personal daily heartrate workout tag session spo2Daily`), a local
-   listener on port 8788 catches the callback, and tokens are stored.
+3. Chains straight into `oura auth login`: your browser opens Oura's consent page, a
+   local listener on port 8788 catches the callback, and tokens are stored.
 
 Already registered? Just run `oura auth login`. If port 8788 is taken, use
-`--port <n>` — and register the matching redirect URI.
+`--port <n>` — and register the matching redirect URI. No browser on the machine (or it
+doesn't open)? Both flows print the URL to visit manually.
 
 Tokens and credentials live in `~/.config/oura-toolkit/` (owner-only file modes; on
 Windows, `%LOCALAPPDATA%\oura-toolkit\` under your profile's private ACLs) and refresh
@@ -84,7 +86,7 @@ oura sleep            # daily sleep scores + contributors
 oura readiness        # daily readiness + temperature deviation
 oura activity         # score, steps, calories
 oura stress           # high-stress vs recovery time
-oura heartrate        # bpm time series (~5-minute samples)
+oura heartrate        # bpm time series (frequent samples; expect many rows)
 oura sessions         # meditation, naps, breathing sessions
 oura workouts         # workouts with intensity + calories
 oura personal-info    # your profile

@@ -17,7 +17,7 @@ With a [Rust toolchain](https://rustup.rs) on hand, install
 then:
 
 ```sh
-just setup   # toolchains, codegen + release tooling
+just setup   # extra toolchain components + codegen/release tooling (assumes rustup)
 just ci      # fmt-check + clippy + full test suite — exactly what CI runs
 ```
 
