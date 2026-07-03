@@ -253,7 +253,10 @@ plugin-check:
     # a nonexistent source passes strict) — assert the linkage ourselves. The length
     # precheck keeps a zero-plugin marketplace (which the loop would skip) from passing.
     jq -e '.plugins | length >= 1' .claude-plugin/marketplace.json > /dev/null || { echo "marketplace lists no plugins"; exit 1; }
-    set -o pipefail && jq -r '.plugins[].source' .claude-plugin/marketplace.json | while read -r src; do test -f "$src/.claude-plugin/plugin.json" || { echo "marketplace source $src has no plugin manifest — broken marketplace->plugin linkage"; exit 1; }; done
+    # (No pipefail: just's sh is dash. A jq crash here can't be masked in practice — the
+    # precheck above already parsed this exact file, and a missing/malformed .plugins
+    # fails there first.)
+    jq -r '.plugins[].source' .claude-plugin/marketplace.json | while read -r src; do test -f "$src/.claude-plugin/plugin.json" || { echo "marketplace source $src has no plugin manifest — broken marketplace->plugin linkage"; exit 1; }; done
     claude plugin validate plugins/oura-toolkit --strict
     claude plugin validate . --strict
 
