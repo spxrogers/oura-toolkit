@@ -207,6 +207,14 @@ sdk-test-py:
 sdk-check-go:
     cd sdks/go && go build ./...
 
+# Hand-written Go auth companion (sdks/go/auth, #15): vet + hermetic tests (httptest token
+# endpoint, tempdir stores, a real second process for the lock test), then a GOOS=windows
+# vet so the windows lock/store branches at least compile on the Linux leg.
+[group('codegen')]
+sdk-test-go:
+    cd sdks/go && go vet ./... && go test ./auth/...
+    cd sdks/go && GOOS=windows go vet ./auth/...
+
 [group('codegen')]
 sdk-check-java:
     cd sdks/java/api && mvn --quiet -DskipTests compile
