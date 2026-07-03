@@ -9,6 +9,7 @@ resolver = "2"
 members = [
     "sdks/rust/oura-toolkit-api",
     "sdks/rust/oura-toolkit-auth",
+    "sources/oura-toolkit-health",
     "cli/oura-toolkit-cli",
 ]
 
@@ -53,6 +54,7 @@ time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"
 # internal crates (directory names match crate names)
 oura-toolkit-api = { version = "0.1.0", path = "sdks/rust/oura-toolkit-api" }
 oura-toolkit-auth = { version = "0.1.0", path = "sdks/rust/oura-toolkit-auth" }
+oura-toolkit-health = { version = "0.1.0", path = "sources/oura-toolkit-health" }
 
 # The profile that 'dist' will build with
 [profile.dist]

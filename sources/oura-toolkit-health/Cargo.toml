@@ -1,0 +1,23 @@
+[package]
+name = "oura-toolkit-health"
+description = "Local day-grain health + life-context store, importers (Apple Health export, calendar .ics, Toggl CSV), and the analog/capacity engine for oura-toolkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+quick-xml = "0.41.0"
+csv = "1.4.0"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+tempfile = "3"
+
+[dev-dependencies]
+tempfile = "3"
