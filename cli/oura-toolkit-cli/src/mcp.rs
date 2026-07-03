@@ -46,6 +46,13 @@ const DESCRIPTIONS: &[(&str, &str)] = &[
     ("get_personal_info", descriptions::PERSONAL_INFO),
 ];
 
+/// The server's tool names, exposed for the docs tripwire (`tests/docs_tripwire.rs`,
+/// #45): README claims about tool names must fail CI when a `#[tool(name = …)]` rename
+/// orphans them (CLAUDE.md → DOCS STAY TRUE TO THE CODE).
+pub fn tool_names() -> impl Iterator<Item = &'static str> {
+    DESCRIPTIONS.iter().map(|(name, _)| *name)
+}
+
 /// The MCP server: same data plane as the CLI, `base_url` injected so tests point at
 /// wiremock.
 pub struct OuraMcp {

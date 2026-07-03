@@ -233,6 +233,12 @@ fn config_dir() -> Result<PathBuf, AuthError> {
     config_dir_from(&|key| std::env::var(key).ok())
 }
 
+/// The locked config-directory name (CLAUDE.md → NAMING), identical under npx/bunx/brew
+/// on every platform. Public so the docs tripwire (#45,
+/// `oura-toolkit-cli/tests/docs_tripwire.rs`) pins the READMEs' store-path claims to this
+/// single source.
+pub const APP_DIR_NAME: &str = "oura-toolkit";
+
 /// Testable core of [`config_dir`]: resolves from an injected env lookup, so the per-OS
 /// branches are unit-tested on the CI matrix without racy `env::set_var` calls.
 ///
@@ -248,12 +254,12 @@ fn config_dir_from(env: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, Auth
     };
 
     #[cfg(windows)]
-    let dir = usable("LOCALAPPDATA").map(|base| base.join("oura-toolkit"));
+    let dir = usable("LOCALAPPDATA").map(|base| base.join(APP_DIR_NAME));
 
     #[cfg(not(windows))]
     let dir = usable("XDG_CONFIG_HOME")
-        .map(|xdg| xdg.join("oura-toolkit"))
-        .or_else(|| usable("HOME").map(|home| home.join(".config").join("oura-toolkit")));
+        .map(|xdg| xdg.join(APP_DIR_NAME))
+        .or_else(|| usable("HOME").map(|home| home.join(".config").join(APP_DIR_NAME)));
 
     dir.ok_or(AuthError::NoConfigDir)
 }
