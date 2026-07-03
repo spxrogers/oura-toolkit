@@ -144,7 +144,7 @@ companion (token store + refresh). What exists today:
 | Rust | `sdks/rust/oura-toolkit-api` (the CLI runs on it — dogfooded end to end) | `oura-toolkit-auth` ✅ | `oura-toolkit-api` / `oura-toolkit-auth` (crates.io) |
 | TypeScript | `sdks/typescript/api` | planned | `@oura-toolkit/api` (npm) |
 | Python | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` ✅ | `oura-toolkit` (PyPI) |
-| Go | `sdks/go` | planned | module `github.com/spxrogers/oura-toolkit/sdks/go` |
+| Go | `sdks/go` | `sdks/go/auth` ✅ | module `github.com/spxrogers/oura-toolkit/sdks/go` |
 | Java | `sdks/java/api` | planned | `com.ouratoolkit:api` (Maven Central) |
 | C# | `sdks/csharp/api` | planned | `OuraToolkit.Api` (NuGet) |
 
