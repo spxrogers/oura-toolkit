@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 oura-toolkit-api = { workspace = true }
 oura-toolkit-auth = { workspace = true }
+oura-toolkit-health = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

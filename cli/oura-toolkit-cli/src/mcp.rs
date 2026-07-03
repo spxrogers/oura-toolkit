@@ -22,10 +22,12 @@ use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabiliti
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
 
 use oura_toolkit_auth::TokenManager;
+use oura_toolkit_health::HealthStore;
 
 use crate::api::{self, DateRange};
 use crate::commands;
 use crate::contract::{self, EXIT_AUTH};
+use crate::health;
 
 /// Build-time generated LLM-facing tool descriptions (curated lead + spec field
 /// inventory). See `build.rs`.
@@ -46,18 +48,76 @@ const DESCRIPTIONS: &[(&str, &str)] = &[
     ("get_personal_info", descriptions::PERSONAL_INFO),
 ];
 
+/// LLM-facing descriptions for the LOCAL-STORE tools. Hand-curated (there is no spec to
+/// derive them from — the local store is this repo's own surface); injected in
+/// [`OuraMcp::new`] exactly like the spec-derived eight. Each must state where the data
+/// comes from and what the model may/may not claim from it.
+const LOCAL_DESCRIPTIONS: &[(&str, &str)] = &[
+    (
+        "get_capacity",
+        "How much more the CURRENT week can take, computed locally from the user's own \
+         history: a 0-100 capacity percentage with a band (comfortable ≥70, stretched \
+         40-69, overloaded <40) and a full attribution — points deducted for recovery \
+         debt (recent readiness vs personal baseline), this week's schedule load vs \
+         baseline, and how similar past weeks turned out (analog risk). Also returns \
+         the matched analog weeks. Data source: the local day-grain store fed by `oura \
+         sync` (Oura dailies) and `oura import` (Apple Health, calendar .ics, Toggl). \
+         This is n=1 observational data: present results as 'in your history, weeks \
+         like this were followed by…', never as predictions. Errors when history is \
+         too thin rather than extrapolating — relay the error's remediation verbatim.",
+    ),
+    (
+        "find_analog_weeks",
+        "The user's historical weeks most similar to a target week by schedule load \
+         (meeting hours, event counts, evening events, tracked hours; z-score \
+         nearest-neighbor), each with health outcomes DURING the week and over the two \
+         weeks AFTER it (readiness/sleep-score means from Oura, sleep-minutes/HRV from \
+         Apple - provider-tagged, never blended), plus the personal baseline for \
+         comparison. Works for future weeks too when calendar imports carry upcoming \
+         events. Args: week (today, yesterday, or YYYY-MM-DD - any day of the target \
+         week; defaults to the current week). Data source: the local store (`oura \
+         sync` / `oura import`). n=1 observational data - describe what followed \
+         similar weeks, never predict. Errors when history is too thin.",
+    ),
+    (
+        "get_upcoming_load",
+        "Schedule load for the coming weeks (default 4, starting with the current \
+         week), summed per week from imported calendar/Toggl context: meeting hours, \
+         event count, evening events, tracked hours. Weeks with no imported context \
+         are listed with empty features so coverage gaps are visible - say so rather \
+         than treating them as free. Args: weeks (1-26). Data source: the local store; \
+         future context exists only if the user imported a calendar (.ics) that \
+         includes future events (`oura import calendar`).",
+    ),
+    (
+        "get_day_context",
+        "The merged day-grain records the capacity/analog engine sees: per local \
+         calendar day, the Oura dailies (sleep/readiness/activity scores, stress), \
+         Apple Health aggregates (sleep stages, resting HR, HRV SDNN, steps, workouts, \
+         SpO2, wrist temperature), calendar schedule shape (meeting hours, event \
+         counts - derived numbers only, never event titles), and Toggl tracked-time \
+         shape. Args: start/end (today, yesterday, or YYYY-MM-DD; default last 7 \
+         days). Data source: the local store. Note Oura HRV (rMSSD) and Apple HRV \
+         (SDNN) are different statistics - never compare them to each other.",
+    ),
+];
+
 /// The server's tool names, exposed for the docs tripwire (`tests/docs_tripwire.rs`,
 /// #45): README claims about tool names must fail CI when a `#[tool(name = …)]` rename
 /// orphans them (CLAUDE.md → DOCS STAY TRUE TO THE CODE).
 pub fn tool_names() -> impl Iterator<Item = &'static str> {
-    DESCRIPTIONS.iter().map(|(name, _)| *name)
+    DESCRIPTIONS
+        .iter()
+        .chain(LOCAL_DESCRIPTIONS)
+        .map(|(name, _)| *name)
 }
 
 /// The MCP server: same data plane as the CLI, `base_url` injected so tests point at
-/// wiremock.
+/// wiremock and `store` injected so tests use a tempdir.
 pub struct OuraMcp {
     manager: TokenManager,
     base_url: String,
+    store: HealthStore,
     tool_router: ToolRouter<Self>,
 }
 
@@ -130,12 +190,13 @@ fn tool_result<T: serde::Serialize>(
 
 #[tool_router]
 impl OuraMcp {
-    pub fn new(manager: TokenManager, base_url: String) -> Self {
+    pub fn new(manager: TokenManager, base_url: String, store: HealthStore) -> Self {
         let mut tool_router = Self::tool_router();
         // The `#[tool]` attribute only accepts literal descriptions, so the build-time
-        // spec-derived ones are injected here. `expect` = drift guard: a tool renamed in
-        // the macro without updating this table fails every construction, loudly.
-        for (name, description) in DESCRIPTIONS {
+        // spec-derived ones (and the hand-curated local-store ones) are injected here.
+        // `expect` = drift guard: a tool renamed in the macro without updating its table
+        // fails every construction, loudly.
+        for (name, description) in DESCRIPTIONS.iter().chain(LOCAL_DESCRIPTIONS) {
             tool_router
                 .map
                 .get_mut(*name)
@@ -146,6 +207,7 @@ impl OuraMcp {
         Self {
             manager,
             base_url,
+            store,
             tool_router,
         }
     }
@@ -217,6 +279,93 @@ impl OuraMcp {
     async fn get_personal_info(&self) -> Result<CallToolResult, ErrorData> {
         tool_result(commands::fetch_personal_info(&self.manager, &self.base_url).await)
     }
+
+    // ---- Local-store tools ------------------------------------------------------------
+    // No Oura auth involved: these read the day-grain store (`oura sync` / `oura
+    // import`). Thin-history refusals surface as TOOL-LEVEL errors whose message carries
+    // the remediation (HealthError::InsufficientHistory names the import commands).
+
+    #[tool(name = "get_capacity")]
+    async fn get_capacity(&self) -> Result<CallToolResult, ErrorData> {
+        tool_result(health::fetch_capacity(&self.store, api::local_today()))
+    }
+
+    #[tool(name = "find_analog_weeks")]
+    async fn find_analog_weeks(
+        &self,
+        Parameters(params): Parameters<WeekParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let week = params.resolve()?;
+        tool_result(health::fetch_analogs(
+            &self.store,
+            week,
+            oura_toolkit_health::engine::DEFAULT_ANALOG_COUNT,
+        ))
+    }
+
+    #[tool(name = "get_upcoming_load")]
+    async fn get_upcoming_load(
+        &self,
+        Parameters(params): Parameters<UpcomingParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let weeks = params.resolve()?;
+        tool_result(health::fetch_upcoming(
+            &self.store,
+            api::local_today(),
+            weeks,
+        ))
+    }
+
+    #[tool(name = "get_day_context")]
+    async fn get_day_context(
+        &self,
+        Parameters(params): Parameters<DateRangeParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let range = params.resolve()?;
+        tool_result(health::fetch_day_context(&self.store, range))
+    }
+}
+
+/// Target-week parameter for `find_analog_weeks`: any day of the week of interest.
+#[derive(serde::Deserialize, schemars::JsonSchema, Default)]
+pub struct WeekParams {
+    /// Any day of the target week: `today`, `yesterday`, or `YYYY-MM-DD` in the user's
+    /// local timezone. Default: today (the current week).
+    #[serde(default)]
+    pub week: Option<String>,
+}
+
+impl WeekParams {
+    fn resolve(&self) -> Result<chrono::NaiveDate, ErrorData> {
+        match &self.week {
+            None => Ok(api::local_today()),
+            Some(s) => api::parse_date(s, api::local_today()).map_err(|err| {
+                ErrorData::invalid_params(crate::output::sanitize(&format!("{err:#}")), None)
+            }),
+        }
+    }
+}
+
+/// Horizon parameter for `get_upcoming_load`.
+#[derive(serde::Deserialize, schemars::JsonSchema, Default)]
+pub struct UpcomingParams {
+    /// How many weeks ahead to report, starting with the current week (1–26).
+    /// Default: 4.
+    #[serde(default)]
+    pub weeks: Option<u32>,
+}
+
+impl UpcomingParams {
+    fn resolve(&self) -> Result<u32, ErrorData> {
+        let weeks = self.weeks.unwrap_or(4);
+        if !(1..=26).contains(&weeks) {
+            return Err(ErrorData::invalid_params(
+                format!("weeks must be between 1 and 26, got {weeks}"),
+                None,
+            ));
+        }
+        Ok(weeks)
+    }
 }
 
 // `router = self.tool_router` (the FIELD): the macro's default re-derives a fresh
@@ -232,10 +381,15 @@ impl ServerHandler for OuraMcp {
             ))
             .with_instructions(
                 "Read-only access to the user's Oura Ring data (sleep, readiness, \
-                 activity, stress, heart rate, sessions, workouts, profile). \
+                 activity, stress, heart rate, sessions, workouts, profile) plus their \
+                 LOCAL day-grain health+schedule store (capacity, analog weeks, \
+                 upcoming load, day context — fed by `oura sync` and `oura import`). \
                  Authentication is out of band: if a tool reports that the user is not \
                  authenticated, ask them to run `oura auth login` in a terminal, then \
-                 retry.",
+                 retry. If a local-store tool reports not enough history, relay its \
+                 import instructions. Local-store results are n=1 observational data — \
+                 describe what followed similar weeks in the user's own history; never \
+                 present them as predictions.",
             )
     }
 }
@@ -243,7 +397,12 @@ impl ServerHandler for OuraMcp {
 /// Serve over stdio until the client disconnects. stdout is the JSON-RPC transport;
 /// nothing else may write to it (enforced at the binary level in tests/mcp_stdio.rs).
 pub async fn serve(manager: TokenManager) -> anyhow::Result<()> {
-    let server = OuraMcp::new(manager, api::API_BASE.to_string());
+    // No sync-root warning here: the server reads the store, and stderr noise on every
+    // assistant launch would be crying wolf — the write paths (`oura sync`/`import`) own
+    // that warning.
+    let store = HealthStore::open_default()
+        .map_err(|e| anyhow::anyhow!("locating the health data store: {e}"))?;
+    let server = OuraMcp::new(manager, api::API_BASE.to_string(), store);
     let running = match server.serve(rmcp::transport::stdio()).await {
         Ok(running) => running,
         // stdin closing before/during the handshake is "no client connected", not a
@@ -261,7 +420,7 @@ pub async fn serve(manager: TokenManager) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::DESCRIPTIONS;
+    use super::{DESCRIPTIONS, LOCAL_DESCRIPTIONS};
 
     /// The plugin skills instruct Claude to call tools BY NAME — that's a functional
     /// contract, not prose. A `#[tool(name = …)]` rename that orphans a skill must fail
@@ -274,7 +433,7 @@ mod tests {
             skills_dir.is_dir(),
             "plugin skills dir missing at {skills_dir:?} — moved without updating this guard?"
         );
-        let known: Vec<&str> = DESCRIPTIONS.iter().map(|(name, _)| *name).collect();
+        let known: Vec<&str> = super::tool_names().collect();
         let mut checked = 0;
         for entry in std::fs::read_dir(&skills_dir).unwrap() {
             let skill = entry.unwrap().path().join("SKILL.md");
@@ -316,6 +475,34 @@ mod tests {
             assert!(
                 (150..=900).contains(&len),
                 "{name}: description length {len} outside the 150..=900 budget"
+            );
+        }
+    }
+
+    /// The local-store tools' descriptions are hand-curated (no spec to derive from) but
+    /// carry the same duties: name the data source (so the model knows this is the local
+    /// store, not the Oura API) and the n=1 framing rule where outcomes are involved —
+    /// and stay within the same anti-bloat budget.
+    #[test]
+    fn local_descriptions_name_their_source_and_stay_within_budget() {
+        for (name, description) in LOCAL_DESCRIPTIONS {
+            assert!(
+                description.contains("local") && description.contains("store"),
+                "{name}: must tell the model the data comes from the local store"
+            );
+            let len = description.chars().count();
+            assert!(
+                (150..=1000).contains(&len),
+                "{name}: description length {len} outside the 150..=1000 budget"
+            );
+        }
+        for (name, description) in [
+            LOCAL_DESCRIPTIONS[0], // get_capacity
+            LOCAL_DESCRIPTIONS[1], // find_analog_weeks
+        ] {
+            assert!(
+                description.contains("never") && description.contains("predict"),
+                "{name}: outcome-bearing tools must carry the n=1 no-predictions framing"
             );
         }
     }

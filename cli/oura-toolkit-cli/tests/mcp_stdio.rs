@@ -94,7 +94,7 @@ fn stdio_speaks_only_json_rpc_and_shuts_down_on_eof() {
 
     let tools = tools_response.expect("tools/list response");
     let listed = tools["result"]["tools"].as_array().expect("tools array");
-    assert_eq!(listed.len(), 8, "exactly the curated tool surface");
+    assert_eq!(listed.len(), 12, "exactly the curated tool surface");
 
     // EOF on stdin = client gone → clean shutdown, exit 0.
     drop(stdin);
