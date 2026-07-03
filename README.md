@@ -148,8 +148,9 @@ companion (token store + refresh). What exists today:
 | Java | `sdks/java/api` | planned | `com.ouratoolkit:api` (Maven Central) |
 | C# | `sdks/csharp/api` | planned | `OuraToolkit.Api` (NuGet) |
 
-The breadth clients are compile-checked and drift-checked in CI and smoke-tested against
-Oura's live sandbox, but **not yet published** to their registries — consume them from
+The breadth clients are compile-checked and drift-checked in CI, and smoke-tested against
+Oura's live sandbox (TypeScript, Python and Go today; Java/C# smokes arrive with their
+auth companions), but **not yet published** to their registries — consume them from
 source for now. Until each language's auth companion lands, supply your own access token.
 
 ## Developing
