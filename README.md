@@ -3,7 +3,9 @@
 Your [Oura Ring](https://ouraring.com) data, everywhere you work: a fast Rust CLI
 (`oura`), a local [MCP](https://modelcontextprotocol.io) server for AI assistants, a
 Claude plugin with wellness skills, and generated SDK clients in six languages (Rust,
-TypeScript, Python, Go, Java and C#) — all driven by Oura's own OpenAPI spec.
+TypeScript, Python, Go, Java and C#) — all driven by Oura's own OpenAPI spec. Plus a
+local life↔health engine: import your Apple Watch data (Apple Health export), calendar
+and Toggl Track history, and ask how much more your week can take (`oura capacity`).
 
 ```
 $ oura sleep
@@ -79,7 +81,7 @@ automatically from then on.
 
 ## CLI
 
-Eight read commands over your data:
+Eight read commands over your Oura data:
 
 ```sh
 oura sleep            # daily sleep scores + contributors
@@ -101,18 +103,76 @@ piped (`cut`/`awk`-safe), pretty JSON with `--json`. Exit codes are a documented
 contract (`0` ok, `1` runtime, `2` usage, `4` auth needed) — details in
 [docs/cli-contract.md](docs/cli-contract.md).
 
+## Local health store: imports, capacity, analogs
+
+Four more commands feed and read a **local day-grain store** — the life↔health engine
+([design doc](docs/vision-2026-07-03-personal-health-context.md)):
+
+```sh
+oura sync                              # pull your Oura dailies into the store (default: last 90 days)
+oura import apple-health export.zip    # Apple Health export (your Apple Watch data)
+oura import calendar work.ics          # calendar history AND future events
+oura import toggl report.csv           # Toggl Track detailed-report CSV
+oura capacity                          # how much more this week can take (0-100%)
+oura context                           # the merged day-grain records the engine sees
+```
+
+**Apple Health (Apple Watch)** — on the iPhone: Health app → your picture (top right) →
+"Export All Health Data", AirDrop the `export.zip` to this machine (AirDrop is
+peer-to-peer; it never transits iCloud), then `oura import apple-health
+~/Downloads/export.zip`. The importer streams the export into per-day aggregates (sleep
+stages, resting HR, HRV, steps, workouts, SpO2, wrist temperature) and never retains
+raw samples. Delete the zip afterwards — it holds your full plaintext health history —
+or pass `--remove-source` to have the import do it for you.
+
+**Calendar (.ics)** — export from Google Calendar, Apple Calendar, or Outlook. Only
+derived numbers are stored (meeting hours, event counts, evening events, first/last
+event times) — never titles, attendees, or locations. Future events matter: they are
+what lets `oura capacity` score the weeks ahead.
+
+**Toggl Track** — the detailed-report CSV export. Tracked time-blocks become per-day
+shape (hours, entry count, longest block); entry descriptions are never retained.
+
+**`oura capacity`** answers *"how much more can this week take?"* from your own
+history: 100 minus attributed deductions for **recovery debt** (recent readiness vs
+your baseline), **week load** (this week's schedule vs your norm), and **analog risk**
+(how the most similar past weeks turned out, including the two weeks after them).
+Bands: comfortable ≥ 70, stretched 40–69, overloaded < 40. Below 8 weeks of usable
+history it refuses instead of guessing — and everything it reports is n=1
+observational data: *"in your history, weeks like this were followed by…"*, never a
+prediction.
+
+### Where the data lives, and its safety properties
+
+- The store is `~/.local/share/oura-toolkit/` (`$XDG_DATA_HOME`; Windows:
+  `%LOCALAPPDATA%\oura-toolkit\data\`) — owner-only file modes and atomic writes, the
+  same discipline as the token store.
+- **Day-grain aggregates only**: raw samples never land on disk.
+- It is a **rebuildable cache**: sources of truth stay in Apple Health / Oura / your
+  calendar. Losing it costs a re-import, nothing more.
+- Imports **warn if the store path resolves inside a cloud-synced folder**
+  (Dropbox / iCloud Drive / OneDrive / Google Drive) — health data should not silently
+  replicate off the machine.
+- Local-first means every egress is a choice you make. There are exactly two: requests
+  to Oura with your own credentials, and MCP tool results read by whatever AI assistant
+  you connect.
+- Oura HRV (rMSSD) and Apple HRV (SDNN) are different statistics — every surface keeps
+  them provider-tagged and never blends them.
+
 ## MCP server (AI assistants)
 
 ```sh
 oura mcp
 ```
 
-runs a STDIO MCP server exposing eight curated, described tools (`get_daily_sleep`,
-`get_daily_readiness`, …). Tool results are read by whichever AI assistant you connect —
-that's the point — while credentials stay local. The server reuses the same stored
-tokens and refreshes them silently;
-if you haven't logged in, tool calls return a structured error telling you to run
-`oura auth login` — the server never prompts or opens a browser itself.
+runs a STDIO MCP server exposing twelve curated, described tools: eight over your Oura
+data (`get_daily_sleep`, `get_daily_readiness`, …) and four over the local store
+(`get_capacity`, `find_analog_weeks`, `get_upcoming_load`, `get_day_context`). Tool
+results are read by whichever AI assistant you connect — that's the point — while
+credentials stay local. The server reuses the same stored tokens and refreshes them
+silently; if you haven't logged in, tool calls return a structured error telling you to
+run `oura auth login` — the server never prompts or opens a browser itself. The
+local-store tools need no Oura auth at all, only imported data.
 
 For Claude Code:
 

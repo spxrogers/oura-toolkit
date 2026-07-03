@@ -1,5 +1,15 @@
 # Vision: the personal solution — data safety, onboarding, and the life↔health engine
 
+> **Status update (2026-07-03, same day):** Phases 1–2 of §4 SHIPPED (day-grain store,
+> Apple Health/calendar/Toggl importers, `oura sync`, the analog engine, `oura
+> capacity`, four MCP tools, the `/schedule-outlook` skill), plus Toggl ahead of
+> schedule. Two revisions against this proposal, both deliberate: the store is
+> **versioned JSON** of day-grain aggregates (SQLite deferred until row counts demand
+> it — aggregates are KBs, not GBs), and Apple data surfaces through `oura context` /
+> the engine rather than a `--source` flag on the eight Oura commands (their rendering
+> stays purely Oura's). CLAUDE.md → "LOCAL HEALTH STORE & CONTEXT ENGINE" is now the
+> binding spec; this document remains the design rationale.
+
 **Status: PROPOSAL (companion to
 [`feasibility-2026-07-03-apple-healthkit-multi-source.md`](feasibility-2026-07-03-apple-healthkit-multi-source.md),
 2026-07-03). Nothing here is shipped behavior.** That document answered *"can we
