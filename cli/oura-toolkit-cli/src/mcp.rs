@@ -256,6 +256,40 @@ pub async fn serve(manager: TokenManager) -> anyhow::Result<()> {
 mod tests {
     use super::DESCRIPTIONS;
 
+    /// The plugin skills instruct Claude to call tools BY NAME — that's a functional
+    /// contract, not prose. A `#[tool(name = …)]` rename that orphans a skill must fail
+    /// CI. Monorepo-only by nature (the plugin lives beside the crate).
+    #[test]
+    fn plugin_skills_reference_only_real_tool_names() {
+        let skills_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/oura-toolkit/skills");
+        assert!(
+            skills_dir.is_dir(),
+            "plugin skills dir missing at {skills_dir:?} — moved without updating this guard?"
+        );
+        let known: Vec<&str> = DESCRIPTIONS.iter().map(|(name, _)| *name).collect();
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&skills_dir).unwrap() {
+            let skill = entry.unwrap().path().join("SKILL.md");
+            let text = std::fs::read_to_string(&skill).unwrap();
+            // Every `get_…` token in a skill must be one of the server's tool names.
+            for token in text
+                .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
+                .filter(|t| t.starts_with("get_"))
+            {
+                assert!(
+                    known.contains(&token),
+                    "{skill:?} references unknown tool {token:?} — rename orphaned the skill?"
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked >= 8,
+            "suspiciously few tool references ({checked}) — tokenizer broken?"
+        );
+    }
+
     /// The tool descriptions are the LLM-facing selection surface: each must carry the
     /// curated lead AND both spec-derived sections, and stay within a budget — the spec
     /// has field descriptions (activity's class_5_min) that would otherwise bloat a
