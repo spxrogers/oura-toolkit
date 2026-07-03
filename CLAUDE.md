@@ -334,6 +334,34 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 
 ---
 
+## DOCS STAY TRUE TO THE CODE (added 2026-07-03 — same weight as TESTING & VERIFICATION)
+
+`README.md` is the front door, and `CONTRIBUTING.md` / `docs/cli-contract.md` /
+`plugins/oura-toolkit/README.md` are shipped surface. A doc claim that contradicts the
+code is a bug of the same severity as the code change that orphaned it.
+
+1. **Same-PR rule.** Any change to user-visible behavior — CLI surface (commands, flags,
+   help text, exit codes, output shape), auth flow, token-store location, MCP tools,
+   plugin, install/release paths, SDK status, or the dev workflow (`just` recipes) — MUST
+   update every doc claim it invalidates **in the same PR**. Doc sync is part of the
+   definition of done, never a follow-up task.
+2. **Review gate.** Every PR review (and every review-loop round) explicitly asks:
+   *"which documented claim does this diff invalidate?"* — and verifies the touched docs
+   against the code the way PR #44's accuracy lens did (commands, URLs, scopes, recipes,
+   printed terminal text checked against source, not against memory).
+3. **Catch-up commits are a process failure.** A docs-only PR whose purpose is re-syncing
+   docs with reality (PR #44 was the last permitted one) means an earlier PR merged in
+   violation of rule 1. Never plan one; if one becomes necessary, treat it as an incident:
+   fix the docs AND name the PR that broke the rule.
+4. **Mechanize what's mechanizable** (TESTING & VERIFICATION rule 1 applies to docs too):
+   doc claims that are enumerable — the README's command list, scope string, redirect URI,
+   store paths, recipe names, MCP tool names — should be pinned by tripwire tests (in the
+   mold of mcp.rs's skill tool-name tripwire) so drift fails CI instead of relying on
+   reviewer diligence (#45). Prose claims (tone, walkthrough accuracy) remain a review-gate
+   responsibility — rules 1–3.
+
+---
+
 ## MCP
 
 - The CLI has an **`oura mcp` subcommand** that runs it as a **STDIO MCP server** using the
@@ -450,6 +478,9 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 - Do **NOT** merge a documented guarantee without its enforcing test, a guard test that
   hasn't been break-verified, or platform `cfg` code with no test on that CI leg — see
   TESTING & VERIFICATION (the release gate is "green CI == releasable").
+- Do **NOT** merge a change to user-visible behavior without updating every doc claim it
+  invalidates (README, CONTRIBUTING, cli-contract, plugin README) in the SAME PR —
+  docs-only catch-up commits are a process failure, see DOCS STAY TRUE TO THE CODE.
 
 ---
 
