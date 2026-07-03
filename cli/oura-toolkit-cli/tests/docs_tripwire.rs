@@ -82,6 +82,13 @@ fn help_subcommands(help: &str) -> BTreeSet<String> {
 /// and recipe tokens are only trusted inside code, never prose ("just happens" must not
 /// parse as a recipe reference).
 fn code_snippets(markdown: &str) -> Vec<String> {
+    // Tilde fences would silently read as prose (their contents skipped, a false
+    // negative) — fail loudly instead of scanning blind.
+    assert!(
+        !markdown.contains("~~~"),
+        "doc uses a ~~~ fence, which this scanner does not parse — use ``` fences \
+         (or teach code_snippets about tildes)"
+    );
     let mut snippets = Vec::new();
     let mut fence: Option<String> = None;
     for line in markdown.lines() {
@@ -134,26 +141,26 @@ fn readme_command_list_matches_the_binary() {
     for snippet in code_snippets(&readme) {
         for line in snippet.lines() {
             // `$ oura sleep`, `oura readiness --json | jq …`, `oura auth setup` — take
-            // the first token after `oura `.
-            let Some(idx) = line.find("oura ") else {
-                continue;
-            };
-            if idx > 0 && line.as_bytes()[idx - 1].is_ascii_alphanumeric() {
-                continue; // `npx -y oura-toolkit …` etc. — not the binary name
+            // the token after EVERY `oura ` occurrence (a compound line like
+            // `oura a && oura b` must have both commands checked).
+            for (idx, _) in line.match_indices("oura ") {
+                if idx > 0 && line.as_bytes()[idx - 1].is_ascii_alphanumeric() {
+                    continue; // `npx -y oura-toolkit …` etc. — not the binary name
+                }
+                let token: String = line[idx + 5..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                    .collect();
+                if !token.starts_with(|c: char| c.is_ascii_lowercase()) || token == "toolkit" {
+                    continue; // bare `oura`, a flag/`--` separator, or an `oura-toolkit` remnant
+                }
+                assert!(
+                    full.contains(&token),
+                    "README shows `oura {token}` but the binary has no such subcommand — \
+                     renamed without updating the docs? (DOCS STAY TRUE TO THE CODE)"
+                );
+                documented.insert(token);
             }
-            let token: String = line[idx + 5..]
-                .chars()
-                .take_while(|c| c.is_ascii_lowercase() || *c == '-')
-                .collect();
-            if !token.starts_with(|c: char| c.is_ascii_lowercase()) || token == "toolkit" {
-                continue; // bare `oura`, a flag/`--` separator, or an `oura-toolkit` remnant
-            }
-            assert!(
-                full.contains(&token),
-                "README shows `oura {token}` but the binary has no such subcommand — \
-                 renamed without updating the docs? (DOCS STAY TRUE TO THE CODE)"
-            );
-            documented.insert(token);
         }
     }
 
