@@ -192,6 +192,17 @@ sdk-check-py:
     {{build_dir}}/py-venv/bin/pip install --quiet ./sdks/python
     {{build_dir}}/py-venv/bin/python -c "from oura_toolkit.api import ApiClient, Configuration"
 
+# Hermetic tests for the hand-written oura_toolkit.auth companion (loopback mock token
+# endpoint + tempdir stores; pytest is a dev-only tool in this venv, never a runtime dep
+# of the dist). Own venv so it can't fight sdk-check-py's; tests run against the
+# INSTALLED copy, so packaging regressions fail here too.
+[group('codegen')]
+sdk-test-py:
+    rm -rf {{build_dir}}/py-test-venv
+    python3 -m venv {{build_dir}}/py-test-venv
+    {{build_dir}}/py-test-venv/bin/pip install --quiet ./sdks/python pytest
+    {{build_dir}}/py-test-venv/bin/python -m pytest -q sdks/python/tests
+
 [group('codegen')]
 sdk-check-go:
     cd sdks/go && go build ./...

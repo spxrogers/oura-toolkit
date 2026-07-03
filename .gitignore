@@ -17,3 +17,10 @@ node_modules/
 
 # OS cruft
 .DS_Store
+
+# Python packaging artifacts (pip builds local dirs in-tree; `just sdk-check-py` /
+# `just sdk-test-py` install ./sdks/python) — never commit these.
+/sdks/python/build/
+*.egg-info/
+__pycache__/
+.pytest_cache/
