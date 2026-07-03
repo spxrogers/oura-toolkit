@@ -43,6 +43,9 @@ Shell and PowerShell installers ship with every
 [GitHub release](https://github.com/spxrogers/oura-toolkit/releases). Whichever route you
 choose, the command is `oura` (via npx: `npx -y oura-toolkit <args>`).
 
+> **Pre-release note:** package registries populate with the first tagged release. Until
+> then, build from source: `cargo install --git https://github.com/spxrogers/oura-toolkit oura-toolkit-cli`.
+
 ## One-time setup: register your Oura app and log in
 
 Oura's API uses OAuth with a confidential client, so you register your own (free) Oura
@@ -68,9 +71,9 @@ which does the following, interactively:
 Already registered? Just run `oura auth login`. If port 8788 is taken, use
 `--port <n>` — and register the matching redirect URI.
 
-Tokens and credentials live in `~/.config/oura-toolkit/` (Windows:
-`%LOCALAPPDATA%\oura-toolkit\`), owner-readable only, and refresh automatically from
-then on.
+Tokens and credentials live in `~/.config/oura-toolkit/` (owner-only file modes; on
+Windows, `%LOCALAPPDATA%\oura-toolkit\` under your profile's private ACLs) and refresh
+automatically from then on.
 
 ## CLI
 
@@ -103,7 +106,9 @@ oura mcp
 ```
 
 runs a STDIO MCP server exposing eight curated, described tools (`get_daily_sleep`,
-`get_daily_readiness`, …). It reuses the same stored tokens and refreshes them silently;
+`get_daily_readiness`, …). Tool results are read by whichever AI assistant you connect —
+that's the point — while credentials stay local. The server reuses the same stored
+tokens and refreshes them silently;
 if you haven't logged in, tool calls return a structured error telling you to run
 `oura auth login` — the server never prompts or opens a browser itself.
 

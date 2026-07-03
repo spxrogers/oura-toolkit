@@ -12,8 +12,9 @@ Thanks for helping! Two rules carry most of this document:
 
 ## Getting started
 
-Install [`just`](https://github.com/casey/just) (the one bootstrap step it can't do for
-itself), then:
+With a [Rust toolchain](https://rustup.rs) on hand, install
+[`just`](https://github.com/casey/just) (the one bootstrap step it can't do for itself),
+then:
 
 ```sh
 just setup   # toolchains, codegen + release tooling
