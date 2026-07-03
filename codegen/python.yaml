@@ -1,0 +1,9 @@
+# openapi-generator config — Python client (oura_toolkit.api) -> sdks/python.
+# Single PyPI distribution `oura-toolkit` (CLAUDE.md → NAMING): the generated client is the
+# `oura_toolkit.api` submodule; the hand-written `oura_toolkit.auth` companion joins it later
+# in the SAME distribution. `just gen-py` wipes ONLY the generated api/ subtree.
+# packageVersion is injected by `just gen-py` from the workspace version.
+generatorName: python
+additionalProperties:
+  projectName: oura-toolkit
+  packageName: oura_toolkit.api

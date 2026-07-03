@@ -1,0 +1,9 @@
+# openapi-generator config — TypeScript client (@oura-toolkit/api) -> sdks/typescript/api.
+# Invoked by `just gen-ts`; npmVersion is injected there from the workspace version.
+generatorName: typescript-fetch
+additionalProperties:
+  npmName: "@oura-toolkit/api"
+  supportsES6: true
+  # Runtime type checks on responses: keep them — this client is the reference consumer
+  # surface, and the Oura API's nullable-heavy models deserve the guard rails.
+  withoutRuntimeChecks: false

@@ -1,0 +1,462 @@
+# api
+
+Oura API Documentation
+
+- API version: 2.0
+
+- Generator version: 7.14.0
+
+# Overview 
+The Oura API allows Oura users and partner applications to improve their user experience with Oura data.
+This document describes the Oura API Version 2 (V2), which is the only available integration point for Oura data. The previous V1 API has been sunset.
+# Getting Started 
+## What is an API?
+An API (Application Programming Interface) allows different software applications to communicate with each other. The Oura API enables you to access your Oura Ring data programmatically.
+## Quick Start Guide
+1. Register an [API Application](https://cloud.ouraring.com/oauth/applications) and implement OAuth2
+2. **Make Your First API Call**:
+   ```
+   curl -X GET https://api.ouraring.com/v2/usercollection/personal_info \\
+   -H \"Authorization: Bearer YOUR_TOKEN_HERE\"
+   ```
+3. **Explore Data Types**:
+   - Browse the available endpoints in this documentation to discover what data you can access
+   - Each endpoint includes example requests and responses
+4. **Set Up Webhooks (Strongly Recommended)**:
+   - Webhooks are the preferred way to consume Oura data
+   - We have not had customers hit rate limits with webhooks properly implemented
+   - Make a single request for historical data when a user first connects, then use webhooks for ongoing updates
+   - Webhook notifications come approximately 30 seconds after data syncs from the mobile app
+   - [Set up webhooks](#tag/Webhook-Subscription-Routes) to receive notifications when data changes
+## Common Questions
+- **Data Delay**: Different data types sync at different times - sleep data requires users to open the Oura app, while daily activity and stress may sync in the background
+# Data Access
+In order to access data, a registered [API Application](https://cloud.ouraring.com/oauth/applications) is required.
+ API Applications are limited to **10** users before requiring approval from Oura. There is no limit once an application is approved.
+ Additionally, Oura users **must provide consent** to share each data type an API Application has access to.
+All data access requests through the Oura API require [Authentication](https://cloud.ouraring.com/docs/authentication).
+Additionally, we recommend that Oura users keep their mobile app updated to support API access for the latest data types.
+# Authentication
+The Oura Cloud API supports authentication through the industry-standard OAuth2 protocol. For more information, see our [Authentication instructions](https://cloud.ouraring.com/docs/authentication).
+Access tokens must be included in the request header as follows:
+```http
+GET /v2/usercollection/personal_info HTTP/1.1
+Host: api.ouraring.com
+Authorization: Bearer <token>
+```
+Please note that personal access tokens were deprecated in December 2025 and are no longer available for use.
+# Oura HTTP Response Codes
+| Response Code                        | Description |
+| ------------------------------------ | - |
+| 200 OK                               | Successful Response         |
+| 400 Query Parameter Validation Error | The request contains query parameters that are invalid or incorrectly formatted. |
+| 401 Unauthorized                     | Invalid or expired authentication token. |
+| 403 Forbidden                        | The requested resource requires additional permissions or the user's Oura subscription has expired. |
+| 429 Too Many Requests                | Rate limit exceeded. See response headers for retry guidance. |
+
+## Rate Limits
+The API enforces rate limits at two layers to ensure fair access across all applications:
+- a per-access-token limit, which throttles single-token floods, and
+- a per-application limit, which caps the aggregate traffic across all of an application's end-user tokens so one fan-out app can't dominate shared capacity.
+
+A request that trips either layer receives a `429 Too Many Requests`. The `X-RateLimit-Tier` response header identifies which layer fired.
+
+If your application regularly approaches rate limits, [webhooks](#tag/Webhook-Subscription-Routes) are strongly recommended — most applications that implement webhooks correctly do not encounter rate limit issues.
+
+[Contact us](mailto:api-support@ouraring.com) if you expect your usage to require higher limits.
+
+## Rate Limit Response Headers
+When a `429 Too Many Requests` response is returned, five headers are included to guide retries. Prefer these over fixed-interval backoff:
+- **`Retry-After`** — integer seconds to wait before retrying. RFC 7231-compliant; safe to feed directly into your client's backoff logic.
+- **`X-RateLimit-Limit`** — the request ceiling for the current window.
+- **`X-RateLimit-Window`** — the rolling window length in seconds that the ceiling applies to.
+- **`X-RateLimit-Reset`** — Unix epoch (seconds) at which the window resets and quota is fully restored.
+- **`X-RateLimit-Tier`** — identifies which limit was exceeded, useful when contacting support.
+
+
+
+*Automatically generated by the [OpenAPI Generator](https://openapi-generator.tech)*
+
+## Requirements
+
+Building the API client library requires:
+
+1. Java 11+
+2. Maven/Gradle
+
+## Installation
+
+To install the API client library to your local Maven repository, simply execute:
+
+```shell
+mvn clean install
+```
+
+To deploy it to a remote Maven repository instead, configure the settings of the repository and execute:
+
+```shell
+mvn clean deploy
+```
+
+Refer to the [OSSRH Guide](http://central.sonatype.org/pages/ossrh-guide.html) for more information.
+
+### Maven users
+
+Add this dependency to your project's POM:
+
+```xml
+<dependency>
+  <groupId>com.ouratoolkit</groupId>
+  <artifactId>api</artifactId>
+  <version>0.1.0</version>
+  <scope>compile</scope>
+</dependency>
+```
+
+### Gradle users
+
+Add this dependency to your project's build file:
+
+```groovy
+compile "com.ouratoolkit:api:0.1.0"
+```
+
+### Others
+
+At first generate the JAR by executing:
+
+```shell
+mvn clean package
+```
+
+Then manually install the following JARs:
+
+- `target/api-0.1.0.jar`
+- `target/lib/*.jar`
+
+## Getting Started
+
+Please follow the [installation](#installation) instruction and execute the following Java code:
+
+```java
+
+import com.ouratoolkit.api.*;
+import com.ouratoolkit.api.model.*;
+import com.ouratoolkit.api.client.DailyActivityRoutesApi;
+
+public class DailyActivityRoutesApiExample {
+
+    public static void main(String[] args) {
+        ApiClient defaultClient = Configuration.getDefaultApiClient();
+        // Configure clients using the `defaultClient` object, such as
+        // overriding the host and port, timeout, etc.
+        DailyActivityRoutesApi apiInstance = new DailyActivityRoutesApi(defaultClient);
+        LocalDate startDate = LocalDate.now(); // LocalDate | 
+        LocalDate endDate = LocalDate.now(); // LocalDate | 
+        String nextToken = "nextToken_example"; // String | 
+        String fields = "fields_example"; // String | Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided.
+        try {
+            MultiDocumentResponsePublicDailyActivity result = apiInstance.multipleDailyActivityDocumentsV2UsercollectionDailyActivityGet(startDate, endDate, nextToken, fields);
+            System.out.println(result);
+        } catch (ApiException e) {
+            System.err.println("Exception when calling DailyActivityRoutesApi#multipleDailyActivityDocumentsV2UsercollectionDailyActivityGet");
+            System.err.println("Status code: " + e.getCode());
+            System.err.println("Reason: " + e.getResponseBody());
+            System.err.println("Response headers: " + e.getResponseHeaders());
+            e.printStackTrace();
+        }
+    }
+}
+
+```
+
+## Documentation for API Endpoints
+
+All URIs are relative to *https://api.ouraring.com*
+
+Class | Method | HTTP request | Description
+------------ | ------------- | ------------- | -------------
+*DailyActivityRoutesApi* | [**multipleDailyActivityDocumentsV2UsercollectionDailyActivityGet**](docs/DailyActivityRoutesApi.md#multipleDailyActivityDocumentsV2UsercollectionDailyActivityGet) | **GET** /v2/usercollection/daily_activity | Multiple Daily Activity Documents
+*DailyActivityRoutesApi* | [**multipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo**](docs/DailyActivityRoutesApi.md#multipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo) | **GET** /v2/usercollection/daily_activity | Multiple Daily Activity Documents
+*DailyActivityRoutesApi* | [**singleDailyActivityDocumentV2UsercollectionDailyActivityDocumentIdGet**](docs/DailyActivityRoutesApi.md#singleDailyActivityDocumentV2UsercollectionDailyActivityDocumentIdGet) | **GET** /v2/usercollection/daily_activity/{document_id} | Single Daily Activity Document
+*DailyActivityRoutesApi* | [**singleDailyActivityDocumentV2UsercollectionDailyActivityDocumentIdGetWithHttpInfo**](docs/DailyActivityRoutesApi.md#singleDailyActivityDocumentV2UsercollectionDailyActivityDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_activity/{document_id} | Single Daily Activity Document
+*DailyCardiovascularAgeRoutesApi* | [**multipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGet**](docs/DailyCardiovascularAgeRoutesApi.md#multipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGet) | **GET** /v2/usercollection/daily_cardiovascular_age | Multiple Daily Cardiovascular Age Documents
+*DailyCardiovascularAgeRoutesApi* | [**multipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo**](docs/DailyCardiovascularAgeRoutesApi.md#multipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo) | **GET** /v2/usercollection/daily_cardiovascular_age | Multiple Daily Cardiovascular Age Documents
+*DailyCardiovascularAgeRoutesApi* | [**singleDailyCardiovascularAgeDocumentV2UsercollectionDailyCardiovascularAgeDocumentIdGet**](docs/DailyCardiovascularAgeRoutesApi.md#singleDailyCardiovascularAgeDocumentV2UsercollectionDailyCardiovascularAgeDocumentIdGet) | **GET** /v2/usercollection/daily_cardiovascular_age/{document_id} | Single Daily Cardiovascular Age Document
+*DailyCardiovascularAgeRoutesApi* | [**singleDailyCardiovascularAgeDocumentV2UsercollectionDailyCardiovascularAgeDocumentIdGetWithHttpInfo**](docs/DailyCardiovascularAgeRoutesApi.md#singleDailyCardiovascularAgeDocumentV2UsercollectionDailyCardiovascularAgeDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_cardiovascular_age/{document_id} | Single Daily Cardiovascular Age Document
+*DailyReadinessRoutesApi* | [**multipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGet**](docs/DailyReadinessRoutesApi.md#multipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGet) | **GET** /v2/usercollection/daily_readiness | Multiple Daily Readiness Documents
+*DailyReadinessRoutesApi* | [**multipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo**](docs/DailyReadinessRoutesApi.md#multipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo) | **GET** /v2/usercollection/daily_readiness | Multiple Daily Readiness Documents
+*DailyReadinessRoutesApi* | [**singleDailyReadinessDocumentV2UsercollectionDailyReadinessDocumentIdGet**](docs/DailyReadinessRoutesApi.md#singleDailyReadinessDocumentV2UsercollectionDailyReadinessDocumentIdGet) | **GET** /v2/usercollection/daily_readiness/{document_id} | Single Daily Readiness Document
+*DailyReadinessRoutesApi* | [**singleDailyReadinessDocumentV2UsercollectionDailyReadinessDocumentIdGetWithHttpInfo**](docs/DailyReadinessRoutesApi.md#singleDailyReadinessDocumentV2UsercollectionDailyReadinessDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_readiness/{document_id} | Single Daily Readiness Document
+*DailyResilienceRoutesApi* | [**multipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGet**](docs/DailyResilienceRoutesApi.md#multipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGet) | **GET** /v2/usercollection/daily_resilience | Multiple Daily Resilience Documents
+*DailyResilienceRoutesApi* | [**multipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo**](docs/DailyResilienceRoutesApi.md#multipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo) | **GET** /v2/usercollection/daily_resilience | Multiple Daily Resilience Documents
+*DailyResilienceRoutesApi* | [**singleDailyResilienceDocumentV2UsercollectionDailyResilienceDocumentIdGet**](docs/DailyResilienceRoutesApi.md#singleDailyResilienceDocumentV2UsercollectionDailyResilienceDocumentIdGet) | **GET** /v2/usercollection/daily_resilience/{document_id} | Single Daily Resilience Document
+*DailyResilienceRoutesApi* | [**singleDailyResilienceDocumentV2UsercollectionDailyResilienceDocumentIdGetWithHttpInfo**](docs/DailyResilienceRoutesApi.md#singleDailyResilienceDocumentV2UsercollectionDailyResilienceDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_resilience/{document_id} | Single Daily Resilience Document
+*DailySleepRoutesApi* | [**multipleDailySleepDocumentsV2UsercollectionDailySleepGet**](docs/DailySleepRoutesApi.md#multipleDailySleepDocumentsV2UsercollectionDailySleepGet) | **GET** /v2/usercollection/daily_sleep | Multiple Daily Sleep Documents
+*DailySleepRoutesApi* | [**multipleDailySleepDocumentsV2UsercollectionDailySleepGetWithHttpInfo**](docs/DailySleepRoutesApi.md#multipleDailySleepDocumentsV2UsercollectionDailySleepGetWithHttpInfo) | **GET** /v2/usercollection/daily_sleep | Multiple Daily Sleep Documents
+*DailySleepRoutesApi* | [**singleDailySleepDocumentV2UsercollectionDailySleepDocumentIdGet**](docs/DailySleepRoutesApi.md#singleDailySleepDocumentV2UsercollectionDailySleepDocumentIdGet) | **GET** /v2/usercollection/daily_sleep/{document_id} | Single Daily Sleep Document
+*DailySleepRoutesApi* | [**singleDailySleepDocumentV2UsercollectionDailySleepDocumentIdGetWithHttpInfo**](docs/DailySleepRoutesApi.md#singleDailySleepDocumentV2UsercollectionDailySleepDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_sleep/{document_id} | Single Daily Sleep Document
+*DailySpo2RoutesApi* | [**multipleDailySpo2DocumentsV2UsercollectionDailySpo2Get**](docs/DailySpo2RoutesApi.md#multipleDailySpo2DocumentsV2UsercollectionDailySpo2Get) | **GET** /v2/usercollection/daily_spo2 | Multiple Daily Spo2 Documents
+*DailySpo2RoutesApi* | [**multipleDailySpo2DocumentsV2UsercollectionDailySpo2GetWithHttpInfo**](docs/DailySpo2RoutesApi.md#multipleDailySpo2DocumentsV2UsercollectionDailySpo2GetWithHttpInfo) | **GET** /v2/usercollection/daily_spo2 | Multiple Daily Spo2 Documents
+*DailySpo2RoutesApi* | [**singleDailySpo2DocumentV2UsercollectionDailySpo2DocumentIdGet**](docs/DailySpo2RoutesApi.md#singleDailySpo2DocumentV2UsercollectionDailySpo2DocumentIdGet) | **GET** /v2/usercollection/daily_spo2/{document_id} | Single Daily Spo2 Document
+*DailySpo2RoutesApi* | [**singleDailySpo2DocumentV2UsercollectionDailySpo2DocumentIdGetWithHttpInfo**](docs/DailySpo2RoutesApi.md#singleDailySpo2DocumentV2UsercollectionDailySpo2DocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_spo2/{document_id} | Single Daily Spo2 Document
+*DailyStressRoutesApi* | [**multipleDailyStressDocumentsV2UsercollectionDailyStressGet**](docs/DailyStressRoutesApi.md#multipleDailyStressDocumentsV2UsercollectionDailyStressGet) | **GET** /v2/usercollection/daily_stress | Multiple Daily Stress Documents
+*DailyStressRoutesApi* | [**multipleDailyStressDocumentsV2UsercollectionDailyStressGetWithHttpInfo**](docs/DailyStressRoutesApi.md#multipleDailyStressDocumentsV2UsercollectionDailyStressGetWithHttpInfo) | **GET** /v2/usercollection/daily_stress | Multiple Daily Stress Documents
+*DailyStressRoutesApi* | [**singleDailyStressDocumentV2UsercollectionDailyStressDocumentIdGet**](docs/DailyStressRoutesApi.md#singleDailyStressDocumentV2UsercollectionDailyStressDocumentIdGet) | **GET** /v2/usercollection/daily_stress/{document_id} | Single Daily Stress Document
+*DailyStressRoutesApi* | [**singleDailyStressDocumentV2UsercollectionDailyStressDocumentIdGetWithHttpInfo**](docs/DailyStressRoutesApi.md#singleDailyStressDocumentV2UsercollectionDailyStressDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/daily_stress/{document_id} | Single Daily Stress Document
+*EnhancedTagRoutesApi* | [**multipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGet**](docs/EnhancedTagRoutesApi.md#multipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGet) | **GET** /v2/usercollection/enhanced_tag | Multiple Enhanced Tag Documents
+*EnhancedTagRoutesApi* | [**multipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetWithHttpInfo**](docs/EnhancedTagRoutesApi.md#multipleEnhancedTagDocumentsV2UsercollectionEnhancedTagGetWithHttpInfo) | **GET** /v2/usercollection/enhanced_tag | Multiple Enhanced Tag Documents
+*EnhancedTagRoutesApi* | [**singleEnhancedTagDocumentV2UsercollectionEnhancedTagDocumentIdGet**](docs/EnhancedTagRoutesApi.md#singleEnhancedTagDocumentV2UsercollectionEnhancedTagDocumentIdGet) | **GET** /v2/usercollection/enhanced_tag/{document_id} | Single Enhanced Tag Document
+*EnhancedTagRoutesApi* | [**singleEnhancedTagDocumentV2UsercollectionEnhancedTagDocumentIdGetWithHttpInfo**](docs/EnhancedTagRoutesApi.md#singleEnhancedTagDocumentV2UsercollectionEnhancedTagDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/enhanced_tag/{document_id} | Single Enhanced Tag Document
+*HeartRateRoutesApi* | [**multipleHeartrateDocumentsV2UsercollectionHeartrateGet**](docs/HeartRateRoutesApi.md#multipleHeartrateDocumentsV2UsercollectionHeartrateGet) | **GET** /v2/usercollection/heartrate | Multiple Heartrate Documents
+*HeartRateRoutesApi* | [**multipleHeartrateDocumentsV2UsercollectionHeartrateGetWithHttpInfo**](docs/HeartRateRoutesApi.md#multipleHeartrateDocumentsV2UsercollectionHeartrateGetWithHttpInfo) | **GET** /v2/usercollection/heartrate | Multiple Heartrate Documents
+*PersonalInfoRoutesApi* | [**singlePersonalInfoDocumentV2UsercollectionPersonalInfoGet**](docs/PersonalInfoRoutesApi.md#singlePersonalInfoDocumentV2UsercollectionPersonalInfoGet) | **GET** /v2/usercollection/personal_info | Single Personal Info Document
+*PersonalInfoRoutesApi* | [**singlePersonalInfoDocumentV2UsercollectionPersonalInfoGetWithHttpInfo**](docs/PersonalInfoRoutesApi.md#singlePersonalInfoDocumentV2UsercollectionPersonalInfoGetWithHttpInfo) | **GET** /v2/usercollection/personal_info | Single Personal Info Document
+*RestModePeriodRoutesApi* | [**multipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGet**](docs/RestModePeriodRoutesApi.md#multipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGet) | **GET** /v2/usercollection/rest_mode_period | Multiple Rest Mode Period Documents
+*RestModePeriodRoutesApi* | [**multipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetWithHttpInfo**](docs/RestModePeriodRoutesApi.md#multipleRestModePeriodDocumentsV2UsercollectionRestModePeriodGetWithHttpInfo) | **GET** /v2/usercollection/rest_mode_period | Multiple Rest Mode Period Documents
+*RestModePeriodRoutesApi* | [**singleRestModePeriodDocumentV2UsercollectionRestModePeriodDocumentIdGet**](docs/RestModePeriodRoutesApi.md#singleRestModePeriodDocumentV2UsercollectionRestModePeriodDocumentIdGet) | **GET** /v2/usercollection/rest_mode_period/{document_id} | Single Rest Mode Period Document
+*RestModePeriodRoutesApi* | [**singleRestModePeriodDocumentV2UsercollectionRestModePeriodDocumentIdGetWithHttpInfo**](docs/RestModePeriodRoutesApi.md#singleRestModePeriodDocumentV2UsercollectionRestModePeriodDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/rest_mode_period/{document_id} | Single Rest Mode Period Document
+*RingBatteryLevelRoutesApi* | [**multipleRingBatteryLevelDocumentsV2UsercollectionRingBatteryLevelGet**](docs/RingBatteryLevelRoutesApi.md#multipleRingBatteryLevelDocumentsV2UsercollectionRingBatteryLevelGet) | **GET** /v2/usercollection/ring_battery_level | Multiple Ring Battery Level Documents
+*RingBatteryLevelRoutesApi* | [**multipleRingBatteryLevelDocumentsV2UsercollectionRingBatteryLevelGetWithHttpInfo**](docs/RingBatteryLevelRoutesApi.md#multipleRingBatteryLevelDocumentsV2UsercollectionRingBatteryLevelGetWithHttpInfo) | **GET** /v2/usercollection/ring_battery_level | Multiple Ring Battery Level Documents
+*RingConfigurationRoutesApi* | [**multipleRingConfigurationDocumentsV2UsercollectionRingConfigurationGet**](docs/RingConfigurationRoutesApi.md#multipleRingConfigurationDocumentsV2UsercollectionRingConfigurationGet) | **GET** /v2/usercollection/ring_configuration | Multiple Ring Configuration Documents
+*RingConfigurationRoutesApi* | [**multipleRingConfigurationDocumentsV2UsercollectionRingConfigurationGetWithHttpInfo**](docs/RingConfigurationRoutesApi.md#multipleRingConfigurationDocumentsV2UsercollectionRingConfigurationGetWithHttpInfo) | **GET** /v2/usercollection/ring_configuration | Multiple Ring Configuration Documents
+*RingConfigurationRoutesApi* | [**singleRingConfigurationDocumentV2UsercollectionRingConfigurationDocumentIdGet**](docs/RingConfigurationRoutesApi.md#singleRingConfigurationDocumentV2UsercollectionRingConfigurationDocumentIdGet) | **GET** /v2/usercollection/ring_configuration/{document_id} | Single Ring Configuration Document
+*RingConfigurationRoutesApi* | [**singleRingConfigurationDocumentV2UsercollectionRingConfigurationDocumentIdGetWithHttpInfo**](docs/RingConfigurationRoutesApi.md#singleRingConfigurationDocumentV2UsercollectionRingConfigurationDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/ring_configuration/{document_id} | Single Ring Configuration Document
+*SandboxRoutesApi* | [**sandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGet**](docs/SandboxRoutesApi.md#sandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGet) | **GET** /v2/sandbox/usercollection/daily_activity | Sandbox - Multiple Daily Activity Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_activity | Sandbox - Multiple Daily Activity Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGet**](docs/SandboxRoutesApi.md#sandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGet) | **GET** /v2/sandbox/usercollection/daily_cardiovascular_age | Sandbox - Multiple Daily Cardiovascular Age Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_cardiovascular_age | Sandbox - Multiple Daily Cardiovascular Age Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGet**](docs/SandboxRoutesApi.md#sandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGet) | **GET** /v2/sandbox/usercollection/daily_readiness | Sandbox - Multiple Daily Readiness Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_readiness | Sandbox - Multiple Daily Readiness Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGet**](docs/SandboxRoutesApi.md#sandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGet) | **GET** /v2/sandbox/usercollection/daily_resilience | Sandbox - Multiple Daily Resilience Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_resilience | Sandbox - Multiple Daily Resilience Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGet**](docs/SandboxRoutesApi.md#sandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGet) | **GET** /v2/sandbox/usercollection/daily_sleep | Sandbox - Multiple Daily Sleep Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_sleep | Sandbox - Multiple Daily Sleep Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2Get**](docs/SandboxRoutesApi.md#sandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2Get) | **GET** /v2/sandbox/usercollection/daily_spo2 | Sandbox - Multiple Daily Spo2 Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_spo2 | Sandbox - Multiple Daily Spo2 Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGet**](docs/SandboxRoutesApi.md#sandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGet) | **GET** /v2/sandbox/usercollection/daily_stress | Sandbox - Multiple Daily Stress Documents
+*SandboxRoutesApi* | [**sandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_stress | Sandbox - Multiple Daily Stress Documents
+*SandboxRoutesApi* | [**sandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGet**](docs/SandboxRoutesApi.md#sandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGet) | **GET** /v2/sandbox/usercollection/enhanced_tag | Sandbox - Multiple Enhanced Tag Documents
+*SandboxRoutesApi* | [**sandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/enhanced_tag | Sandbox - Multiple Enhanced Tag Documents
+*SandboxRoutesApi* | [**sandboxMultipleHeartrateDocumentsV2SandboxUsercollectionHeartrateGet**](docs/SandboxRoutesApi.md#sandboxMultipleHeartrateDocumentsV2SandboxUsercollectionHeartrateGet) | **GET** /v2/sandbox/usercollection/heartrate | Sandbox - Multiple Heartrate Documents
+*SandboxRoutesApi* | [**sandboxMultipleHeartrateDocumentsV2SandboxUsercollectionHeartrateGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleHeartrateDocumentsV2SandboxUsercollectionHeartrateGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/heartrate | Sandbox - Multiple Heartrate Documents
+*SandboxRoutesApi* | [**sandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGet**](docs/SandboxRoutesApi.md#sandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGet) | **GET** /v2/sandbox/usercollection/rest_mode_period | Sandbox - Multiple Rest Mode Period Documents
+*SandboxRoutesApi* | [**sandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/rest_mode_period | Sandbox - Multiple Rest Mode Period Documents
+*SandboxRoutesApi* | [**sandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGet**](docs/SandboxRoutesApi.md#sandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGet) | **GET** /v2/sandbox/usercollection/ring_battery_level | Sandbox - Multiple Ring Battery Level Documents
+*SandboxRoutesApi* | [**sandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/ring_battery_level | Sandbox - Multiple Ring Battery Level Documents
+*SandboxRoutesApi* | [**sandboxMultipleRingConfigurationDocumentsV2SandboxUsercollectionRingConfigurationGet**](docs/SandboxRoutesApi.md#sandboxMultipleRingConfigurationDocumentsV2SandboxUsercollectionRingConfigurationGet) | **GET** /v2/sandbox/usercollection/ring_configuration | Sandbox - Multiple Ring Configuration Documents
+*SandboxRoutesApi* | [**sandboxMultipleRingConfigurationDocumentsV2SandboxUsercollectionRingConfigurationGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleRingConfigurationDocumentsV2SandboxUsercollectionRingConfigurationGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/ring_configuration | Sandbox - Multiple Ring Configuration Documents
+*SandboxRoutesApi* | [**sandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGet**](docs/SandboxRoutesApi.md#sandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGet) | **GET** /v2/sandbox/usercollection/session | Sandbox - Multiple Session Documents
+*SandboxRoutesApi* | [**sandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/session | Sandbox - Multiple Session Documents
+*SandboxRoutesApi* | [**sandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGet**](docs/SandboxRoutesApi.md#sandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGet) | **GET** /v2/sandbox/usercollection/sleep | Sandbox - Multiple Sleep Documents
+*SandboxRoutesApi* | [**sandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/sleep | Sandbox - Multiple Sleep Documents
+*SandboxRoutesApi* | [**sandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGet**](docs/SandboxRoutesApi.md#sandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGet) | **GET** /v2/sandbox/usercollection/sleep_time | Sandbox - Multiple Sleep Time Documents
+*SandboxRoutesApi* | [**sandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/sleep_time | Sandbox - Multiple Sleep Time Documents
+*SandboxRoutesApi* | [**sandboxMultipleTagDocumentsV2SandboxUsercollectionTagGet**](docs/SandboxRoutesApi.md#sandboxMultipleTagDocumentsV2SandboxUsercollectionTagGet) | **GET** /v2/sandbox/usercollection/tag | Sandbox - Multiple Tag Documents
+*SandboxRoutesApi* | [**sandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/tag | Sandbox - Multiple Tag Documents
+*SandboxRoutesApi* | [**sandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGet**](docs/SandboxRoutesApi.md#sandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGet) | **GET** /v2/sandbox/usercollection/vO2_max | Sandbox - Multiple Vo2 Max Documents
+*SandboxRoutesApi* | [**sandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/vO2_max | Sandbox - Multiple Vo2 Max Documents
+*SandboxRoutesApi* | [**sandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGet**](docs/SandboxRoutesApi.md#sandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGet) | **GET** /v2/sandbox/usercollection/workout | Sandbox - Multiple Workout Documents
+*SandboxRoutesApi* | [**sandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/workout | Sandbox - Multiple Workout Documents
+*SandboxRoutesApi* | [**sandboxSingleDailyActivityDocumentV2SandboxUsercollectionDailyActivityDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailyActivityDocumentV2SandboxUsercollectionDailyActivityDocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_activity/{document_id} | Sandbox - Single Daily Activity Document
+*SandboxRoutesApi* | [**sandboxSingleDailyActivityDocumentV2SandboxUsercollectionDailyActivityDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailyActivityDocumentV2SandboxUsercollectionDailyActivityDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_activity/{document_id} | Sandbox - Single Daily Activity Document
+*SandboxRoutesApi* | [**sandboxSingleDailyCardiovascularAgeDocumentV2SandboxUsercollectionDailyCardiovascularAgeDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailyCardiovascularAgeDocumentV2SandboxUsercollectionDailyCardiovascularAgeDocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_cardiovascular_age/{document_id} | Sandbox - Single Daily Cardiovascular Age Document
+*SandboxRoutesApi* | [**sandboxSingleDailyCardiovascularAgeDocumentV2SandboxUsercollectionDailyCardiovascularAgeDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailyCardiovascularAgeDocumentV2SandboxUsercollectionDailyCardiovascularAgeDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_cardiovascular_age/{document_id} | Sandbox - Single Daily Cardiovascular Age Document
+*SandboxRoutesApi* | [**sandboxSingleDailyReadinessDocumentV2SandboxUsercollectionDailyReadinessDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailyReadinessDocumentV2SandboxUsercollectionDailyReadinessDocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_readiness/{document_id} | Sandbox - Single Daily Readiness Document
+*SandboxRoutesApi* | [**sandboxSingleDailyReadinessDocumentV2SandboxUsercollectionDailyReadinessDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailyReadinessDocumentV2SandboxUsercollectionDailyReadinessDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_readiness/{document_id} | Sandbox - Single Daily Readiness Document
+*SandboxRoutesApi* | [**sandboxSingleDailyResilienceDocumentV2SandboxUsercollectionDailyResilienceDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailyResilienceDocumentV2SandboxUsercollectionDailyResilienceDocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_resilience/{document_id} | Sandbox - Single Daily Resilience Document
+*SandboxRoutesApi* | [**sandboxSingleDailyResilienceDocumentV2SandboxUsercollectionDailyResilienceDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailyResilienceDocumentV2SandboxUsercollectionDailyResilienceDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_resilience/{document_id} | Sandbox - Single Daily Resilience Document
+*SandboxRoutesApi* | [**sandboxSingleDailySleepDocumentV2SandboxUsercollectionDailySleepDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailySleepDocumentV2SandboxUsercollectionDailySleepDocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_sleep/{document_id} | Sandbox - Single Daily Sleep Document
+*SandboxRoutesApi* | [**sandboxSingleDailySleepDocumentV2SandboxUsercollectionDailySleepDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailySleepDocumentV2SandboxUsercollectionDailySleepDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_sleep/{document_id} | Sandbox - Single Daily Sleep Document
+*SandboxRoutesApi* | [**sandboxSingleDailySpo2DocumentV2SandboxUsercollectionDailySpo2DocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailySpo2DocumentV2SandboxUsercollectionDailySpo2DocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_spo2/{document_id} | Sandbox - Single Daily Spo2 Document
+*SandboxRoutesApi* | [**sandboxSingleDailySpo2DocumentV2SandboxUsercollectionDailySpo2DocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailySpo2DocumentV2SandboxUsercollectionDailySpo2DocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_spo2/{document_id} | Sandbox - Single Daily Spo2 Document
+*SandboxRoutesApi* | [**sandboxSingleDailyStressDocumentV2SandboxUsercollectionDailyStressDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleDailyStressDocumentV2SandboxUsercollectionDailyStressDocumentIdGet) | **GET** /v2/sandbox/usercollection/daily_stress/{document_id} | Sandbox - Single Daily Stress Document
+*SandboxRoutesApi* | [**sandboxSingleDailyStressDocumentV2SandboxUsercollectionDailyStressDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleDailyStressDocumentV2SandboxUsercollectionDailyStressDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/daily_stress/{document_id} | Sandbox - Single Daily Stress Document
+*SandboxRoutesApi* | [**sandboxSingleEnhancedTagDocumentV2SandboxUsercollectionEnhancedTagDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleEnhancedTagDocumentV2SandboxUsercollectionEnhancedTagDocumentIdGet) | **GET** /v2/sandbox/usercollection/enhanced_tag/{document_id} | Sandbox - Single Enhanced Tag Document
+*SandboxRoutesApi* | [**sandboxSingleEnhancedTagDocumentV2SandboxUsercollectionEnhancedTagDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleEnhancedTagDocumentV2SandboxUsercollectionEnhancedTagDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/enhanced_tag/{document_id} | Sandbox - Single Enhanced Tag Document
+*SandboxRoutesApi* | [**sandboxSingleRestModePeriodDocumentV2SandboxUsercollectionRestModePeriodDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleRestModePeriodDocumentV2SandboxUsercollectionRestModePeriodDocumentIdGet) | **GET** /v2/sandbox/usercollection/rest_mode_period/{document_id} | Sandbox - Single Rest Mode Period Document
+*SandboxRoutesApi* | [**sandboxSingleRestModePeriodDocumentV2SandboxUsercollectionRestModePeriodDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleRestModePeriodDocumentV2SandboxUsercollectionRestModePeriodDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/rest_mode_period/{document_id} | Sandbox - Single Rest Mode Period Document
+*SandboxRoutesApi* | [**sandboxSingleRingConfigurationDocumentV2SandboxUsercollectionRingConfigurationDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleRingConfigurationDocumentV2SandboxUsercollectionRingConfigurationDocumentIdGet) | **GET** /v2/sandbox/usercollection/ring_configuration/{document_id} | Sandbox - Single Ring Configuration Document
+*SandboxRoutesApi* | [**sandboxSingleRingConfigurationDocumentV2SandboxUsercollectionRingConfigurationDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleRingConfigurationDocumentV2SandboxUsercollectionRingConfigurationDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/ring_configuration/{document_id} | Sandbox - Single Ring Configuration Document
+*SandboxRoutesApi* | [**sandboxSingleSessionDocumentV2SandboxUsercollectionSessionDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleSessionDocumentV2SandboxUsercollectionSessionDocumentIdGet) | **GET** /v2/sandbox/usercollection/session/{document_id} | Sandbox - Single Session Document
+*SandboxRoutesApi* | [**sandboxSingleSessionDocumentV2SandboxUsercollectionSessionDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleSessionDocumentV2SandboxUsercollectionSessionDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/session/{document_id} | Sandbox - Single Session Document
+*SandboxRoutesApi* | [**sandboxSingleSleepDocumentV2SandboxUsercollectionSleepDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleSleepDocumentV2SandboxUsercollectionSleepDocumentIdGet) | **GET** /v2/sandbox/usercollection/sleep/{document_id} | Sandbox - Single Sleep Document
+*SandboxRoutesApi* | [**sandboxSingleSleepDocumentV2SandboxUsercollectionSleepDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleSleepDocumentV2SandboxUsercollectionSleepDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/sleep/{document_id} | Sandbox - Single Sleep Document
+*SandboxRoutesApi* | [**sandboxSingleSleepTimeDocumentV2SandboxUsercollectionSleepTimeDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleSleepTimeDocumentV2SandboxUsercollectionSleepTimeDocumentIdGet) | **GET** /v2/sandbox/usercollection/sleep_time/{document_id} | Sandbox - Single Sleep Time Document
+*SandboxRoutesApi* | [**sandboxSingleSleepTimeDocumentV2SandboxUsercollectionSleepTimeDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleSleepTimeDocumentV2SandboxUsercollectionSleepTimeDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/sleep_time/{document_id} | Sandbox - Single Sleep Time Document
+*SandboxRoutesApi* | [**sandboxSingleTagDocumentV2SandboxUsercollectionTagDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleTagDocumentV2SandboxUsercollectionTagDocumentIdGet) | **GET** /v2/sandbox/usercollection/tag/{document_id} | Sandbox - Single Tag Document
+*SandboxRoutesApi* | [**sandboxSingleTagDocumentV2SandboxUsercollectionTagDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleTagDocumentV2SandboxUsercollectionTagDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/tag/{document_id} | Sandbox - Single Tag Document
+*SandboxRoutesApi* | [**sandboxSingleVO2MaxDocumentV2SandboxUsercollectionVO2MaxDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleVO2MaxDocumentV2SandboxUsercollectionVO2MaxDocumentIdGet) | **GET** /v2/sandbox/usercollection/vO2_max/{document_id} | Sandbox - Single Vo2 Max Document
+*SandboxRoutesApi* | [**sandboxSingleVO2MaxDocumentV2SandboxUsercollectionVO2MaxDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleVO2MaxDocumentV2SandboxUsercollectionVO2MaxDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/vO2_max/{document_id} | Sandbox - Single Vo2 Max Document
+*SandboxRoutesApi* | [**sandboxSingleWorkoutDocumentV2SandboxUsercollectionWorkoutDocumentIdGet**](docs/SandboxRoutesApi.md#sandboxSingleWorkoutDocumentV2SandboxUsercollectionWorkoutDocumentIdGet) | **GET** /v2/sandbox/usercollection/workout/{document_id} | Sandbox - Single Workout Document
+*SandboxRoutesApi* | [**sandboxSingleWorkoutDocumentV2SandboxUsercollectionWorkoutDocumentIdGetWithHttpInfo**](docs/SandboxRoutesApi.md#sandboxSingleWorkoutDocumentV2SandboxUsercollectionWorkoutDocumentIdGetWithHttpInfo) | **GET** /v2/sandbox/usercollection/workout/{document_id} | Sandbox - Single Workout Document
+*SessionRoutesApi* | [**multipleSessionDocumentsV2UsercollectionSessionGet**](docs/SessionRoutesApi.md#multipleSessionDocumentsV2UsercollectionSessionGet) | **GET** /v2/usercollection/session | Multiple Session Documents
+*SessionRoutesApi* | [**multipleSessionDocumentsV2UsercollectionSessionGetWithHttpInfo**](docs/SessionRoutesApi.md#multipleSessionDocumentsV2UsercollectionSessionGetWithHttpInfo) | **GET** /v2/usercollection/session | Multiple Session Documents
+*SessionRoutesApi* | [**singleSessionDocumentV2UsercollectionSessionDocumentIdGet**](docs/SessionRoutesApi.md#singleSessionDocumentV2UsercollectionSessionDocumentIdGet) | **GET** /v2/usercollection/session/{document_id} | Single Session Document
+*SessionRoutesApi* | [**singleSessionDocumentV2UsercollectionSessionDocumentIdGetWithHttpInfo**](docs/SessionRoutesApi.md#singleSessionDocumentV2UsercollectionSessionDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/session/{document_id} | Single Session Document
+*SleepRoutesApi* | [**multipleSleepDocumentsV2UsercollectionSleepGet**](docs/SleepRoutesApi.md#multipleSleepDocumentsV2UsercollectionSleepGet) | **GET** /v2/usercollection/sleep | Multiple Sleep Documents
+*SleepRoutesApi* | [**multipleSleepDocumentsV2UsercollectionSleepGetWithHttpInfo**](docs/SleepRoutesApi.md#multipleSleepDocumentsV2UsercollectionSleepGetWithHttpInfo) | **GET** /v2/usercollection/sleep | Multiple Sleep Documents
+*SleepRoutesApi* | [**singleSleepDocumentV2UsercollectionSleepDocumentIdGet**](docs/SleepRoutesApi.md#singleSleepDocumentV2UsercollectionSleepDocumentIdGet) | **GET** /v2/usercollection/sleep/{document_id} | Single Sleep Document
+*SleepRoutesApi* | [**singleSleepDocumentV2UsercollectionSleepDocumentIdGetWithHttpInfo**](docs/SleepRoutesApi.md#singleSleepDocumentV2UsercollectionSleepDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/sleep/{document_id} | Single Sleep Document
+*SleepTimeRoutesApi* | [**multipleSleepTimeDocumentsV2UsercollectionSleepTimeGet**](docs/SleepTimeRoutesApi.md#multipleSleepTimeDocumentsV2UsercollectionSleepTimeGet) | **GET** /v2/usercollection/sleep_time | Multiple Sleep Time Documents
+*SleepTimeRoutesApi* | [**multipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo**](docs/SleepTimeRoutesApi.md#multipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo) | **GET** /v2/usercollection/sleep_time | Multiple Sleep Time Documents
+*SleepTimeRoutesApi* | [**singleSleepTimeDocumentV2UsercollectionSleepTimeDocumentIdGet**](docs/SleepTimeRoutesApi.md#singleSleepTimeDocumentV2UsercollectionSleepTimeDocumentIdGet) | **GET** /v2/usercollection/sleep_time/{document_id} | Single Sleep Time Document
+*SleepTimeRoutesApi* | [**singleSleepTimeDocumentV2UsercollectionSleepTimeDocumentIdGetWithHttpInfo**](docs/SleepTimeRoutesApi.md#singleSleepTimeDocumentV2UsercollectionSleepTimeDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/sleep_time/{document_id} | Single Sleep Time Document
+*TagRoutesApi* | [**multipleTagDocumentsV2UsercollectionTagGet**](docs/TagRoutesApi.md#multipleTagDocumentsV2UsercollectionTagGet) | **GET** /v2/usercollection/tag | Multiple Tag Documents
+*TagRoutesApi* | [**multipleTagDocumentsV2UsercollectionTagGetWithHttpInfo**](docs/TagRoutesApi.md#multipleTagDocumentsV2UsercollectionTagGetWithHttpInfo) | **GET** /v2/usercollection/tag | Multiple Tag Documents
+*TagRoutesApi* | [**singleTagDocumentV2UsercollectionTagDocumentIdGet**](docs/TagRoutesApi.md#singleTagDocumentV2UsercollectionTagDocumentIdGet) | **GET** /v2/usercollection/tag/{document_id} | Single Tag Document
+*TagRoutesApi* | [**singleTagDocumentV2UsercollectionTagDocumentIdGetWithHttpInfo**](docs/TagRoutesApi.md#singleTagDocumentV2UsercollectionTagDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/tag/{document_id} | Single Tag Document
+*Vo2MaxRoutesApi* | [**multipleVO2MaxDocumentsV2UsercollectionVO2MaxGet**](docs/Vo2MaxRoutesApi.md#multipleVO2MaxDocumentsV2UsercollectionVO2MaxGet) | **GET** /v2/usercollection/vO2_max | Multiple Vo2 Max Documents
+*Vo2MaxRoutesApi* | [**multipleVO2MaxDocumentsV2UsercollectionVO2MaxGetWithHttpInfo**](docs/Vo2MaxRoutesApi.md#multipleVO2MaxDocumentsV2UsercollectionVO2MaxGetWithHttpInfo) | **GET** /v2/usercollection/vO2_max | Multiple Vo2 Max Documents
+*Vo2MaxRoutesApi* | [**singleVO2MaxDocumentV2UsercollectionVO2MaxDocumentIdGet**](docs/Vo2MaxRoutesApi.md#singleVO2MaxDocumentV2UsercollectionVO2MaxDocumentIdGet) | **GET** /v2/usercollection/vO2_max/{document_id} | Single Vo2 Max Document
+*Vo2MaxRoutesApi* | [**singleVO2MaxDocumentV2UsercollectionVO2MaxDocumentIdGetWithHttpInfo**](docs/Vo2MaxRoutesApi.md#singleVO2MaxDocumentV2UsercollectionVO2MaxDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/vO2_max/{document_id} | Single Vo2 Max Document
+*WebhookSubscriptionRoutesApi* | [**createWebhookSubscriptionV2WebhookSubscriptionPost**](docs/WebhookSubscriptionRoutesApi.md#createWebhookSubscriptionV2WebhookSubscriptionPost) | **POST** /v2/webhook/subscription | Create Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**createWebhookSubscriptionV2WebhookSubscriptionPostWithHttpInfo**](docs/WebhookSubscriptionRoutesApi.md#createWebhookSubscriptionV2WebhookSubscriptionPostWithHttpInfo) | **POST** /v2/webhook/subscription | Create Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**deleteWebhookSubscriptionV2WebhookSubscriptionIdDelete**](docs/WebhookSubscriptionRoutesApi.md#deleteWebhookSubscriptionV2WebhookSubscriptionIdDelete) | **DELETE** /v2/webhook/subscription/{id} | Delete Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**deleteWebhookSubscriptionV2WebhookSubscriptionIdDeleteWithHttpInfo**](docs/WebhookSubscriptionRoutesApi.md#deleteWebhookSubscriptionV2WebhookSubscriptionIdDeleteWithHttpInfo) | **DELETE** /v2/webhook/subscription/{id} | Delete Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**getWebhookSubscriptionV2WebhookSubscriptionIdGet**](docs/WebhookSubscriptionRoutesApi.md#getWebhookSubscriptionV2WebhookSubscriptionIdGet) | **GET** /v2/webhook/subscription/{id} | Get Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**getWebhookSubscriptionV2WebhookSubscriptionIdGetWithHttpInfo**](docs/WebhookSubscriptionRoutesApi.md#getWebhookSubscriptionV2WebhookSubscriptionIdGetWithHttpInfo) | **GET** /v2/webhook/subscription/{id} | Get Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**listWebhookSubscriptionsV2WebhookSubscriptionGet**](docs/WebhookSubscriptionRoutesApi.md#listWebhookSubscriptionsV2WebhookSubscriptionGet) | **GET** /v2/webhook/subscription | List Webhook Subscriptions
+*WebhookSubscriptionRoutesApi* | [**listWebhookSubscriptionsV2WebhookSubscriptionGetWithHttpInfo**](docs/WebhookSubscriptionRoutesApi.md#listWebhookSubscriptionsV2WebhookSubscriptionGetWithHttpInfo) | **GET** /v2/webhook/subscription | List Webhook Subscriptions
+*WebhookSubscriptionRoutesApi* | [**renewWebhookSubscriptionV2WebhookSubscriptionRenewIdPut**](docs/WebhookSubscriptionRoutesApi.md#renewWebhookSubscriptionV2WebhookSubscriptionRenewIdPut) | **PUT** /v2/webhook/subscription/renew/{id} | Renew Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**renewWebhookSubscriptionV2WebhookSubscriptionRenewIdPutWithHttpInfo**](docs/WebhookSubscriptionRoutesApi.md#renewWebhookSubscriptionV2WebhookSubscriptionRenewIdPutWithHttpInfo) | **PUT** /v2/webhook/subscription/renew/{id} | Renew Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**updateWebhookSubscriptionV2WebhookSubscriptionIdPut**](docs/WebhookSubscriptionRoutesApi.md#updateWebhookSubscriptionV2WebhookSubscriptionIdPut) | **PUT** /v2/webhook/subscription/{id} | Update Webhook Subscription
+*WebhookSubscriptionRoutesApi* | [**updateWebhookSubscriptionV2WebhookSubscriptionIdPutWithHttpInfo**](docs/WebhookSubscriptionRoutesApi.md#updateWebhookSubscriptionV2WebhookSubscriptionIdPutWithHttpInfo) | **PUT** /v2/webhook/subscription/{id} | Update Webhook Subscription
+*WorkoutRoutesApi* | [**multipleWorkoutDocumentsV2UsercollectionWorkoutGet**](docs/WorkoutRoutesApi.md#multipleWorkoutDocumentsV2UsercollectionWorkoutGet) | **GET** /v2/usercollection/workout | Multiple Workout Documents
+*WorkoutRoutesApi* | [**multipleWorkoutDocumentsV2UsercollectionWorkoutGetWithHttpInfo**](docs/WorkoutRoutesApi.md#multipleWorkoutDocumentsV2UsercollectionWorkoutGetWithHttpInfo) | **GET** /v2/usercollection/workout | Multiple Workout Documents
+*WorkoutRoutesApi* | [**singleWorkoutDocumentV2UsercollectionWorkoutDocumentIdGet**](docs/WorkoutRoutesApi.md#singleWorkoutDocumentV2UsercollectionWorkoutDocumentIdGet) | **GET** /v2/usercollection/workout/{document_id} | Single Workout Document
+*WorkoutRoutesApi* | [**singleWorkoutDocumentV2UsercollectionWorkoutDocumentIdGetWithHttpInfo**](docs/WorkoutRoutesApi.md#singleWorkoutDocumentV2UsercollectionWorkoutDocumentIdGetWithHttpInfo) | **GET** /v2/usercollection/workout/{document_id} | Single Workout Document
+
+
+## Documentation for Models
+
+ - [CreateWebhookSubscriptionRequest](docs/CreateWebhookSubscriptionRequest.md)
+ - [DailyResilienceModel](docs/DailyResilienceModel.md)
+ - [EnhancedTagModel](docs/EnhancedTagModel.md)
+ - [ExtApiV2DataType](docs/ExtApiV2DataType.md)
+ - [HTTPValidationError](docs/HTTPValidationError.md)
+ - [LongTermResilienceLevel](docs/LongTermResilienceLevel.md)
+ - [MultiDocumentResponseDailyResilienceModel](docs/MultiDocumentResponseDailyResilienceModel.md)
+ - [MultiDocumentResponseEnhancedTagModel](docs/MultiDocumentResponseEnhancedTagModel.md)
+ - [MultiDocumentResponsePublicDailyActivity](docs/MultiDocumentResponsePublicDailyActivity.md)
+ - [MultiDocumentResponsePublicDailyCardiovascularAge](docs/MultiDocumentResponsePublicDailyCardiovascularAge.md)
+ - [MultiDocumentResponsePublicDailyReadiness](docs/MultiDocumentResponsePublicDailyReadiness.md)
+ - [MultiDocumentResponsePublicDailySleep](docs/MultiDocumentResponsePublicDailySleep.md)
+ - [MultiDocumentResponsePublicDailySpO2](docs/MultiDocumentResponsePublicDailySpO2.md)
+ - [MultiDocumentResponsePublicDailyStress](docs/MultiDocumentResponsePublicDailyStress.md)
+ - [MultiDocumentResponsePublicModifiedSleepModel](docs/MultiDocumentResponsePublicModifiedSleepModel.md)
+ - [MultiDocumentResponsePublicRestModePeriod](docs/MultiDocumentResponsePublicRestModePeriod.md)
+ - [MultiDocumentResponsePublicRingConfiguration](docs/MultiDocumentResponsePublicRingConfiguration.md)
+ - [MultiDocumentResponsePublicSession](docs/MultiDocumentResponsePublicSession.md)
+ - [MultiDocumentResponsePublicSleepTime](docs/MultiDocumentResponsePublicSleepTime.md)
+ - [MultiDocumentResponsePublicVO2Max](docs/MultiDocumentResponsePublicVO2Max.md)
+ - [MultiDocumentResponsePublicWorkout](docs/MultiDocumentResponsePublicWorkout.md)
+ - [MultiDocumentResponseTagModel](docs/MultiDocumentResponseTagModel.md)
+ - [PersonalInfoResponse](docs/PersonalInfoResponse.md)
+ - [PublicActivityContributors](docs/PublicActivityContributors.md)
+ - [PublicDailyActivity](docs/PublicDailyActivity.md)
+ - [PublicDailyCardiovascularAge](docs/PublicDailyCardiovascularAge.md)
+ - [PublicDailyReadiness](docs/PublicDailyReadiness.md)
+ - [PublicDailySleep](docs/PublicDailySleep.md)
+ - [PublicDailySpO2](docs/PublicDailySpO2.md)
+ - [PublicDailyStress](docs/PublicDailyStress.md)
+ - [PublicDailyStressSummary](docs/PublicDailyStressSummary.md)
+ - [PublicHeartRateRow](docs/PublicHeartRateRow.md)
+ - [PublicHeartRateSource](docs/PublicHeartRateSource.md)
+ - [PublicModifiedSleepModel](docs/PublicModifiedSleepModel.md)
+ - [PublicMomentMood](docs/PublicMomentMood.md)
+ - [PublicMomentType](docs/PublicMomentType.md)
+ - [PublicReadiness](docs/PublicReadiness.md)
+ - [PublicReadinessContributors](docs/PublicReadinessContributors.md)
+ - [PublicRestModeEpisode](docs/PublicRestModeEpisode.md)
+ - [PublicRestModePeriod](docs/PublicRestModePeriod.md)
+ - [PublicRingBatteryLevelRow](docs/PublicRingBatteryLevelRow.md)
+ - [PublicRingColor](docs/PublicRingColor.md)
+ - [PublicRingConfiguration](docs/PublicRingConfiguration.md)
+ - [PublicRingDesign](docs/PublicRingDesign.md)
+ - [PublicRingHardwareType](docs/PublicRingHardwareType.md)
+ - [PublicSample](docs/PublicSample.md)
+ - [PublicSession](docs/PublicSession.md)
+ - [PublicSleepAlgorithmVersion](docs/PublicSleepAlgorithmVersion.md)
+ - [PublicSleepAnalysisReason](docs/PublicSleepAnalysisReason.md)
+ - [PublicSleepContributors](docs/PublicSleepContributors.md)
+ - [PublicSleepTime](docs/PublicSleepTime.md)
+ - [PublicSleepTimeRecommendation](docs/PublicSleepTimeRecommendation.md)
+ - [PublicSleepTimeStatus](docs/PublicSleepTimeStatus.md)
+ - [PublicSleepTimeWindow](docs/PublicSleepTimeWindow.md)
+ - [PublicSleepType](docs/PublicSleepType.md)
+ - [PublicSpo2AggregatedValues](docs/PublicSpo2AggregatedValues.md)
+ - [PublicVO2Max](docs/PublicVO2Max.md)
+ - [PublicWorkout](docs/PublicWorkout.md)
+ - [PublicWorkoutIntensity](docs/PublicWorkoutIntensity.md)
+ - [PublicWorkoutSource](docs/PublicWorkoutSource.md)
+ - [ResilienceContributors](docs/ResilienceContributors.md)
+ - [ResponseMultipleHeartrateDocumentsV2UsercollectionHeartrateGet](docs/ResponseMultipleHeartrateDocumentsV2UsercollectionHeartrateGet.md)
+ - [ResponseMultipleRingBatteryLevelDocumentsV2UsercollectionRingBatteryLevelGet](docs/ResponseMultipleRingBatteryLevelDocumentsV2UsercollectionRingBatteryLevelGet.md)
+ - [ResponseSandboxMultipleHeartrateDocumentsV2SandboxUsercollectionHeartrateGet](docs/ResponseSandboxMultipleHeartrateDocumentsV2SandboxUsercollectionHeartrateGet.md)
+ - [ResponseSandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGet](docs/ResponseSandboxMultipleRingBatteryLevelDocumentsV2SandboxUsercollectionRingBatteryLevelGet.md)
+ - [TagModel](docs/TagModel.md)
+ - [TimeSeriesResponseDict](docs/TimeSeriesResponseDict.md)
+ - [TimeSeriesResponsePublicHeartRateRow](docs/TimeSeriesResponsePublicHeartRateRow.md)
+ - [TimeSeriesResponsePublicRingBatteryLevelRow](docs/TimeSeriesResponsePublicRingBatteryLevelRow.md)
+ - [UpdateWebhookSubscriptionRequest](docs/UpdateWebhookSubscriptionRequest.md)
+ - [ValidationError](docs/ValidationError.md)
+ - [ValidationErrorLocInner](docs/ValidationErrorLocInner.md)
+ - [WebhookOperation](docs/WebhookOperation.md)
+ - [WebhookSubscriptionModel](docs/WebhookSubscriptionModel.md)
+
+
+<a id="documentation-for-authorization"></a>
+## Documentation for Authorization
+
+
+Authentication schemes defined for the API:
+<a id="BearerAuth"></a>
+### BearerAuth
+
+
+- **Type**: HTTP Bearer Token authentication
+
+<a id="OAuth2"></a>
+### OAuth2
+
+
+- **Type**: OAuth
+- **Flow**: accessCode
+- **Authorization URL**: https://cloud.ouraring.com/oauth/authorize
+- **Scopes**: 
+  - email: Email address of the user
+  - personal: Personal information (gender, age, height, weight)
+  - daily: Daily summaries of sleep, activity and readiness
+  - heartrate: Time series heart rate for Gen 3 users
+  - workout: Summaries for auto-detected and user entered workouts
+  - tag: User entered tags
+  - session: Guided and unguided sessions in the Oura app
+  - spo2Daily: SpO2 Average recorded during sleep
+
+<a id="ClientIdAuth"></a>
+### ClientIdAuth
+
+
+- **Type**: API key
+- **API key parameter name**: x-client-id
+- **Location**: HTTP header
+
+<a id="ClientSecretAuth"></a>
+### ClientSecretAuth
+
+
+- **Type**: API key
+- **API key parameter name**: x-client-secret
+- **Location**: HTTP header
+
+
+## Recommendation
+
+It's recommended to create an instance of `ApiClient` per thread in a multithreaded environment to avoid any potential issues.
+However, the instances of the api clients created from the `ApiClient` are thread-safe and can be re-used.
+
+## Author
+
+
+

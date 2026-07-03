@@ -60,8 +60,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: just coverage
 
-  # Regenerates the Rust SDK client from the vendored spec and fails if the committed
-  # copy differs — catches hand-edits to the generated crate and spec/overlay drift.
+  # Regenerates EVERY generated SDK client (Rust via progenitor; TS/Python/Go/Java/C# via
+  # openapi-generator) from the vendored spec and fails if any committed copy differs —
+  # catches hand-edits to generated dirs, spec/overlay drift, and non-deterministic codegen.
+  # node + java (for openapi-generator's jar) are preinstalled on ubuntu-latest.
   gen-drift:
     name: generated-code drift check
     runs-on: ubuntu-latest
@@ -85,6 +87,17 @@ jobs:
           rustup toolchain install nightly --profile minimal --component rustfmt
           command -v cargo-progenitor >/dev/null || cargo install cargo-progenitor --locked
       - run: just gen-check
+
+  # The generated breadth clients must actually COMPILE (release gate: a client that
+  # doesn't build is drift CI didn't see). All five toolchains (node, python, go, java,
+  # dotnet) are preinstalled on ubuntu-latest; no network beyond package registries.
+  sdk-compile:
+    name: breadth-SDK compile check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - run: just sdk-check
 
   # Validates the dist release config (a broken dist-workspace.toml must fail PRs, not
   # the release tag), proves the publishable crates build from their PACKAGED form —

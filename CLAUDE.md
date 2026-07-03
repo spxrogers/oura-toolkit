@@ -24,8 +24,9 @@ API base: `https://api.ouraring.com/v2`
 
 ## NAMING (LOCKED)
 
-Availability verified against npm, crates.io, and PyPI. **Apply these names; do not "improve"
-them.** Rationale is included only where it prevents a well-meaning refactor.
+Availability verified against npm, crates.io, PyPI — and, for Java/C# (added 2026-07-03,
+owner-locked): Maven Central (zero "oura" artifacts) and NuGet (`OuraToolkit.*` free; the
+unrelated `Oura` package does not collide). **Apply these names; do not "improve" them.** Rationale is included only where it prevents a well-meaning refactor.
 
 | Layer | Name | Notes |
 |---|---|---|
@@ -36,6 +37,8 @@ them.** Rationale is included only where it prevents a well-meaning refactor.
 | Rust crates | `oura-toolkit-*` | `oura-toolkit-api`, `oura-toolkit-auth`, `oura-toolkit-cli` |
 | Python distribution | `oura-toolkit` | single dist; submodules below |
 | Python modules | `oura_toolkit.api`, `oura_toolkit.auth` | NOT separate PyPI packages |
+| Java (Maven Central) | `com.ouratoolkit:api`, `com.ouratoolkit:auth` | owner owns ouratoolkit.com; packages `com.ouratoolkit.api` etc. |
+| C# (NuGet) | `OuraToolkit.Api`, `OuraToolkit.Auth` | namespaces match the package ids |
 | Claude plugin | `oura-toolkit` | |
 
 **Per-ecosystem namespacing** (do NOT mirror the npm layout everywhere):
@@ -46,6 +49,11 @@ them.** Rationale is included only where it prevents a well-meaning refactor.
   crates.io anyway.
 - **Python** — single distribution `oura-toolkit` with submodules `oura_toolkit.api` /
   `oura_toolkit.auth`. No per-function micro-packages.
+- **Java** — group `com.ouratoolkit` (domain-verified: the owner bought ouratoolkit.com),
+  artifacts `api` / `auth` — the npm-scope model mapped onto Maven. One-time pre-publish
+  prerequisite: verify the com.ouratoolkit namespace with Central (DNS TXT record).
+- **C#** — `OuraToolkit.Api` / `OuraToolkit.Auth`, PascalCase dotted ids per .NET
+  convention; assembly namespaces match the package ids.
 
 **Binary ≠ crate name (the one Cargo gotcha):** the CLI crate is `oura-toolkit-cli` but installs a
 binary named `oura` (`[[bin]] name = "oura"`). `cargo install oura-toolkit-cli` → `oura` on PATH.
@@ -130,6 +138,11 @@ https://api.ouraring.com/v2/static/json/openapi-1.35.json
    the dict branch produces ugly union return types. **Strip the
    `MultiDocumentResponseDict` branch** so generated models stay clean.
 3. For the generated **CLIENT only**, narrow per-op security to **BearerAuth** (see auth).
+4. Every `start_date`/`end_date` query param is typed `anyOf:[date-time, date, null]`, which
+   generates unusable-to-awkward param types (progenitor: always-failing flatten structs,
+   PR #36; openapi-generator go: String/TimeTime union structs, #15). **Collapse to plain
+   `date`** — moved from the Rust-only down-convert into the SHARED overlay 2026-07-03 once
+   the Go client hit the same wart (Rust output stayed byte-identical).
 
 Overlay files live in `codegen/` (no justfile there — recipes are in the root justfile).
 
@@ -141,9 +154,19 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   far better than openapi-generator's generic Rust). This crate is `sdks/rust/oura-toolkit-api`.
 - `sdks/rust/oura-toolkit-api` **IS** the shipped Rust SDK. Dual-use: the CLI depends on it directly
   (dogfooding = free integration test). Do **NOT** regenerate a second Rust copy elsewhere.
-- **Breadth SDKs** (TypeScript, Python, Go) are generated with **openapi-generator** (or
-  evaluate Speakeasy/Fern — see auth note) into `sdks/<lang>/`. Pure data-plane: accept a
-  token / configured client, stay **auth-agnostic**.
+- **Breadth SDKs** (TypeScript, Python, Go, Java, C# — Java/C# added 2026-07-03) are
+  generated with **openapi-generator** into `sdks/<lang>/api` (Python: the
+  `oura_toolkit/api` subtree of the single dist). Pure data-plane: accept a token /
+  configured client, stay **auth-agnostic**. Pinned toolchain (#15): generator jar
+  **7.14.0** via `codegen/openapitools.json`, npm wrapper `@openapitools/
+  openapi-generator-cli@2.39.1`, per-language configs `codegen/<lang>.yaml`. Gotchas: the
+  wrapper does NOT honor config-file `globalProperties` — docs/test-stub suppression is the
+  CLI flag in the justfile (`oag_skip_docs`); the python generator's root metadata mis-names
+  the dist and doesn't build, so `sdks/python`'s pyproject.toml + namespace `__init__.py`
+  are HAND-WRITTEN (Rust-Cargo.toml precedent) and `just gen-py` copies only the generated
+  subtree + asserts the version matches the workspace. `just sdk-check` compile-checks all
+  five (own CI job); `just test-sandbox-sdks` runs live sandbox smokes (TS/Py/Go today).
+  Speakeasy/Fern remain an option for companion codegen later.
 - **DO NOT hand-write any transport/HTTP client in any language.** Generate it and depend
   on it.
 - Every language ships the **SAME shape**: a generated client + a hand-written auth
@@ -167,7 +190,8 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   `spec-overlay`) relabels `3.1.0`→`3.0.3`, rewrites the `anyOf:[X,{type:null}]` nullable
   idiom to `nullable:true`, and prunes content-less `4xx` responses (progenitor asserts one
   error type per op). The **shared overlay stays 3.1** so the breadth SDKs (openapi-generator,
-  3.1-native) keep full fidelity.
+  3.1-native) keep full fidelity. (The date-param collapse originally lived here too; it moved
+  to the shared overlay in #15 — see Known spec issues item 4.)
 - **progenitor formats with unstable rustfmt opts** (`wrap_comments`,
   `normalize_doc_attributes`) → needs **nightly rustfmt**, and those opts corrupted a doc
   comment into invalid Rust. `just gen-rust` runs progenitor through `codegen/rustfmt-shim.sh`
@@ -421,6 +445,10 @@ code is a bug of the same severity as the code change that orphaned it.
 - **One-time prerequisites before the first real release:** create `spxrogers/homebrew-tap`
   + a `HOMEBREW_TAP_TOKEN` secret with push access, and an `NPM_TOKEN` secret. Until then,
   tag pushes still build every installer artifact — only the publish jobs fail.
+- **Before the breadth SDKs publish (later; NOT needed for the v0.1.0 CLI tag):** claim the
+  npm `@oura-toolkit` scope, verify the `com.ouratoolkit` namespace on Maven Central (DNS
+  TXT on ouratoolkit.com), and register the NuGet + PyPI names. The generated clients ship
+  in-repo (compile-, drift- and smoke-checked) but unpublished until then.
 - **The `release-config` CI job** runs `just dist-check` (plan + generate-drift + the
   NPX-first assertion on the real npm artifact: name `oura-toolkit`, bin `oura`) and
   `just publish-check` (the packaged crate builds in an out-of-repo temp dir — the
@@ -499,9 +527,11 @@ oura-toolkit/
 │   ├── rust/
 │   │   ├── oura-toolkit-api/      # GENERATED (progenitor) = Rust SDK client. regen target; DO NOT hand-edit.
 │   │   └── oura-toolkit-auth/     # hand-written Rust auth companion (store, refresh, middleware, spec-read metadata)
-│   ├── typescript/                # generated client + auth companion (later)
-│   ├── python/
-│   └── go/
+│   ├── typescript/                # api/ GENERATED (@oura-toolkit/api); auth companion later
+│   ├── python/                    # oura_toolkit/api GENERATED; hand-written pyproject + ns __init__; oura_toolkit.auth later
+│   ├── go/                        # api/ GENERATED; hand-written go.mod (module …/sdks/go); auth later
+│   ├── java/                      # api/ GENERATED (com.ouratoolkit:api); auth later
+│   └── csharp/                    # api/ GENERATED (OuraToolkit.Api); auth later
 ├── cli/
 │   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, mcp; depends on oura-toolkit-api + oura-toolkit-auth
 ├── .claude-plugin/marketplace.json  # at the REPO ROOT — required by the marketplace schema (see PLUGIN)

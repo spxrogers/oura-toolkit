@@ -45,12 +45,14 @@ just test-sandbox   # opt-in tests against Oura's live sandbox (network, no cred
 
 ```sh
 just spec-fetch     # re-vendor the pinned Oura OpenAPI export (+ crate-local bundles)
-just gen            # regenerate ALL generated SDK clients
+just gen            # regenerate ALL generated SDK clients (Rust, TS, Python, Go, Java, C#)
 just gen-check      # CI's drift check: committed generated code matches the spec
+just sdk-check      # CI's compile check: every breadth client actually builds
+just test-sandbox-sdks  # opt-in live sandbox smokes for the breadth clients (network)
 ```
 
-Codegen touches **only** generated clients — never the hand-written
-`sdks/*/…-auth` companions.
+Codegen touches **only** generated clients — never the hand-written auth companions,
+`sdks/go/go.mod`, or `sdks/python`'s distribution metadata.
 
 ## Testing bar (the release gate)
 
@@ -81,9 +83,10 @@ crates.io. Details in [CLAUDE.md → DISTRIBUTION](CLAUDE.md).
 
 ```
 spec/                      vendored Oura OpenAPI spec (just spec-fetch)
-codegen/                   overlays + downconvert filters feeding the generators
+codegen/                   overlays, generator configs + sandbox smoke scripts
 sdks/rust/oura-toolkit-api   GENERATED Rust client — do not hand-edit
 sdks/rust/oura-toolkit-auth  hand-written auth companion (token store, refresh)
+sdks/{typescript,python,go,java,csharp}  GENERATED breadth clients (+ future companions)
 cli/oura-toolkit-cli         the app: binary `oura` (CLI + MCP server)
 plugins/oura-toolkit/        the Claude plugin (MCP entry + skills)
 docs/cli-contract.md         the scripting contract (exit codes, streams, formats)

@@ -25,6 +25,19 @@ progenitor_spec := build_dir / "openapi.progenitor.json"
 # Workspace version, derived from Cargo.toml [workspace.package].version (single source).
 version := `sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n1`
 
+# openapi-generator, doubly pinned: the npm wrapper by version here, the generator jar by
+# codegen/openapitools.json (7.14.0). Breadth-SDK codegen only; Rust stays on progenitor.
+oag := "npx -y @openapitools/openapi-generator-cli@2.39.1 --openapitools codegen/openapitools.json"
+# Skip per-model markdown docs + test stubs in generated output (hundreds of noise files);
+# the spec is the reference. NOTE: config-file globalProperties are NOT honored by the npm
+# wrapper -- this CLI flag is the working mechanism (verified against 7.14.0).
+oag_skip_docs := "--global-property=apiDocs=false,modelDocs=false,apiTests=false,modelTests=false"
+
+# Every generated client dir (drift-checked by `gen-check`; flagged linguist-generated).
+# The *-auth companions, sdks/go/go.mod, and sdks/python's dist metadata are hand-written
+# and deliberately NOT listed.
+generated_dirs := "sdks/rust/oura-toolkit-api sdks/typescript/api sdks/python/oura_toolkit/api sdks/go/api sdks/java/api sdks/csharp/api"
+
 # Release-gate line-coverage floor (percent) for the HAND-WRITTEN crates; the generated
 # client is excluded (exercised via consumers + the drift check). Lowering this is a
 # deliberate reviewed decision; raise it after test additions (ratchet). See CLAUDE.md
@@ -83,7 +96,7 @@ spec-overlay:
 
 # Regenerate ALL generated SDK clients from the overlaid spec.
 [group('codegen')]
-gen: gen-rust gen-ts gen-py gen-go
+gen: gen-rust gen-ts gen-py gen-go gen-java gen-csharp
 
 # Generate the Rust SDK client (progenitor) -> sdks/rust/oura-toolkit-api/src/lib.rs.
 # progenitor reads OpenAPI 3.0 only, so the overlaid 3.1 spec is down-converted first; its
@@ -99,26 +112,99 @@ gen-rust: spec-overlay
     cargo fmt -p oura-toolkit-api
     @echo "Generated sdks/rust/oura-toolkit-api/src/lib.rs"
 
-# Verify the committed generated client matches the current spec + overlays (CI drift check:
-# catches hand-edits to the generated crate and spec/codegen drift). Needs `just setup`.
+# Verify the committed generated clients match the current spec + overlays (CI drift check:
+# catches hand-edits to generated dirs and spec/codegen drift). Needs `just setup`.
+# `status --porcelain` (not `diff`) so brand-new untracked generated files count as drift too.
 [group('codegen')]
-gen-check: gen-rust
-    git diff --exit-code -- sdks/rust/oura-toolkit-api
+gen-check: gen
+    git diff --exit-code -- {{generated_dirs}}
+    @test -z "$(git status --porcelain -- {{generated_dirs}})" || { git status --porcelain -- {{generated_dirs}}; echo "gen-check: untracked generated files (see above) — commit them"; exit 1; }
 
-# Generate the TypeScript SDK client (openapi-generator) -> sdks/typescript/.
+# Generate the TypeScript SDK client (openapi-generator) -> sdks/typescript/api.
 [group('codegen')]
 gen-ts: spec-overlay
-    @echo "TODO(#15): generate TypeScript client from {{overlaid_spec}} -> sdks/typescript/"
+    rm -rf sdks/typescript/api
+    {{oag}} generate {{oag_skip_docs}} -c codegen/typescript.yaml -i {{overlaid_spec}} -o sdks/typescript/api --additional-properties=npmVersion={{version}}
+    rm -f sdks/typescript/api/git_push.sh
+    @echo "Generated sdks/typescript/api (@oura-toolkit/api {{version}})"
 
-# Generate the Python SDK client (openapi-generator) -> sdks/python/.
+# Generate the Python SDK client (openapi-generator) -> sdks/python/oura_toolkit/api.
+# Like gen-rust: generate into the build dir, copy ONLY the generated package subtree in.
+# The distribution metadata (sdks/python/pyproject.toml, name `oura-toolkit`) and the
+# oura_toolkit/__init__.py namespace root are HAND-WRITTEN — the single PyPI dist will also
+# house the hand-written oura_toolkit.auth companion, and the generator's own root metadata
+# mis-names the dist (`oura_toolkit.api`) and doesn't build.
 [group('codegen')]
 gen-py: spec-overlay
-    @echo "TODO(#15): generate Python client from {{overlaid_spec}} -> sdks/python/"
+    rm -rf {{build_dir}}/python-gen sdks/python/oura_toolkit/api
+    {{oag}} generate {{oag_skip_docs}} -c codegen/python.yaml -i {{overlaid_spec}} -o {{build_dir}}/python-gen --additional-properties=packageVersion={{version}}
+    mkdir -p sdks/python/oura_toolkit
+    cp -R {{build_dir}}/python-gen/oura_toolkit/api sdks/python/oura_toolkit/api
+    # Version sync: the hand-written dist metadata must match the workspace version, same
+    # single-source rule as the plugin manifests (`just plugin-check`).
+    @grep -q '^version = "{{version}}"' sdks/python/pyproject.toml || { echo "sdks/python/pyproject.toml version does not match workspace {{version}} — update it"; exit 1; }
+    @echo "Generated sdks/python/oura_toolkit/api (oura-toolkit {{version}})"
 
-# Generate the Go SDK client (openapi-generator) -> sdks/go/.
+# Generate the Go SDK client (openapi-generator) -> sdks/go/api. The module file
+# (sdks/go/go.mod, module github.com/spxrogers/oura-toolkit/sdks/go) is hand-written and
+# deliberately outside the wipe: withGoMod=false keeps the generator's hands off it.
 [group('codegen')]
 gen-go: spec-overlay
-    @echo "TODO(#15): generate Go client from {{overlaid_spec}} -> sdks/go/"
+    rm -rf sdks/go/api
+    {{oag}} generate {{oag_skip_docs}} -c codegen/go.yaml -i {{overlaid_spec}} -o sdks/go/api
+    rm -f sdks/go/api/git_push.sh sdks/go/api/.travis.yml
+    @echo "Generated sdks/go/api"
+
+# Generate the Java SDK client (openapi-generator) -> sdks/java/api (com.ouratoolkit:api).
+[group('codegen')]
+gen-java: spec-overlay
+    rm -rf sdks/java/api
+    {{oag}} generate {{oag_skip_docs}} -c codegen/java.yaml -i {{overlaid_spec}} -o sdks/java/api --additional-properties=artifactVersion={{version}}
+    rm -f sdks/java/api/git_push.sh sdks/java/api/.travis.yml sdks/java/api/gradlew sdks/java/api/gradlew.bat
+    rm -rf sdks/java/api/gradle
+    @echo "Generated sdks/java/api (com.ouratoolkit:api {{version}})"
+
+# Generate the C# SDK client (openapi-generator) -> sdks/csharp/api (OuraToolkit.Api).
+[group('codegen')]
+gen-csharp: spec-overlay
+    rm -rf sdks/csharp/api
+    {{oag}} generate {{oag_skip_docs}} -c codegen/csharp.yaml -i {{overlaid_spec}} -o sdks/csharp/api --additional-properties=packageVersion={{version}}
+    # The generator mints a FRESH solution GUID every run — the .sln is the one
+    # non-deterministic output file, and sdk-check builds the csproj directly. Drop it.
+    rm -f sdks/csharp/api/git_push.sh sdks/csharp/api/.travis.yml sdks/csharp/api/appveyor.yml sdks/csharp/api/OuraToolkit.Api.sln
+    @echo "Generated sdks/csharp/api (OuraToolkit.Api {{version}})"
+
+# Compile/import-check every committed breadth client (the generated code must actually
+# build — release gate: a check CI can't see doesn't exist; CI runs this as its own job).
+[group('codegen')]
+sdk-check: sdk-check-ts sdk-check-py sdk-check-go sdk-check-java sdk-check-csharp
+
+# In-tree npm build: node_modules/ + dist/ are covered by the generated .gitignore, and
+# --no-package-lock keeps the tree clean for gen-check.
+[group('codegen')]
+sdk-check-ts:
+    cd sdks/typescript/api && npm install --no-package-lock --no-fund --no-audit && npm run build
+
+[group('codegen')]
+sdk-check-py:
+    rm -rf {{build_dir}}/py-venv
+    python3 -m venv {{build_dir}}/py-venv
+    {{build_dir}}/py-venv/bin/pip install --quiet ./sdks/python
+    {{build_dir}}/py-venv/bin/python -c "from oura_toolkit.api import ApiClient, Configuration"
+
+[group('codegen')]
+sdk-check-go:
+    cd sdks/go && go build ./...
+
+[group('codegen')]
+sdk-check-java:
+    cd sdks/java/api && mvn --quiet -DskipTests compile
+
+# Requires the dotnet SDK (absent locally is a real failure, not a skip — CI has it; a
+# silent skip here would let a broken C# client ship).
+[group('codegen')]
+sdk-check-csharp:
+    dotnet build --nologo -v quiet sdks/csharp/api/src/OuraToolkit.Api
 
 # ---------------------------------------------------------------------------------------------
 # Build / test / quality
@@ -140,6 +226,15 @@ test:
 [group('build')]
 test-sandbox:
     cargo test -p oura-toolkit-cli --test sandbox -- --ignored
+
+# Breadth-SDK live smokes against the sandbox (network; opt-in, never CI): each generated
+# client makes a real request and parses the typed response. TS/Python/Go today; Java/C#
+# smokes arrive with their auth companions (#15). Builds via the sdk-check recipes first.
+[group('build')]
+test-sandbox-sdks: sdk-check-ts sdk-check-py sdk-check-go
+    node codegen/smoke/smoke.cjs
+    {{build_dir}}/py-venv/bin/python codegen/smoke/smoke.py
+    cd codegen/smoke/go-smoke && go run .
 
 # Format sources.
 [group('quality')]
