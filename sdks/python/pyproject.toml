@@ -28,3 +28,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["oura_toolkit*"]
+
+# PEP 561 marker files are NOT auto-included by setuptools; without this they are dropped
+# from the built wheel and downstream type-checkers ignore the package. Ship the marker
+# for both the generated client and the hand-written auth companion (tripwire-tested
+# against the INSTALLED package in tests/test_py_typed.py).
+[tool.setuptools.package-data]
+"oura_toolkit.api" = ["py.typed"]
+"oura_toolkit.auth" = ["py.typed"]
