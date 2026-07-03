@@ -1,0 +1,14 @@
+# openapi-generator config — Java client (com.ouratoolkit:api) -> sdks/java/api.
+# Coordinates locked 2026-07-03 (owner-verified: Maven Central has no "oura" artifacts; the
+# owner controls ouratoolkit.com — Central namespace verification of com.ouratoolkit is a
+# one-time pre-publish prerequisite). library=native: JDK HttpClient, no framework runtime.
+# artifactVersion is injected by `just gen-java` from the workspace version.
+generatorName: java
+library: native
+additionalProperties:
+  groupId: com.ouratoolkit
+  artifactId: api
+  invokerPackage: com.ouratoolkit.api
+  apiPackage: com.ouratoolkit.api.client
+  modelPackage: com.ouratoolkit.api.model
+  hideGenerationTimestamp: true

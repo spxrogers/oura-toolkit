@@ -1,0 +1,3 @@
+GENERATED — do not hand-edit the generated client.
+
+api/ is emitted by `just gen-java` (openapi-generator, java/native) from the overlaid Oura OpenAPI spec. Regenerate it; never edit it by hand. `just gen` never touches the hand-written auth companions (sdks/*/auth, sdks/rust/oura-toolkit-auth).

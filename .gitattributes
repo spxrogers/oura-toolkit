@@ -3,5 +3,10 @@
 # generated: the crate's Cargo.toml and GENERATED marker are hand-written and must stay reviewable.
 sdks/rust/oura-toolkit-api/src/** linguist-generated=true
 
-# Breadth-SDK generated client subdirs get marked in #15 (only the generated dir, NOT the
-# hand-written auth companion beside it).
+# Breadth-SDK generated client subdirs (#15) — only the generated dir, NOT the hand-written
+# auth companions beside them (sdks/*/auth), nor sdks/go/go.mod / sdks/python's dist metadata.
+sdks/typescript/api/** linguist-generated=true
+sdks/python/oura_toolkit/api/** linguist-generated=true
+sdks/go/api/** linguist-generated=true
+sdks/java/api/** linguist-generated=true
+sdks/csharp/api/** linguist-generated=true

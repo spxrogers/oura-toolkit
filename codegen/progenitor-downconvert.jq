@@ -45,26 +45,3 @@ def denull:
       end
     )
   )
-
-# The spec types every start_date/end_date query param `anyOf: [date-time, date]` (60 hits, all
-# in parameters — none in response models). progenitor renders that union as a struct with two
-# `#[serde(flatten)]` Option fields, but serde can only flatten maps — a set date serializes as a
-# plain string, so building the request ALWAYS fails ("builder error"): the generated param type
-# is unusable by construction. Collapse the union to a plain `date` string on the Rust path (Oura
-# accepts YYYY-MM-DD here; the CLI only ever sends dates). The breadth SDKs keep the full anyOf.
-| .paths |= map_values(
-    map_values(
-      if (type == "object") and has("parameters") then
-        .parameters |= map(
-          if ((.schema.anyOf? | type) == "array")
-             and ((.schema.anyOf | length) == 2)
-             and (.schema.anyOf | all((.type? == "string")
-                  and ((.format? == "date") or (.format? == "date-time"))))
-          then .schema |= (del(.anyOf) + {type: "string", format: "date"})
-          else .
-          end
-        )
-      else .
-      end
-    )
-  )

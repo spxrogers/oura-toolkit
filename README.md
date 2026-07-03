@@ -2,8 +2,8 @@
 
 Your [Oura Ring](https://ouraring.com) data, everywhere you work: a fast Rust CLI
 (`oura`), a local [MCP](https://modelcontextprotocol.io) server for AI assistants, a
-Claude plugin with wellness skills, and generated SDKs (Rust today; TypeScript, Python
-and Go planned) — all driven by Oura's own OpenAPI spec.
+Claude plugin with wellness skills, and generated SDK clients in six languages (Rust,
+TypeScript, Python, Go, Java and C#) — all driven by Oura's own OpenAPI spec.
 
 ```
 $ oura sleep
@@ -135,10 +135,23 @@ for details.
 
 ## SDKs
 
-`sdks/rust/oura-toolkit-api` is the generated Rust client (the CLI runs on it —
-dogfooded end to end) and `sdks/rust/oura-toolkit-auth` the token-store/refresh
-companion. TypeScript, Python and Go SDKs are planned under `sdks/<lang>/` with the same
-client + auth-companion shape.
+Every language gets the same shape under `sdks/<lang>/`: a data-plane client generated
+from Oura's OpenAPI spec (auth-agnostic — bring a Bearer token) plus a hand-written auth
+companion (token store + refresh). What exists today:
+
+| Language | Generated client | Auth companion | Package name (reserved) |
+|---|---|---|---|
+| Rust | `sdks/rust/oura-toolkit-api` (the CLI runs on it — dogfooded end to end) | `oura-toolkit-auth` ✅ | `oura-toolkit-api` / `oura-toolkit-auth` (crates.io) |
+| TypeScript | `sdks/typescript/api` | planned | `@oura-toolkit/api` (npm) |
+| Python | `sdks/python` (`oura_toolkit.api`) | planned (`oura_toolkit.auth`) | `oura-toolkit` (PyPI) |
+| Go | `sdks/go` | planned | module `github.com/spxrogers/oura-toolkit/sdks/go` |
+| Java | `sdks/java/api` | planned | `com.ouratoolkit:api` (Maven Central) |
+| C# | `sdks/csharp/api` | planned | `OuraToolkit.Api` (NuGet) |
+
+The breadth clients are compile-checked and drift-checked in CI, and smoke-tested against
+Oura's live sandbox (TypeScript, Python and Go today; Java/C# smokes arrive with their
+auth companions), but **not yet published** to their registries — consume them from
+source for now. Until each language's auth companion lands, supply your own access token.
 
 ## Developing
 

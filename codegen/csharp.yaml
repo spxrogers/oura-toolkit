@@ -1,0 +1,10 @@
+# openapi-generator config — C# client (OuraToolkit.Api) -> sdks/csharp/api.
+# NuGet id locked 2026-07-03 (owner-approved; verified available — the unrelated `Oura`
+# package does not collide). library=httpclient: System.Net.Http, no RestSharp dependency.
+# packageVersion is injected by `just gen-csharp` from the workspace version.
+generatorName: csharp
+library: httpclient
+additionalProperties:
+  packageName: OuraToolkit.Api
+  targetFramework: net8.0
+  nullableReferenceTypes: true

@@ -1,0 +1,9 @@
+# openapi-generator config — Go client -> sdks/go/api.
+# Module path github.com/spxrogers/oura-toolkit/sdks/go (CLAUDE.md → NAMING) lives in the
+# hand-written sdks/go/go.mod (withGoMod=false keeps the generator's hands off it); the
+# generated code is the `api` package under it.
+generatorName: go
+additionalProperties:
+  packageName: api
+  withGoMod: false
+  enumClassPrefix: true
