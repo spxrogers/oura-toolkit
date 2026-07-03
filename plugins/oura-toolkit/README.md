@@ -12,8 +12,9 @@ info) plus two skills — `/morning-checkin` and `/wellness-report`.
 ```
 
 The MCP server runs locally via `npx -y oura-toolkit@<version> mcp`: the server itself
-talks only to the Oura API, and your credentials never leave your machine. Tool results
-are then read by Claude like any other tool output — that's what powers the skills.
+talks only to the Oura API, and your credentials are only ever sent to Oura — never to
+Anthropic or any third party. Tool results are then read by Claude like any other tool
+output — that's what powers the skills.
 
 ## One-time authentication (bring your own Oura app)
 
