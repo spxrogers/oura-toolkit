@@ -340,11 +340,12 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 `plugins/oura-toolkit/README.md` are shipped surface. A doc claim that contradicts the
 code is a bug of the same severity as the code change that orphaned it.
 
-1. **Same-PR rule.** Any change to user-visible behavior — CLI surface (commands, flags,
-   help text, exit codes, output shape), auth flow, token-store location, MCP tools,
-   plugin, install/release paths, SDK status, or the dev workflow (`just` recipes) — MUST
-   update every doc claim it invalidates **in the same PR**. Doc sync is part of the
-   definition of done, never a follow-up task.
+1. **Same-PR rule.** Any change to a documented fact — user-visible behavior (CLI surface:
+   commands, flags, help text, exit codes, output shape; auth flow; token-store location;
+   MCP tools; plugin; install/release paths) or documented-but-non-behavioral facts (SDK
+   status, supported targets / MSRV, package & binary names, the dev workflow's `just`
+   recipes) — MUST update every doc claim it invalidates **in the same PR**. Doc sync is
+   part of the definition of done, never a follow-up task.
 2. **Review gate.** Every PR review (and every review-loop round) explicitly asks:
    *"which documented claim does this diff invalidate?"* — and verifies the touched docs
    against the code the way PR #44's accuracy lens did (commands, URLs, scopes, recipes,
@@ -352,13 +353,14 @@ code is a bug of the same severity as the code change that orphaned it.
 3. **Catch-up commits are a process failure.** A docs-only PR whose purpose is re-syncing
    docs with reality (PR #44 was the last permitted one) means an earlier PR merged in
    violation of rule 1. Never plan one; if one becomes necessary, treat it as an incident:
-   fix the docs AND name the PR that broke the rule.
+   fix the docs AND name the PR that broke the rule. (Typo fixes and wording improvements
+   that aren't drift catch-ups remain welcome — this rule targets only re-sync commits.)
 4. **Mechanize what's mechanizable** (TESTING & VERIFICATION rule 1 applies to docs too):
    doc claims that are enumerable — the README's command list, scope string, redirect URI,
-   store paths, recipe names, MCP tool names — should be pinned by tripwire tests (in the
-   mold of mcp.rs's skill tool-name tripwire) so drift fails CI instead of relying on
-   reviewer diligence (#45). Prose claims (tone, walkthrough accuracy) remain a review-gate
-   responsibility — rules 1–3.
+   store paths, recipe names, MCP tool names — MUST be pinned by tripwire tests (in the
+   mold of mcp.rs's skill tool-name tripwire; #45). An enumerable doc claim without one is
+   drift waiting to happen, and CI — not reviewer diligence — must catch it. Prose claims
+   (tone, walkthrough accuracy) remain a review-gate responsibility — rules 1–3.
 
 ---
 
