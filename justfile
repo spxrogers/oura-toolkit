@@ -185,6 +185,14 @@ sdk-check: sdk-check-ts sdk-check-py sdk-check-go sdk-check-java sdk-check-cshar
 sdk-check-ts:
     cd sdks/typescript/api && npm install --no-package-lock --no-fund --no-audit && npm run build
 
+# Hand-written TS auth companion (#15): build + the hermetic node:test suite (mock token
+# endpoint on 127.0.0.1, tempdir stores — no network, no real credentials). The version
+# grep mirrors gen-py's guard: the hand-written package.json must match the workspace.
+[group('codegen')]
+sdk-test-ts:
+    cd sdks/typescript/auth && npm install --no-package-lock --no-fund --no-audit && npm run build && npm test
+    @grep -q '"version": "{{version}}"' sdks/typescript/auth/package.json || { echo "sdks/typescript/auth/package.json version does not match workspace {{version}} — update it"; exit 1; }
+
 [group('codegen')]
 sdk-check-py:
     rm -rf {{build_dir}}/py-venv
