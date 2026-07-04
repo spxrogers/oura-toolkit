@@ -21,7 +21,7 @@ use chrono::NaiveDate;
 
 use oura_toolkit_auth::TokenManager;
 use oura_toolkit_health::engine::{self, AnalogReport, CapacityReport, WeekLoad};
-use oura_toolkit_health::{apple, calendar, toggl, DayMap, DayRecord, HealthStore, OuraDay};
+use oura_toolkit_health::{apple, calendar, toggl, DayMap, HealthStore, OuraDay};
 
 use crate::api::{parse_date, DateRange};
 use crate::commands::{fetch_activity, fetch_readiness, fetch_sleep, fetch_stress};
@@ -323,12 +323,4 @@ pub fn context(store: &HealthStore, range: DateRange, render: RenderOptions) -> 
     }
     // `--json` serializes the full DayMap (every field, not just the table's columns).
     render_result(&days, &table, render)
-}
-
-/// Serialize-only view of a stored day used by the MCP `get_day_context` tool result.
-#[derive(serde::Serialize)]
-pub struct DayContext<'a> {
-    pub day: NaiveDate,
-    #[serde(flatten)]
-    pub record: &'a DayRecord,
 }

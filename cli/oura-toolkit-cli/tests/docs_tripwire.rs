@@ -319,8 +319,9 @@ fn documented_just_recipes_all_exist() {
     );
 }
 
-/// Every `get_*` token in the README is a real MCP tool name, and the server still has
-/// exactly the eight the README's "eight curated, described tools" claim counts.
+/// Every `get_*`/`find_*` token in the README is a real MCP tool name (the local tools
+/// include the non-`get_` `find_analog_weeks`), and the server still has exactly the
+/// twelve the README's "twelve curated, described tools" claim counts.
 #[test]
 fn readme_mcp_tool_names_are_real() {
     let known: BTreeSet<&str> = oura_toolkit_cli::mcp::tool_names().collect();
@@ -334,7 +335,7 @@ fn readme_mcp_tool_names_are_real() {
     let mut checked = 0;
     for token in readme
         .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
-        .filter(|t| t.starts_with("get_"))
+        .filter(|t| t.starts_with("get_") || t.starts_with("find_"))
     {
         assert!(
             known.contains(token),

@@ -438,10 +438,11 @@ mod tests {
         for entry in std::fs::read_dir(&skills_dir).unwrap() {
             let skill = entry.unwrap().path().join("SKILL.md");
             let text = std::fs::read_to_string(&skill).unwrap();
-            // Every `get_…` token in a skill must be one of the server's tool names.
+            // Every `get_…`/`find_…` token in a skill must be one of the server's tool
+            // names (the local tools include the non-`get_` `find_analog_weeks`).
             for token in text
                 .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
-                .filter(|t| t.starts_with("get_"))
+                .filter(|t| t.starts_with("get_") || t.starts_with("find_"))
             {
                 assert!(
                     known.contains(&token),
