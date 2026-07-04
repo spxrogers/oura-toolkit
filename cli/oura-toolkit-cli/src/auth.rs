@@ -6,12 +6,20 @@
 //! `login` runs the Authorization Code flow against a fixed loopback `redirect_uri`, catches
 //! the code, and exchanges it via `oura-toolkit-auth`. The non-interactive token machinery
 //! (exchange/refresh/store) all lives in `oura-toolkit-auth`.
+//!
+//! Alongside the interactive flows live the non-interactive account commands (#18):
+//! `status` / `logout` / `refresh` / `token` — thin, scriptable wrappers over the same
+//! store and `TokenManager` (their contract is documented in docs/cli-contract.md → Auth
+//! commands).
 
 use anyhow::{anyhow, bail, Context, Result};
-use oura_toolkit_auth::{exchange_code, metadata, ClientCredentials, TokenStore, Tokens};
+use oura_toolkit_auth::{
+    exchange_code, metadata, AuthError, ClientCredentials, TokenManager, TokenStore, Tokens,
+};
 use tokio::net::TcpListener;
 
 use crate::loopback::{self, Request};
+use crate::output::{render_record, RenderOptions};
 
 /// How long `auth login` waits for the browser callback before giving up.
 const CALLBACK_TIMEOUT_SECS: u64 = 300;
@@ -84,6 +92,274 @@ pub async fn login(port: u16) -> Result<()> {
     let listener = bind(port).await?;
     let tokens = run_authorization(&listener, port, &credentials).await?;
     persist(&store, &tokens)
+}
+
+// --- Non-interactive account commands (#18): status / logout / refresh / token --------------
+//
+// Thin wrappers over `oura-toolkit-auth`, gh-style (`gh auth status|logout|refresh|token` is
+// the benchmark). Each returns a rendered string and `main` owns the write: query results
+// (`status`, `token`) go to stdout via `contract::emit`; mutation confirmations (`logout`,
+// `refresh`) are prose and go to stderr via `contract::inform` (contract → Streams). None of
+// them may ever print the client secret, and only `token` may print token values — that is
+// its deliberate, documented output.
+
+/// The `auth status` outcome: the rendered report (always emitted to stdout — it is the
+/// command's result, including the partial state a user needs to see to fix their setup)
+/// plus the typed failure when unauthenticated, which `main` routes through the contract
+/// classifier for the documented exit 4 + remediation hint.
+pub struct StatusReport {
+    pub rendered: String,
+    pub failure: Option<AuthError>,
+}
+
+/// Serde model behind `auth status --json`. Field names are part of the scripting surface.
+/// Deliberately carries NO secret material: the client secret and the token values stay in
+/// the store records.
+#[derive(serde::Serialize)]
+struct StatusModel {
+    store: String,
+    authenticated: bool,
+    credentials: CredentialsStatus,
+    tokens: TokensStatus,
+}
+
+#[derive(serde::Serialize)]
+struct CredentialsStatus {
+    present: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct TokensStatus {
+    present: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<i64>,
+    /// Literal wall-clock expiry (`now >= expires_at`). The top-level `authenticated`
+    /// additionally treats a token inside the manager's proactive-refresh window
+    /// (`REFRESH_SKEW_SECS`) as needing a refresh — so `expired: false` with
+    /// `authenticated: false` means "expires within the refresh window and there are no
+    /// credentials to refresh with".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expired: Option<bool>,
+}
+
+/// `oura auth status` — report what is stored (never the secret), scopes, and expiry.
+pub fn status(store: &TokenStore, render: RenderOptions) -> Result<StatusReport> {
+    status_at(store, render, chrono::Utc::now().timestamp())
+}
+
+/// Testable core of [`status`]: `now` is injected so expiry text and the
+/// authenticated decision are deterministic under test.
+fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<StatusReport> {
+    let credentials = store.load_credentials()?;
+    let tokens = store.load_tokens()?;
+
+    // `expired` is the literal wall-clock state (what the report and --json show). The
+    // authenticated decision instead uses the manager's proactive-refresh window
+    // (REFRESH_SKEW_SECS): a data command refreshes inside it, so a token that cannot be
+    // refreshed is already dead for scripting purposes even slightly before expires_at.
+    let expired = tokens.as_ref().map(|t| now >= t.expires_at);
+    let would_refresh = tokens
+        .as_ref()
+        .map(|t| now + oura_toolkit_auth::REFRESH_SKEW_SECS >= t.expires_at);
+    // Authenticated = a data command would get a token: tokens exist AND are either
+    // outside the refresh window or refreshable (a confidential-client call needing the
+    // credentials record).
+    let authenticated = matches!(
+        (would_refresh, &credentials),
+        (Some(false), _) | (Some(true), Some(_))
+    );
+    // The remediation the classifier will hint: no tokens → login (or setup when the
+    // credentials are missing too); expired-and-unrefreshable → setup.
+    let failure = match (&tokens, authenticated, &credentials) {
+        (_, true, _) => None,
+        (None, false, Some(_)) => Some(AuthError::NotAuthenticated),
+        _ => Some(AuthError::MissingClientCredentials),
+    };
+
+    let mut fields: Vec<(&str, String)> = vec![
+        ("Store", store.dir().display().to_string()),
+        (
+            "Credentials",
+            match &credentials {
+                Some(c) => format!("present (client_id: {})", c.client_id),
+                None => "none".into(),
+            },
+        ),
+        (
+            "Tokens",
+            if tokens.is_some() {
+                "present".into()
+            } else {
+                "none".into()
+            },
+        ),
+    ];
+    if let Some(t) = &tokens {
+        fields.push((
+            "Scope",
+            t.scope.clone().unwrap_or_else(|| "(not recorded)".into()),
+        ));
+        fields.push((
+            "Access token",
+            expiry_phrase(t.expires_at, now, credentials.is_some()),
+        ));
+    }
+    fields.push((
+        "Authenticated",
+        if authenticated { "yes" } else { "no" }.into(),
+    ));
+
+    let model = StatusModel {
+        store: store.dir().display().to_string(),
+        authenticated,
+        credentials: CredentialsStatus {
+            present: credentials.is_some(),
+            client_id: credentials.map(|c| c.client_id),
+        },
+        tokens: TokensStatus {
+            present: tokens.is_some(),
+            scope: tokens.as_ref().and_then(|t| t.scope.clone()),
+            expires_at: tokens.as_ref().map(|t| t.expires_at),
+            expired,
+        },
+    };
+    Ok(StatusReport {
+        rendered: render_record(&model, &fields, render)?,
+        failure,
+    })
+}
+
+/// `oura auth logout` — delete stored tokens; `--all` also removes the client credentials
+/// (the only sanctioned way to remove a stored secret). Idempotent: nothing stored is
+/// success, not an error.
+pub fn logout(store: &TokenStore, all: bool) -> Result<String> {
+    // Same coordination as `persist`: don't delete out from under a peer's (CLI or MCP
+    // server) reload → refresh → persist critical section (#22). The lock only closes the
+    // intra-section window — the other half of the guarantee lives in `TokenManager`,
+    // which treats the deleted record as authoritative on its NEXT refresh (reporting
+    // unauthenticated instead of re-persisting from stale memory; see client.rs).
+    let _lock = match store.try_lock_exclusive()? {
+        Some(lock) => lock,
+        None => {
+            eprintln!("waiting for another oura process to finish refreshing tokens…");
+            store.lock_exclusive()?
+        }
+    };
+
+    let removed_tokens = store.delete_tokens()?;
+    let removed_credentials = all && store.delete_credentials()?;
+
+    let mut out = String::new();
+    if removed_tokens {
+        out.push_str(&format!(
+            "✓ Logged out — removed {}\n",
+            store.tokens_path().display()
+        ));
+    } else {
+        out.push_str("No tokens stored — already logged out.\n");
+    }
+    if all {
+        if removed_credentials {
+            out.push_str(&format!(
+                "✓ Removed client credentials — {}\n",
+                store.credentials_path().display()
+            ));
+        } else {
+            out.push_str("No client credentials stored.\n");
+        }
+    } else if store.credentials_path().exists() {
+        out.push_str("Client credentials kept — remove them too with `oura auth logout --all`.\n");
+    }
+    Ok(out)
+}
+
+/// `oura auth refresh` — force a token refresh (the debugging tool for rotation issues).
+/// The rotated refresh token is persisted by the manager's locked critical section (#22).
+pub async fn refresh(manager: &TokenManager, store: &TokenStore) -> Result<String> {
+    // No `upgrade_unauthenticated` here: the manager checks credentials BEFORE tokens, so
+    // an empty store already surfaces MissingClientCredentials (the setup hint) on its own.
+    manager.force_refresh().await.context("refreshing tokens")?;
+    let tokens = store
+        .load_tokens()?
+        .context("tokens missing from the store after a successful refresh")?;
+    Ok(format!(
+        "✓ Tokens refreshed and persisted to {} — access token {}\n",
+        store.tokens_path().display(),
+        expiry_phrase(tokens.expires_at, chrono::Utc::now().timestamp(), true),
+    ))
+}
+
+/// `oura auth token` — print a valid access token (refreshing if needed) and NOTHING else
+/// to stdout: the scripting workhorse (`curl -H "Authorization: Bearer $(oura auth token)"`).
+pub async fn token(manager: &TokenManager, store: &TokenStore) -> Result<String> {
+    let token = manager
+        .access_token()
+        .await
+        .map_err(|e| upgrade_unauthenticated(store, e))
+        .context("obtaining an access token")?;
+    // Fail closed on a token carrying control bytes: real OAuth tokens are opaque
+    // URL-safe strings, and this is the one output path that deliberately bypasses
+    // `output::sanitize` — printing escapes/newlines verbatim would let a hostile token
+    // endpoint drive the terminal or split `$(oura auth token)` into multiple words.
+    if token.chars().any(char::is_control) {
+        bail!("the stored access token contains control characters; refusing to print it");
+    }
+    Ok(format!("{token}\n"))
+}
+
+/// On a completely empty store, `NotAuthenticated` would hint `oura auth login` — which
+/// then fails asking for `auth setup`. Point at the real first step instead.
+fn upgrade_unauthenticated(store: &TokenStore, err: AuthError) -> AuthError {
+    match err {
+        AuthError::NotAuthenticated if matches!(store.load_credentials(), Ok(None)) => {
+            AuthError::MissingClientCredentials
+        }
+        other => other,
+    }
+}
+
+/// `expires in 53m 20s` / `expired 5m 0s ago (…)` — the human half of the expiry claims;
+/// the machine half is `expires_at`/`expired` in the `--json` model.
+fn expiry_phrase(expires_at: i64, now: i64, refreshable: bool) -> String {
+    if now < expires_at {
+        let base = format!("expires in {}", human_duration(expires_at - now));
+        if refreshable {
+            base
+        } else {
+            format!("{base} (no client credentials — cannot refresh)")
+        }
+    } else if refreshable {
+        format!(
+            "expired {} ago (refreshes automatically on next use)",
+            human_duration(now - expires_at)
+        )
+    } else {
+        format!(
+            "expired {} ago (no client credentials — cannot refresh)",
+            human_duration(now - expires_at)
+        )
+    }
+}
+
+/// Non-negative duration as its two most significant units: `2d 5h`, `1h 3m`, `53m 20s`, `7s`.
+fn human_duration(secs: i64) -> String {
+    let secs = secs.max(0);
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    let (hours, rem) = (rem / 3_600, rem % 3_600);
+    let (mins, secs) = (rem / 60, rem % 60);
+    if days > 0 {
+        format!("{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{hours}h {mins}m")
+    } else if mins > 0 {
+        format!("{mins}m {secs}s")
+    } else {
+        format!("{secs}s")
+    }
 }
 
 fn redirect_uri(port: u16) -> String {
@@ -420,6 +696,578 @@ mod tests {
         assert_eq!(require_non_empty("  cid-123 \n"), Some("cid-123".into()));
         assert_eq!(require_non_empty("   \n"), None);
         assert_eq!(require_non_empty(""), None);
+    }
+
+    // --- status / logout / refresh / token (#18) ---------------------------------------
+
+    use crate::output::{Format, Style};
+
+    fn plain() -> RenderOptions {
+        RenderOptions {
+            format: Format::Plain,
+            style: Style::new(false),
+        }
+    }
+
+    fn seeded_store(
+        dir: &tempfile::TempDir,
+        credentials: bool,
+        tokens: Option<Tokens>,
+    ) -> TokenStore {
+        let store = TokenStore::with_dir(dir.path());
+        if credentials {
+            store
+                .save_credentials(&ClientCredentials {
+                    client_id: "cid-123".into(),
+                    client_secret: "SECRET-CS-789".into(),
+                })
+                .unwrap();
+        }
+        if let Some(t) = tokens {
+            store.save_tokens(&t).unwrap();
+        }
+        store
+    }
+
+    fn tokens_expiring_at(expires_at: i64) -> Tokens {
+        Tokens {
+            access_token: "SECRET-AT-123".into(),
+            refresh_token: "SECRET-RT-456".into(),
+            expires_at,
+            scope: Some("personal daily".into()),
+            token_type: Some("Bearer".into()),
+        }
+    }
+
+    #[test]
+    fn human_duration_uses_the_two_most_significant_units() {
+        assert_eq!(human_duration(0), "0s");
+        assert_eq!(human_duration(59), "59s");
+        assert_eq!(human_duration(60), "1m 0s");
+        assert_eq!(human_duration(3_599), "59m 59s");
+        assert_eq!(human_duration(3_600), "1h 0m");
+        assert_eq!(human_duration(86_400 + 3_600), "1d 1h");
+        assert_eq!(
+            human_duration(-5),
+            "0s",
+            "negative clamps, never underflows"
+        );
+    }
+
+    #[test]
+    fn status_on_an_empty_store_reports_none_and_fails_toward_setup() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, false, None);
+        let report = status_at(&store, plain(), 1_000).unwrap();
+        assert_eq!(
+            report.rendered,
+            format!(
+                "Store\t{}\nCredentials\tnone\nTokens\tnone\nAuthenticated\tno\n",
+                dir.path().display()
+            )
+        );
+        assert!(
+            matches!(report.failure, Some(AuthError::MissingClientCredentials)),
+            "empty store must route to the `auth setup` hint"
+        );
+    }
+
+    #[test]
+    fn status_with_credentials_only_shows_the_client_id_and_fails_toward_login() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, None);
+        let report = status_at(&store, plain(), 1_000).unwrap();
+        assert!(
+            report
+                .rendered
+                .contains("Credentials\tpresent (client_id: cid-123)"),
+            "client_id is deliberately shown: {}",
+            report.rendered
+        );
+        assert!(
+            matches!(report.failure, Some(AuthError::NotAuthenticated)),
+            "credentials-without-tokens must route to the `auth login` hint"
+        );
+    }
+
+    #[test]
+    fn status_authenticated_reports_scope_and_humanized_expiry() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(now + 3_600)));
+        let report = status_at(&store, plain(), now).unwrap();
+        assert!(report.failure.is_none(), "valid tokens = authenticated");
+        assert_eq!(
+            report.rendered,
+            format!(
+                "Store\t{}\nCredentials\tpresent (client_id: cid-123)\nTokens\tpresent\n\
+                 Scope\tpersonal daily\nAccess token\texpires in 1h 0m\nAuthenticated\tyes\n",
+                dir.path().display()
+            )
+        );
+    }
+
+    #[test]
+    fn status_never_renders_secret_material_in_any_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(2_000)));
+        for format in [Format::Plain, Format::Table, Format::Json] {
+            let opts = RenderOptions {
+                format,
+                style: Style::new(false),
+            };
+            let rendered = status_at(&store, opts, 1_000).unwrap().rendered;
+            for secret in ["SECRET-CS-789", "SECRET-AT-123", "SECRET-RT-456"] {
+                assert!(
+                    !rendered.contains(secret),
+                    "{format:?} status output leaked {secret}: {rendered}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn status_with_expired_but_refreshable_tokens_is_authenticated() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(now - 125)));
+        let report = status_at(&store, plain(), now).unwrap();
+        assert!(
+            report.failure.is_none(),
+            "refreshable = a data command works"
+        );
+        assert!(
+            report
+                .rendered
+                .contains("expired 2m 5s ago (refreshes automatically on next use)"),
+            "{}",
+            report.rendered
+        );
+        assert!(report.rendered.contains("Authenticated\tyes"));
+    }
+
+    #[test]
+    fn status_with_expired_unrefreshable_tokens_fails_toward_setup() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let store = seeded_store(&dir, false, Some(tokens_expiring_at(now - 60)));
+        let report = status_at(&store, plain(), now).unwrap();
+        assert!(
+            matches!(report.failure, Some(AuthError::MissingClientCredentials)),
+            "expired + no credentials cannot recover without setup"
+        );
+        assert!(
+            report
+                .rendered
+                .contains("expired 1m 0s ago (no client credentials — cannot refresh)"),
+            "{}",
+            report.rendered
+        );
+        assert!(report.rendered.contains("Authenticated\tno"));
+    }
+
+    #[test]
+    fn status_with_unexpired_tokens_but_no_credentials_is_usable_until_expiry() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let store = seeded_store(&dir, false, Some(tokens_expiring_at(now + 600)));
+        let report = status_at(&store, plain(), now).unwrap();
+        assert!(
+            report.failure.is_none(),
+            "a valid token works until expiry even without credentials"
+        );
+        assert!(
+            report
+                .rendered
+                .contains("expires in 10m 0s (no client credentials — cannot refresh)"),
+            "the unrefreshable caveat must be visible up front: {}",
+            report.rendered
+        );
+    }
+
+    #[test]
+    fn status_inside_the_refresh_window_without_credentials_is_unauthenticated() {
+        // The skew alignment (#62 review): a data command proactively refreshes within
+        // REFRESH_SKEW_SECS of expiry, so an unrefreshable token there already fails auth —
+        // status must predict that, not report the literal not-yet-expired state as OK.
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let inside_window = now + oura_toolkit_auth::REFRESH_SKEW_SECS / 2;
+
+        let store = seeded_store(&dir, false, Some(tokens_expiring_at(inside_window)));
+        let report = status_at(&store, plain(), now).unwrap();
+        assert!(
+            matches!(report.failure, Some(AuthError::MissingClientCredentials)),
+            "inside the refresh window with no credentials = a data command fails auth"
+        );
+        assert!(
+            report.rendered.contains("Authenticated\tno"),
+            "{}",
+            report.rendered
+        );
+
+        // Same expiry WITH credentials: the manager would just refresh — authenticated.
+        let store2 = seeded_store(&dir, true, Some(tokens_expiring_at(inside_window)));
+        let report2 = status_at(&store2, plain(), now).unwrap();
+        assert!(
+            report2.failure.is_none(),
+            "refreshable inside the window is fine"
+        );
+    }
+
+    #[test]
+    fn status_at_the_exact_expiry_instant_reports_expired() {
+        // Boundary pin: `now >= expires_at` and the phrase's `now < expires_at` are exact
+        // complements — a drift to strict `>` / `<=` flips this case.
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let store = seeded_store(&dir, false, Some(tokens_expiring_at(now)));
+        let opts = RenderOptions {
+            format: Format::Json,
+            style: Style::new(false),
+        };
+        let report = status_at(&store, opts, now).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&report.rendered).unwrap();
+        assert_eq!(v["tokens"]["expired"], true, "now == expires_at is expired");
+        assert_eq!(v["authenticated"], false);
+
+        let text = status_at(&store, plain(), now).unwrap();
+        assert!(
+            text.rendered
+                .contains("expired 0s ago (no client credentials — cannot refresh)"),
+            "{}",
+            text.rendered
+        );
+    }
+
+    #[test]
+    fn status_sanitizes_a_hostile_scope_in_every_text_format() {
+        // The scope string comes from the token endpoint (server-controlled): it must not
+        // inject terminal escapes or forge lines/fields in the rendered report (CLAUDE.md
+        // TESTING rule 5 — attack test per sanitization invariant).
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let mut tokens = tokens_expiring_at(now + 3_600);
+        tokens.scope = Some("personal\u{1b}[2Jdaily\ttag\nforged\tline".into());
+        let store = seeded_store(&dir, true, Some(tokens));
+
+        for format in [Format::Plain, Format::Table] {
+            let opts = RenderOptions {
+                format,
+                style: Style::new(false),
+            };
+            let rendered = status_at(&store, opts, now).unwrap().rendered;
+            assert!(
+                !rendered.contains('\u{1b}'),
+                "{format:?}: escape byte must be stripped: {rendered:?}"
+            );
+            assert_eq!(
+                rendered.lines().count(),
+                6,
+                "{format:?}: an embedded newline must not forge a report line: {rendered:?}"
+            );
+        }
+        // Plain format specifically: exactly one tab per line (the label separator) — an
+        // embedded tab in the scope must not forge an extra field.
+        let rendered = status_at(&store, plain(), now).unwrap().rendered;
+        for line in rendered.lines() {
+            assert_eq!(
+                line.matches('\t').count(),
+                1,
+                "forged field in plain line: {line:?}"
+            );
+        }
+        // JSON is serde-escaped: it must round-trip the raw value, not corrupt output.
+        let opts = RenderOptions {
+            format: Format::Json,
+            style: Style::new(false),
+        };
+        let rendered = status_at(&store, opts, now).unwrap().rendered;
+        let v: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(
+            v["tokens"]["scope"],
+            "personal\u{1b}[2Jdaily\ttag\nforged\tline"
+        );
+    }
+
+    #[test]
+    fn status_json_is_the_serde_model_without_secret_material() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(now + 3_600)));
+        let opts = RenderOptions {
+            format: Format::Json,
+            style: Style::new(false),
+        };
+        let rendered = status_at(&store, opts, now).unwrap().rendered;
+        let v: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(v["authenticated"], true);
+        assert_eq!(v["credentials"]["present"], true);
+        assert_eq!(v["credentials"]["client_id"], "cid-123");
+        assert_eq!(v["tokens"]["present"], true);
+        assert_eq!(v["tokens"]["scope"], "personal daily");
+        assert_eq!(v["tokens"]["expires_at"], now + 3_600);
+        assert_eq!(v["tokens"]["expired"], false);
+        assert_eq!(v["store"], dir.path().display().to_string());
+    }
+
+    #[test]
+    fn logout_removes_tokens_keeps_credentials_and_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(2_000)));
+
+        let out = logout(&store, false).unwrap();
+        assert!(out.contains("✓ Logged out — removed"), "{out}");
+        assert!(
+            out.contains(
+                "Client credentials kept — remove them too with `oura auth logout --all`."
+            ),
+            "{out}"
+        );
+        assert!(!store.tokens_path().exists(), "tokens.json must be deleted");
+        assert!(
+            store.load_credentials().unwrap().is_some(),
+            "plain logout must keep the registered app credentials"
+        );
+
+        let again = logout(&store, false).unwrap();
+        assert!(
+            again.contains("No tokens stored — already logged out."),
+            "idempotent: {again}"
+        );
+    }
+
+    #[test]
+    fn logout_all_removes_the_client_credentials_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(2_000)));
+
+        let out = logout(&store, true).unwrap();
+        assert!(out.contains("✓ Removed client credentials —"), "{out}");
+        assert!(!store.tokens_path().exists());
+        assert!(
+            !store.credentials_path().exists(),
+            "--all is the sanctioned way to remove the stored secret"
+        );
+        assert!(!out.contains("--all`"), "no upsell once everything is gone");
+    }
+
+    #[test]
+    fn logout_all_with_credentials_but_no_tokens_reports_both_accurately() {
+        // The mixed state: nothing to log out of, but a secret to remove.
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, None);
+        let out = logout(&store, true).unwrap();
+        assert!(
+            out.contains("No tokens stored — already logged out."),
+            "{out}"
+        );
+        assert!(out.contains("✓ Removed client credentials —"), "{out}");
+        assert!(!store.credentials_path().exists());
+    }
+
+    #[test]
+    fn logout_waits_for_the_store_lock_before_deleting() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, false, Some(tokens_expiring_at(2_000)));
+
+        // Simulate a concurrent refresh holding the store lock (#22).
+        let guard = store.lock_exclusive().unwrap();
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let store2 = store.clone();
+        let deleter = std::thread::spawn(move || {
+            logout(&store2, false).unwrap();
+            done_tx.send(()).unwrap();
+        });
+
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "logout must not delete while a peer holds the store lock"
+        );
+        assert!(
+            store.tokens_path().exists(),
+            "nothing deleted under the lock"
+        );
+
+        drop(guard);
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("logout must proceed once the lock is released");
+        deleter.join().unwrap();
+        assert!(!store.tokens_path().exists());
+    }
+
+    #[tokio::test]
+    async fn refresh_persists_the_rotation_and_reports_the_new_expiry() {
+        use wiremock::matchers::{body_string_contains, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("refresh_token=r1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "SECRET-NEW-ACCESS",
+                "refresh_token": "SECRET-NEW-REFRESH",
+                "expires_in": 3600
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let credentials = ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: "sec".into(),
+        };
+        store.save_credentials(&credentials).unwrap();
+        let stale = Tokens {
+            access_token: "stale".into(),
+            refresh_token: "r1".into(),
+            expires_at: 0,
+            scope: None,
+            token_type: None,
+        };
+        store.save_tokens(&stale).unwrap();
+        let mut manager = TokenManager::from_parts(store.clone(), Some(credentials), Some(stale));
+        manager.override_token_url(server.uri());
+
+        let out = refresh(&manager, &store).await.unwrap();
+        assert!(out.contains("✓ Tokens refreshed and persisted to"), "{out}");
+        assert!(out.contains("expires in"), "{out}");
+        // Only `auth token` may print token material — the refresh confirmation is the one
+        // success output produced while fresh tokens are in scope, so pin the negative.
+        assert!(
+            !out.contains("SECRET-NEW-ACCESS") && !out.contains("SECRET-NEW-REFRESH"),
+            "refresh confirmation must not echo token material: {out}"
+        );
+        assert_eq!(
+            store.load_tokens().unwrap().unwrap().refresh_token,
+            "SECRET-NEW-REFRESH",
+            "the rotated refresh token MUST be persisted (Oura invalidates r1)"
+        );
+    }
+
+    #[tokio::test]
+    async fn token_prints_exactly_the_access_token_and_a_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, None);
+        let fresh = Tokens {
+            access_token: "at-fresh".into(),
+            refresh_token: "rt".into(),
+            expires_at: 4_102_444_800,
+            scope: None,
+            token_type: None,
+        };
+        store.save_tokens(&fresh).unwrap();
+        let manager = TokenManager::from_parts(
+            store.clone(),
+            store.load_credentials().unwrap(),
+            Some(fresh),
+        );
+        assert_eq!(token(&manager, &store).await.unwrap(), "at-fresh\n");
+    }
+
+    #[tokio::test]
+    async fn token_refreshes_an_expired_token_before_printing() {
+        use wiremock::matchers::{body_string_contains, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("refresh_token=r1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "refreshed-access",
+                "refresh_token": "r2",
+                "expires_in": 3600
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let credentials = ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: "sec".into(),
+        };
+        store.save_credentials(&credentials).unwrap();
+        let stale = Tokens {
+            access_token: "stale".into(),
+            refresh_token: "r1".into(),
+            expires_at: 0,
+            scope: None,
+            token_type: None,
+        };
+        store.save_tokens(&stale).unwrap();
+        let mut manager = TokenManager::from_parts(store.clone(), Some(credentials), Some(stale));
+        manager.override_token_url(server.uri());
+
+        assert_eq!(token(&manager, &store).await.unwrap(), "refreshed-access\n");
+        assert_eq!(store.load_tokens().unwrap().unwrap().refresh_token, "r2");
+    }
+
+    #[tokio::test]
+    async fn token_refuses_to_print_a_token_containing_control_characters() {
+        // Attack test for the fail-closed check: `auth token` is the one output that
+        // bypasses `output::sanitize`, so a hostile token endpoint must not be able to
+        // smuggle terminal escapes or word-splitting newlines through it.
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, None);
+        let hostile = Tokens {
+            access_token: "evil\u{1b}[2J\ntoken".into(),
+            refresh_token: "rt".into(),
+            expires_at: 4_102_444_800,
+            scope: None,
+            token_type: None,
+        };
+        store.save_tokens(&hostile).unwrap();
+        let manager = TokenManager::from_parts(
+            store.clone(),
+            store.load_credentials().unwrap(),
+            Some(hostile),
+        );
+        let err = token(&manager, &store).await.unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("control characters"), "{msg}");
+        assert!(
+            !msg.contains('\u{1b}'),
+            "the error itself must not echo the hostile bytes: {msg:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn token_upgrades_not_authenticated_on_an_empty_store() {
+        // Empty store: NotAuthenticated would hint `auth login`, which itself fails asking
+        // for setup — the commands must point at the real first step instead.
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, false, None);
+        let manager = TokenManager::from_parts(store.clone(), None, None);
+
+        let err = token(&manager, &store).await.unwrap_err();
+        assert!(
+            matches!(
+                err.downcast_ref::<AuthError>(),
+                Some(AuthError::MissingClientCredentials)
+            ),
+            "{err:?}"
+        );
+
+        // With credentials stored, the plain NotAuthenticated (→ login hint) is correct.
+        let store2 = seeded_store(&dir, true, None);
+        let manager2 =
+            TokenManager::from_parts(store2.clone(), store2.load_credentials().unwrap(), None);
+        let err2 = token(&manager2, &store2).await.unwrap_err();
+        assert!(
+            matches!(
+                err2.downcast_ref::<AuthError>(),
+                Some(AuthError::NotAuthenticated)
+            ),
+            "{err2:?}"
+        );
     }
 
     #[tokio::test]

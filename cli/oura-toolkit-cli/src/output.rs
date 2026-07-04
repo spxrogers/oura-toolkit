@@ -380,6 +380,55 @@ mod tests {
     }
 
     #[test]
+    fn record_values_are_sanitized_against_escape_and_forgery_bytes() {
+        // render_record is the OTHER text-rendering path (personal-info, auth status) and
+        // carries server-controlled values (scope, profile fields) — the sanitize call is
+        // a security invariant, not cosmetics, so it gets its own attack test (this is the
+        // test that fails if the `sanitize(value)` line is dropped).
+        let fields = [("Scope", "evil\x1b[2Jdaily\ttag\nforged".to_string())];
+        let model = serde_json::json!({});
+
+        let table = render_record(
+            &model,
+            &fields,
+            RenderOptions {
+                format: Format::Table,
+                style: Style::new(true),
+            },
+        )
+        .unwrap();
+        // sanitize neutralizes the ESC BYTE (replaced with a space); the leftover "[2J"
+        // text is inert without it. Only our own label-dim SGR pair may carry ESC.
+        assert_eq!(
+            table.matches('\x1b').count(),
+            2,
+            "only our own label-dim SGR pair may appear, never content escapes: {table:?}"
+        );
+        assert_eq!(
+            table.lines().count(),
+            1,
+            "embedded newline must not forge a record line: {table:?}"
+        );
+
+        let plain = render_record(
+            &model,
+            &fields,
+            RenderOptions {
+                format: Format::Plain,
+                style: Style::new(false),
+            },
+        )
+        .unwrap();
+        assert_eq!(plain.lines().count(), 1, "forged line: {plain:?}");
+        assert_eq!(
+            plain.matches('\t').count(),
+            1,
+            "only the label separator tab may appear: {plain:?}"
+        );
+        assert!(!plain.contains('\x1b'), "escape byte survived: {plain:?}");
+    }
+
+    #[test]
     fn render_result_dispatches_json_to_the_data_model() {
         #[derive(serde::Serialize)]
         struct Day {

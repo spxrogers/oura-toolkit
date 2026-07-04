@@ -130,6 +130,15 @@ pub fn report(err: anyhow::Error) -> ExitCode {
     ExitCode::from(failure.code)
 }
 
+/// Write human-facing prose (action confirmations, notices) to **stderr**, per the
+/// contract's stream discipline: stdout carries results only, and a mutation like
+/// `auth logout`/`auth refresh` has no result — its confirmation is prose (cf. `gh auth
+/// logout`). Best-effort like [`report`]: a closed stderr must never panic.
+pub fn inform(msg: &str) {
+    use std::io::Write as _;
+    let _ = write!(std::io::stderr(), "{msg}");
+}
+
 /// Write a command's rendered result to stdout — the ONLY stdout write path for data
 /// commands, because `print!` panics on a closed pipe: Rust ignores SIGPIPE, so
 /// `oura heartrate | head -1` would otherwise die with exit 101 and a backtrace. A

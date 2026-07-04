@@ -181,6 +181,20 @@ impl TokenStore {
         Ok(())
     }
 
+    /// Delete the token record (logout). Idempotent: `Ok(true)` if a record existed,
+    /// `Ok(false)` if there was nothing to delete. Callers coordinating with concurrent
+    /// refreshers (the CLI's `auth logout`) should hold [`Self::lock_exclusive`] so the
+    /// deletion can't interleave with a peer's reload → refresh → persist section.
+    pub fn delete_tokens(&self) -> Result<bool, AuthError> {
+        remove_if_exists(&self.tokens_path())
+    }
+
+    /// Delete the client-credentials record (`auth logout --all`). Idempotent like
+    /// [`Self::delete_tokens`].
+    pub fn delete_credentials(&self) -> Result<bool, AuthError> {
+        remove_if_exists(&self.credentials_path())
+    }
+
     /// Take a **blocking** exclusive lock on the store; hold the returned guard across a
     /// reload → refresh → persist critical section (see `TokenManager`).
     ///
@@ -262,6 +276,15 @@ fn config_dir_from(env: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, Auth
         .or_else(|| usable("HOME").map(|home| home.join(".config").join(APP_DIR_NAME)));
 
     dir.ok_or(AuthError::NoConfigDir)
+}
+
+/// Remove a record file, mapping "already gone" to `Ok(false)` so deletion is idempotent.
+fn remove_if_exists(path: &Path) -> Result<bool, AuthError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Open (creating if needed) with owner-only perms where supported.
@@ -493,6 +516,31 @@ mod tests {
                 "Windows users must not be told about Unix env vars: {err}"
             );
         }
+    }
+
+    #[test]
+    fn delete_removes_exactly_the_named_record_and_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_credentials(&sample_credentials()).unwrap();
+        store.save_tokens(&sample_tokens()).unwrap();
+
+        // Deleting tokens must not touch the credentials record (plain `auth logout`
+        // keeps the registered app usable for the next `auth login`).
+        assert!(store.delete_tokens().unwrap(), "a record existed");
+        assert!(!store.tokens_path().exists(), "tokens.json must be gone");
+        assert_eq!(
+            store.load_credentials().unwrap().unwrap(),
+            sample_credentials(),
+            "credentials must survive a token-only delete"
+        );
+
+        // Idempotent: a second delete reports nothing-to-do instead of erroring.
+        assert!(!store.delete_tokens().unwrap());
+
+        assert!(store.delete_credentials().unwrap());
+        assert!(!store.credentials_path().exists());
+        assert!(!store.delete_credentials().unwrap());
     }
 
     #[test]

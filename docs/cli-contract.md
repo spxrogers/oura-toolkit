@@ -38,7 +38,7 @@ fi
   head -1`) is **success** (exit 0, nothing on stderr): the consumer got everything it
   wanted. Never a panic/backtrace.
 
-## Output formats (data commands)
+## Output formats (data commands and `auth status`)
 
 - **TTY default:** human-readable aligned table.
 - **Piped default:** stable tab-separated lines, no header — safe for `cut`/`awk`.
@@ -55,6 +55,31 @@ fi
 - Daily endpoints send the dates as-is. Time-series endpoints (heartrate) expand the range
   to local `00:00:00`–`23:59:59` and convert those instants to UTC on the wire.
 - An empty result for a date range is **success** (exit 0) with empty output, not an error.
+
+## Auth commands
+
+`oura auth setup` and `oura auth login` are interactive; the account commands
+`status` / `logout` / `refresh` / `token` are non-interactive and scriptable:
+
+- **`oura auth status`** — the state report (store path, `client_id` — never the client
+  secret — scopes, access-token expiry) is the command's **result** and goes to stdout;
+  `--json` emits a machine-readable model instead. Exit `0` when a data command would
+  get a token (tokens valid beyond the proactive-refresh window, or refreshable), exit
+  `4` when one would fail auth — the report is still printed first, and the stderr hint
+  names the fix (`setup` vs `login`).
+- **`oura auth logout`** — deletes stored tokens; `--all` also deletes the client
+  credentials (the sanctioned way to remove the stored secret). Idempotent: nothing
+  stored is success (exit `0`), not an error. As a mutation it has no result: stdout
+  stays empty and the confirmation is prose on stderr. A concurrently running process
+  (e.g. `oura mcp`) keeps its in-memory access token until expiry, but treats the
+  deleted record as authoritative — it cannot refresh or re-persist after logout.
+- **`oura auth refresh`** — forces a token refresh and persists the rotated refresh
+  token. Like `logout`, the confirmation goes to stderr and stdout stays empty.
+  Auth-shaped failures exit `4` with the usual hints.
+- **`oura auth token`** — prints a valid access token (refreshing first if needed) to
+  stdout: the token, one trailing newline, **nothing else**, so
+  `curl -H "Authorization: Bearer $(oura auth token)" …` composes cleanly. When
+  unauthenticated: exit `4`, stdout stays empty.
 
 ## Error style
 
