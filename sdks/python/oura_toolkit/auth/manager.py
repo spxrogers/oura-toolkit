@@ -245,6 +245,14 @@ class TokenManager:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response 'access_token' was not a string"
             )
+        # Hostile-but-2xx guard family (#58, mirrors the Rust crate guard in
+        # oauth.rs post_token): a 200 whose payload would install a blank or
+        # already-expired Bearer must fail typed BEFORE persisting — persisting would
+        # also burn the still-valid rotated refresh token.
+        if not access_token:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response 'access_token' was empty"
+            )
         try:
             expires_in = int(payload["expires_in"])
         except KeyError as e:
@@ -255,6 +263,12 @@ class TokenManager:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response 'expires_in' was not numeric"
             ) from e
+        # Second half of the hostile-2xx guard family (#58): a zero/negative lifetime
+        # is an already-expired Bearer — reject it, keep the store untouched.
+        if expires_in <= 0:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response 'expires_in' was not positive"
+            )
         rotated = payload.get("refresh_token")
         return Tokens(
             access_token=access_token,
