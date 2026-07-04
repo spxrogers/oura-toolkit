@@ -78,8 +78,10 @@ short version reviewers will hold you to:
 
 ## Releases (maintainers)
 
-Tag-driven, never from a laptop: bump the workspace version in the root `Cargo.toml`,
-tag `vX.Y.Z`, push. CI builds every installer and publishes npm + Homebrew.
+Tag-driven, never from a laptop: run `just set-version X.Y.Z` (the single writer — it
+bumps the root `Cargo.toml` source plus every hand-written manifest that carries the
+version, and refreshes `Cargo.lock`), commit, tag `vX.Y.Z`, push. CI builds every
+installer and publishes npm + Homebrew. `just version-check` (the single drift guard),
 `just dist-check`, `just publish-check` and `just plugin-check` guard the release
 config on every PR; `just release` is a local smoke build and `just publish` covers
 crates.io. Details in [CLAUDE.md → DISTRIBUTION](CLAUDE.md).

@@ -164,7 +164,7 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   CLI flag in the justfile (`oag_skip_docs`); the python generator's root metadata mis-names
   the dist and doesn't build, so `sdks/python`'s pyproject.toml + namespace `__init__.py`
   are HAND-WRITTEN (Rust-Cargo.toml precedent) and `just gen-py` copies only the generated
-  subtree + asserts the version matches the workspace. The **C#** generator emits a single
+  subtree (its version sync is guarded by `just version-check`, #59). The **C#** generator emits a single
   `netstandard2.0` (Newtonsoft-based) target and REJECTS `net10.0` outright, so `just
   gen-csharp` post-patches the csproj to multi-target `netstandard2.0;net8.0;net10.0` with a
   pinned `<LangVersion>13.0</LangVersion>` and strips the generator's bogus `System.Web`
@@ -440,13 +440,21 @@ code is a bug of the same severity as the code change that orphaned it.
 
 - **cargo-dist** ("dist", pinned **0.32.0** in `dist-workspace.toml` — landed 2026-07-02,
   #11) emits shell + powershell + npm + homebrew installers for the CLI across 5 targets.
-- **Releases are TAG-DRIVEN, not laptop-driven:** bump the workspace version in the root
-  `Cargo.toml` (the single version source — the justfile derives `version` from it, dist
-  versions every installer from it, and mismatched tags fail at plan time) → tag `vX.Y.Z`
-  → push. `.github/workflows/release.yml` (dist-generated, committed, drift-checked by
-  `dist generate --check` inside `just dist-check`) builds all artifacts and runs the
-  npm + homebrew publish jobs. `just release` is a LOCAL smoke build only; `just publish`
-  covers only crates.io (dependency order: api → auth → cli).
+- **Releases are TAG-DRIVEN, not laptop-driven:** run `just set-version X.Y.Z` (#59 —
+  the SINGLE WRITER: `codegen/version.sh` bumps the root `Cargo.toml` source (incl. the
+  two internal-crate `[workspace.dependencies]` pins) plus every hand-written manifest
+  carrying the literal — TS/Python/Java/C# companion manifests, plugin.json, .mcp.json's
+  npx pin — self-verifying each rewrite; the recipe then refreshes Cargo.lock; never
+  hand-edit those versions) → commit → tag `vX.Y.Z` → push. The justfile derives
+  `version` from Cargo.toml, dist versions every installer from it, and mismatched tags
+  fail at plan time. `just version-check` is the SINGLE drift guard (same script, `check`
+  mode; replaced the per-file grep-guards that sprawled across gen-py/sdk-test-*/
+  plugin-check) and it also round-trips the WRITER against a temp copy of the manifests,
+  so a broken rewriter fails the `release-config` CI job on the PR that broke it. `.github/workflows/release.yml`
+  (dist-generated, committed, drift-checked by `dist generate --check` inside
+  `just dist-check`) builds all artifacts and runs the npm + homebrew publish jobs.
+  `just release` is a LOCAL smoke build only; `just publish` covers only crates.io
+  (dependency order: api → auth → cli).
 - **One-time prerequisites before the first real release:** create `spxrogers/homebrew-tap`
   + a `HOMEBREW_TAP_TOKEN` secret with push access, and an `NPM_TOKEN` secret. Until then,
   tag pushes still build every installer artifact — only the publish jobs fail.
@@ -482,10 +490,12 @@ code is a bug of the same severity as the code change that orphaned it.
   version), `.mcp.json` (server `oura` → `npx -y oura-toolkit@<version> mcp`), README, and
   `skills/` (`morning-checkin`, `wellness-report` — auto-discovered; both handle the
   auth-required tool error by pointing at `oura auth login`).
-- **Version pins are mechanically guarded** (`just plugin-check`, run by the
-  `release-config` CI job): plugin.json's `version` and .mcp.json's npx pin must equal the
-  workspace version, and both manifests must pass `claude plugin validate --strict`
-  (the CLI is installed in CI via npm for exactly this).
+- **Version pins are mechanically guarded**: plugin.json's `version` and .mcp.json's npx
+  pin (including its exact arg position) must equal the workspace version — written by
+  `just set-version` and guarded by `just version-check` like every other manifest (#59).
+  Both manifests must additionally pass `claude plugin validate --strict` via
+  `just plugin-check` (the CLI is installed in CI for exactly this); both recipes run in
+  the `release-config` CI job.
 
 ---
 
@@ -542,7 +552,7 @@ oura-toolkit/
 ├── .claude-plugin/marketplace.json  # at the REPO ROOT — required by the marketplace schema (see PLUGIN)
 ├── plugins/
 │   └── oura-toolkit/             # single plugin (name matches dir): plugin.json + .mcp.json + skills/
-├── codegen/                       # overlays + codegen scripts (NO justfile; recipes are in root justfile)
+├── codegen/                       # overlays + codegen/release scripts (NO justfile; recipes are in root justfile)
 └── dist-workspace.toml            # cargo-dist config
 ```
 

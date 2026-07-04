@@ -1,7 +1,8 @@
 # oura-toolkit (Python) — the SINGLE PyPI distribution (CLAUDE.md → NAMING): the generated
 # client ships as the `oura_toolkit.api` submodule; the hand-written auth companion will join
 # it as `oura_toolkit.auth` in this same distribution. HAND-WRITTEN: `just gen-py` regenerates
-# only oura_toolkit/api/ and asserts this file's version matches the workspace version.
+# only oura_toolkit/api/. The version is written by `just set-version` and guarded by
+# `just version-check` (#59) — never edit it by hand.
 [project]
 name = "oura-toolkit"
 version = "0.1.0"
