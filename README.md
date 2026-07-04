@@ -80,7 +80,7 @@ automatically from then on.
 Manage the stored state any time:
 
 ```sh
-oura auth status     # what's stored: client id, scopes, token expiry (exit 4 = log in)
+oura auth status     # what's stored: client id, scopes, token expiry (exit 4 = run setup/login)
 oura auth token      # print a fresh access token — for curl and scripts
 oura auth refresh    # force a token refresh now (persists the rotated refresh token)
 oura auth logout     # remove tokens; --all also removes the app credentials

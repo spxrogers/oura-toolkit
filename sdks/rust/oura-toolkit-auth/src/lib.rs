@@ -23,7 +23,7 @@ pub mod metadata;
 mod oauth;
 mod store;
 
-pub use client::{build_authenticated_client, AuthMiddleware, TokenManager};
+pub use client::{build_authenticated_client, AuthMiddleware, TokenManager, REFRESH_SKEW_SECS};
 pub use error::AuthError;
 pub use oauth::{exchange_code, refresh};
 pub use store::{ClientCredentials, StoreLock, TokenStore, Tokens, APP_DIR_NAME};

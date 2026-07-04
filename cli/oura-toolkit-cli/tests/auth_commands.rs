@@ -78,8 +78,7 @@ fn assert_no_secrets(output: &std::process::Output, allow_access_token_on_stdout
 #[test]
 fn status_on_an_empty_store_reports_to_stdout_and_exits_4_toward_setup() {
     let (mut cmd, _store, _dir) = oura(&["auth", "status"]);
-    let assert = cmd
-        .assert()
+    cmd.assert()
         .code(4)
         // The report is the RESULT and still lands on stdout — the partial state is what
         // tells the user what to fix; the hint rides stderr per the contract.
@@ -87,7 +86,7 @@ fn status_on_an_empty_store_reports_to_stdout_and_exits_4_toward_setup() {
         .stdout(predicate::str::contains("Tokens\tnone"))
         .stdout(predicate::str::contains("Authenticated\tno"))
         .stderr(predicate::str::contains("hint: run `oura auth setup`"));
-    assert_no_secrets(assert.get_output(), false);
+    // No assert_no_secrets here: the store is empty, so it would be vacuous.
 }
 
 #[test]
@@ -192,11 +191,14 @@ fn logout_deletes_tokens_keeps_credentials_and_is_idempotent() {
     let (mut cmd, store, dir) = oura(&["auth", "logout"]);
     store.save_credentials(&credentials()).unwrap();
     store.save_tokens(&tokens(FRESH)).unwrap();
+    // Mutations have no result: stdout stays EMPTY and the confirmation is prose on
+    // stderr (contract → Streams; gh benchmark).
     let assert = cmd
         .assert()
         .success()
-        .stdout(predicate::str::contains("✓ Logged out — removed"))
-        .stdout(predicate::str::contains("oura auth logout --all"));
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("✓ Logged out — removed"))
+        .stderr(predicate::str::contains("oura auth logout --all"));
     assert_no_secrets(assert.get_output(), false);
     assert!(!store.tokens_path().exists(), "tokens.json must be deleted");
     assert!(
@@ -214,7 +216,8 @@ fn logout_deletes_tokens_keeps_credentials_and_is_idempotent() {
         .args(["auth", "logout"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
             "No tokens stored — already logged out.",
         ));
 }
@@ -227,7 +230,8 @@ fn logout_all_deletes_the_client_credentials_too() {
     let assert = cmd
         .assert()
         .success()
-        .stdout(predicate::str::contains("✓ Removed client credentials —"));
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("✓ Removed client credentials —"));
     assert_no_secrets(assert.get_output(), false);
     assert!(!store.tokens_path().exists());
     assert!(

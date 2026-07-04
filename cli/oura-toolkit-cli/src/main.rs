@@ -11,7 +11,7 @@ use oura_toolkit_cli::{api, auth, commands, contract, output};
 #[derive(Parser)]
 #[command(name = "oura", version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
-    /// Output JSON instead of the default table/plain rendering (data commands).
+    /// Output JSON instead of the default table/plain rendering (data commands and `auth status`).
     #[arg(long, global = true)]
     json: bool,
 
@@ -88,7 +88,7 @@ enum AuthAction {
         #[arg(long, default_value_t = 8788)]
         port: u16,
     },
-    /// Show stored auth state: client_id, scopes, token expiry (exit 4 if unauthenticated).
+    /// Show stored auth state: client_id, scopes, token expiry.
     Status,
     /// Delete stored tokens (log out). Keeps the client credentials unless --all is given.
     Logout {
@@ -142,13 +142,15 @@ async fn run() -> anyhow::Result<()> {
                 }
             }
             AuthAction::Logout { all } => {
-                contract::emit(&auth::logout(&oura_toolkit_auth::TokenStore::new()?, all)?)?;
+                // Mutations have no result: the confirmation is prose and goes to stderr
+                // (contract → Streams); stdout stays empty like `gh auth logout`.
+                contract::inform(&auth::logout(&oura_toolkit_auth::TokenStore::new()?, all)?);
                 Ok(())
             }
             AuthAction::Refresh => {
                 let store = oura_toolkit_auth::TokenStore::new()?;
                 let manager = oura_toolkit_auth::TokenManager::load()?;
-                contract::emit(&auth::refresh(&manager, &store).await?)?;
+                contract::inform(&auth::refresh(&manager, &store).await?);
                 Ok(())
             }
             AuthAction::Token => {

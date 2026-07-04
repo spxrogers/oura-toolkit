@@ -13,7 +13,10 @@
 //! first** — if another process already rotated, its fresher tokens are adopted instead of
 //! burning (and thereby invalidating) that rotation with a second refresh. A refresh that
 //! still 400s is retried once against freshly reloaded disk state before surfacing
-//! "re-login".
+//! "re-login". The store is authoritative in the other direction too: a token record
+//! DELETED on disk (a peer's `oura auth logout`) makes the refresh report
+//! [`AuthError::NotAuthenticated`] and drop the in-memory copy — never resurrect the
+//! record by refreshing from stale memory.
 
 use std::sync::Arc;
 
@@ -30,8 +33,10 @@ use crate::metadata::TOKEN_URL;
 use crate::oauth::refresh_at;
 use crate::store::{ClientCredentials, TokenStore, Tokens};
 
-/// Refresh this many seconds before the token's actual expiry.
-const DEFAULT_SKEW_SECS: i64 = 60;
+/// Refresh this many seconds before the token's actual expiry. Public so callers that
+/// PREDICT the manager's behavior (the CLI's `auth status`) use the same window instead
+/// of a drifting copy.
+pub const REFRESH_SKEW_SECS: i64 = 60;
 
 /// Hard timeout on each token-endpoint call. This bounds how long the store's exclusive
 /// lock can be held (the refresh runs under it) — without it, one process's stalled refresh
@@ -68,6 +73,11 @@ impl TokenManager {
     /// once tokens arrive), and tokens-without-credentials is a caller-supplied token (e.g.
     /// a future `OURA_ACCESS_TOKEN` override, #20) that can be used until expiry but not
     /// refreshed ([`AuthError::MissingClientCredentials`]).
+    ///
+    /// Refresh additionally requires the token record to still EXIST on disk: the store is
+    /// the cross-process source of truth, so in-memory tokens whose record was deleted (a
+    /// peer's `oura auth logout`) refresh to [`AuthError::NotAuthenticated`], never to a
+    /// resurrected record.
     pub fn from_parts(
         store: TokenStore,
         credentials: Option<ClientCredentials>,
@@ -84,7 +94,7 @@ impl TokenManager {
                 .timeout(TOKEN_ENDPOINT_TIMEOUT)
                 .build()
                 .expect("default reqwest client"),
-            skew_secs: DEFAULT_SKEW_SECS,
+            skew_secs: REFRESH_SKEW_SECS,
             token_url: TOKEN_URL.to_string(),
         }
     }
@@ -154,15 +164,25 @@ impl TokenManager {
                 )))
             })??;
 
-        if let Some(disk) = self.store.load_tokens()? {
-            let mem_access = guard.as_ref().map(|t| t.access_token.as_str());
-            let differs = mem_access != Some(disk.access_token.as_str());
-            if differs && !disk.is_expired(self.skew_secs) {
+        match self.store.load_tokens()? {
+            Some(disk) => {
+                let mem_access = guard.as_ref().map(|t| t.access_token.as_str());
+                let differs = mem_access != Some(disk.access_token.as_str());
+                if differs && !disk.is_expired(self.skew_secs) {
+                    *guard = Some(disk);
+                    return Ok(());
+                }
+                // Refresh from the freshest persisted rotation, never from stale memory.
                 *guard = Some(disk);
-                return Ok(());
             }
-            // Refresh from the freshest persisted rotation, never from stale memory.
-            *guard = Some(disk);
+            None => {
+                // No record on disk means another process deleted it (`oura auth logout`).
+                // The store is authoritative: refreshing from our stale in-memory copy here
+                // would re-persist tokens the user just asked to remove (the "logout
+                // resurrection" hole). Drop the copy and report unauthenticated instead.
+                *guard = None;
+                return Err(AuthError::NotAuthenticated);
+            }
         }
         let current = guard.as_ref().ok_or(AuthError::NotAuthenticated)?;
 
@@ -516,6 +536,48 @@ mod tests {
             store.try_lock_exclusive().unwrap().is_some(),
             "lock must be released after a timed-out refresh"
         );
+    }
+
+    /// The logout contract's cross-process half (#18): a live manager whose token record
+    /// was DELETED by another process (`oura auth logout`) must NOT resurrect it. The store
+    /// is authoritative — the refresh reports unauthenticated, drops the in-memory copy,
+    /// and never calls the endpoint or re-persists.
+    #[tokio::test]
+    async fn refresh_after_a_peer_logout_reports_unauthenticated_instead_of_resurrecting() {
+        let server = MockServer::start().await;
+        // ANY token-endpoint call here would mint a token the user just deleted — forbid all.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "resurrected",
+                "refresh_token": "r2",
+                "expires_in": 3600
+            })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_tokens(&expired_tokens("r1")).unwrap();
+        let m = test_manager(&server, store.clone(), Some(expired_tokens("r1")));
+
+        // Another process logs out while this manager still holds tokens in memory.
+        store.delete_tokens().unwrap();
+
+        let err = m.access_token().await.unwrap_err();
+        assert!(matches!(err, AuthError::NotAuthenticated), "{err:?}");
+        assert!(
+            !store.tokens_path().exists(),
+            "the refresh must not re-create the deleted token record"
+        );
+        assert!(
+            !m.is_authenticated().await,
+            "the stale in-memory copy must be dropped"
+        );
+
+        // force_refresh runs the same critical section — same guarantee.
+        let err = m.force_refresh().await.unwrap_err();
+        assert!(matches!(err, AuthError::NotAuthenticated), "{err:?}");
     }
 
     #[tokio::test]
