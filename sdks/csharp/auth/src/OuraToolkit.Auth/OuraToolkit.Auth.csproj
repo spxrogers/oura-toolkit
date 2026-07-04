@@ -20,8 +20,9 @@
     <Version>0.1.0</Version>
     <!-- records / `required` / `init` need C# 9+/11; the netstandard2.0 leg would otherwise
          default to C# 7.3. The missing compiler-required attributes are polyfilled
-         (Polyfills.cs, fenced to netstandard2.0). -->
-    <LangVersion>latest</LangVersion>
+         (Polyfills.cs, fenced to netstandard2.0). Pin the version (not `latest`) so a future
+         SDK bump can't silently change the language semantics this code compiles under. -->
+    <LangVersion>13.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

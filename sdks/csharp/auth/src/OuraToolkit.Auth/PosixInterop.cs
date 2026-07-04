@@ -31,16 +31,23 @@ internal static class PosixInterop
     public const int Mode0700 = 0x1C0;
 
     // open(2) flags. O_WRONLY is 0x1 on Linux and the BSDs/macOS alike, but O_CREAT/O_EXCL
-    // differ between Linux (0x40/0x80) and BSD-derived macOS (0x200/0x800), so resolve those
-    // at runtime. (This leg only executes on legacy/Mono runtimes; modern .NET selects the
-    // net8/net10 asset and never calls here.)
+    // differ between Linux (0x40/0x80) and the BSD lineage — macOS AND FreeBSD/NetBSD/OpenBSD
+    // all share 0x200/0x800 — so resolve those at runtime. We treat "BSD-family" as the macOS
+    // branch and everything else as Linux; the only non-macOS BSD that could reach here is a
+    // Mono host on FreeBSD, which shares macOS's values, so IsBsd (not just IsMac) picks the
+    // 0x200/0x800 pair. (This leg only executes on legacy/Mono runtimes; modern .NET selects
+    // the net8/net10 asset and never calls here.)
     private const int O_WRONLY = 0x1;
 
-    private static bool IsMac => RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+    private static bool IsBsd =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+        || RuntimeInformation.IsOSPlatform(OSPlatform.Create("FREEBSD"))
+        || RuntimeInformation.IsOSPlatform(OSPlatform.Create("NETBSD"))
+        || RuntimeInformation.IsOSPlatform(OSPlatform.Create("OPENBSD"));
 
-    private static int O_CREAT => IsMac ? 0x200 : 0x40;
+    private static int O_CREAT => IsBsd ? 0x200 : 0x40;
 
-    private static int O_EXCL => IsMac ? 0x800 : 0x80;
+    private static int O_EXCL => IsBsd ? 0x800 : 0x80;
 
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi, BestFitMapping = false)]
     private static extern int open(string path, int flags, int mode);
@@ -50,6 +57,9 @@ internal static class PosixInterop
 
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi, BestFitMapping = false)]
     private static extern int chmod(string path, int mode);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int close(int fd);
 
     /// <summary>
     /// Atomically create <paramref name="path"/> for writing with mode 0600, failing if it
@@ -70,9 +80,30 @@ internal static class PosixInterop
             throw new IOException($"exclusive 0600 create of '{path}' failed (errno {errno})");
         }
 
-        // The SafeFileHandle owns the fd and closes it on FileStream disposal.
-        var handle = new SafeFileHandle((IntPtr)fd, ownsHandle: true);
-        return new FileStream(handle, FileAccess.Write);
+        // The SafeFileHandle owns the fd and closes it on FileStream disposal. If EITHER ctor
+        // throws after open(2) succeeded (e.g. OOM), the raw fd would leak — a live descriptor
+        // to a freshly created 0600 file that no managed handle owns — so close it by hand.
+        SafeFileHandle handle;
+        try
+        {
+            handle = new SafeFileHandle((IntPtr)fd, ownsHandle: true);
+        }
+        catch
+        {
+            close(fd);
+            throw;
+        }
+
+        try
+        {
+            return new FileStream(handle, FileAccess.Write);
+        }
+        catch
+        {
+            // Disposing the SafeFileHandle closes the underlying fd exactly once.
+            handle.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

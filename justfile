@@ -63,6 +63,9 @@ setup:
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
+    # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an
+    # 8.x/9.x SDK cannot build the net10.0 leg). Only relevant to the C# breadth-SDK recipes.
+    @dotnet --list-sdks 2>/dev/null | grep -q '^10\.' || echo "!! install the .NET 10 SDK -- needed by 'just sdk-check-csharp' / 'just sdk-test-csharp' (net10.0 target)"
     # Release tooling (`just dist-check` / `just release`).
     command -v dist >/dev/null || cargo install cargo-dist --locked
 
@@ -176,9 +179,12 @@ gen-csharp: spec-overlay
     # net10.0 outright), so widen it to the shipped TFM set. Deterministic (drift-safe): the
     # sed target is the generator's fixed line. netstandard2.0 = broad reach; net8.0/net10.0 =
     # modern assemblies. The Newtonsoft-based netstandard2.0 code compiles unchanged on all three.
-    sed -i 's|<TargetFramework>netstandard2.0</TargetFramework>|<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>\n    <LangVersion>latest</LangVersion>|' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    # Pin LangVersion to 13.0 (not `latest`): `latest` floats with the installed SDK, so codegen
+    # output would drift under gen-check as CI's dotnet updates. A fixed version is deterministic
+    # and still >= the C# 9 the netstandard2.0 <Nullable>annotations</Nullable> leg needs.
+    sed -i 's|<TargetFramework>netstandard2.0</TargetFramework>|<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>\n    <LangVersion>13.0</LangVersion>|' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
     @grep -q '<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: multi-target post-patch did not apply — generator csproj shape changed?"; exit 1; }
-    @grep -q '<LangVersion>latest</LangVersion>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: LangVersion post-patch did not apply (needed for <Nullable>annotations</Nullable> on the netstandard2.0 leg, whose default is C# 7.3)"; exit 1; }
+    @grep -q '<LangVersion>13.0</LangVersion>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: LangVersion post-patch did not apply (needed for <Nullable>annotations</Nullable> on the netstandard2.0 leg, whose default is C# 7.3)"; exit 1; }
     # Strip the generator's bogus System.Web ItemGroups (a .NET-Framework-only assembly the code
     # never uses) — wrapper and all, so no empty ItemGroups linger. It emits MSB3245 "could not
     # resolve" on every modern TFM otherwise.

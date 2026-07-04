@@ -164,9 +164,14 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   CLI flag in the justfile (`oag_skip_docs`); the python generator's root metadata mis-names
   the dist and doesn't build, so `sdks/python`'s pyproject.toml + namespace `__init__.py`
   are HAND-WRITTEN (Rust-Cargo.toml precedent) and `just gen-py` copies only the generated
-  subtree + asserts the version matches the workspace. `just sdk-check` compile-checks all
-  five (own CI job); `just test-sandbox-sdks` runs live sandbox smokes (TS/Py/Go today).
-  Speakeasy/Fern remain an option for companion codegen later.
+  subtree + asserts the version matches the workspace. The **C#** generator emits a single
+  `netstandard2.0` (Newtonsoft-based) target and REJECTS `net10.0` outright, so `just
+  gen-csharp` post-patches the csproj to multi-target `netstandard2.0;net8.0;net10.0` with a
+  pinned `<LangVersion>13.0</LangVersion>` and strips the generator's bogus `System.Web`
+  references (both post-patches are guarded — the recipe fails if either stops applying).
+  `just sdk-check` compile-checks all five (own CI job); `just test-sandbox-sdks` runs live
+  sandbox smokes for all five (TS/Py/Go/Java/C#). Speakeasy/Fern remain an option for
+  companion codegen later.
 - **DO NOT hand-write any transport/HTTP client in any language.** Generate it and depend
   on it.
 - Every language ships the **SAME shape**: a generated client + a hand-written auth
@@ -527,11 +532,11 @@ oura-toolkit/
 │   ├── rust/
 │   │   ├── oura-toolkit-api/      # GENERATED (progenitor) = Rust SDK client. regen target; DO NOT hand-edit.
 │   │   └── oura-toolkit-auth/     # hand-written Rust auth companion (store, refresh, middleware, spec-read metadata)
-│   ├── typescript/                # api/ GENERATED (@oura-toolkit/api); auth companion later
-│   ├── python/                    # oura_toolkit/api GENERATED; hand-written pyproject + ns __init__; oura_toolkit.auth later
-│   ├── go/                        # api/ GENERATED; hand-written go.mod (module …/sdks/go); auth later
-│   ├── java/                      # api/ GENERATED (com.ouratoolkit:api); auth later
-│   └── csharp/                    # api/ GENERATED (OuraToolkit.Api); auth later
+│   ├── typescript/                # api/ GENERATED (@oura-toolkit/api); auth/ hand-written (@oura-toolkit/auth)
+│   ├── python/                    # oura_toolkit/api GENERATED; hand-written pyproject + ns __init__; oura_toolkit.auth companion
+│   ├── go/                        # api/ GENERATED; hand-written go.mod (module …/sdks/go); auth/ companion
+│   ├── java/                      # api/ GENERATED (com.ouratoolkit:api); auth/ companion (com.ouratoolkit:auth)
+│   └── csharp/                    # api/ GENERATED (OuraToolkit.Api, multi-target netstandard2.0;net8.0;net10.0); auth/ companion (OuraToolkit.Auth)
 ├── cli/
 │   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, mcp; depends on oura-toolkit-api + oura-toolkit-auth
 ├── .claude-plugin/marketplace.json  # at the REPO ROOT — required by the marketplace schema (see PLUGIN)

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo><!-- setting GenerateAssemblyInfo to false causes this bug https://github.com/dotnet/project-system/issues/3934 -->
     <TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>13.0</LangVersion>
     <AssemblyName>OuraToolkit.Api</AssemblyName>
     <PackageId>OuraToolkit.Api</PackageId>
     <OutputType>Library</OutputType>
