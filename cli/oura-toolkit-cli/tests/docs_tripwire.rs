@@ -1,8 +1,9 @@
 //! Docs tripwires (#45): the READMEs' ENUMERABLE claims pinned to source, so doc drift
 //! fails CI instead of relying on reviewer diligence (CLAUDE.md → DOCS STAY TRUE TO THE
 //! CODE, rule 4). These guard exactly the claims a test can enumerate — command list,
-//! scope string, redirect URI, store paths, `just` recipe names, MCP tool names; prose
-//! accuracy stays a review-gate responsibility (rules 1–3).
+//! the `oura auth` subcommand list (#63), scope string, redirect URI, store paths,
+//! `just` recipe names, MCP tool names; prose accuracy stays a review-gate
+//! responsibility (rules 1–3).
 //!
 //! Monorepo-only by nature (they read repo-root files, same walk-up as bundled_spec.rs);
 //! `just publish-check` only BUILDS the packaged crate, so these never run outside the
@@ -51,8 +52,10 @@ fn oura_stdout(args: &[&str]) -> String {
 
 /// Subcommand names parsed from clap's `Commands:` help section. Only exactly-two-space
 /// indented lines count — wrapped description continuations indent deeper and must not
-/// contribute tokens.
-fn help_subcommands(help: &str) -> BTreeSet<String> {
+/// contribute tokens. `min_expected` is the parser's own tripwire: fewer parsed commands
+/// than the surface is known to have means the help format changed, not that commands
+/// vanished.
+fn help_subcommands(help: &str, min_expected: usize) -> BTreeSet<String> {
     let mut cmds = BTreeSet::new();
     let mut in_commands = false;
     for line in help.lines() {
@@ -71,8 +74,9 @@ fn help_subcommands(help: &str) -> BTreeSet<String> {
         }
     }
     assert!(
-        cmds.len() >= 10,
-        "parsed only {} subcommands from `oura --help` — help format changed, parser broken?",
+        cmds.len() >= min_expected,
+        "parsed only {} subcommands from the help text (expected >= {min_expected}) — \
+         help format changed, parser broken?",
         cmds.len()
     );
     cmds
@@ -108,6 +112,26 @@ fn code_snippets(markdown: &str) -> Vec<String> {
             block.push_str(line);
             block.push('\n');
         } else {
+            // Silent-under-scan guards (#63's review): an indented command block or a
+            // double-backtick span would read as prose (contents skipped, a false
+            // negative) — fail loudly instead of scanning blind, like the ~~~ guard.
+            let trimmed = line.trim_start();
+            assert!(
+                !(line.starts_with("    ")
+                    && (trimmed.starts_with("oura ") || trimmed.starts_with("just "))),
+                "doc uses a 4-space-indented command block, which this scanner does not \
+                 parse — use ``` fences: {line:?}"
+            );
+            let bytes = line.as_bytes();
+            for (i, _) in line.match_indices("``") {
+                let part_of_triple =
+                    (i > 0 && bytes[i - 1] == b'`') || bytes.get(i + 2) == Some(&b'`');
+                assert!(
+                    part_of_triple,
+                    "doc uses a ``double-backtick`` span, which this scanner does not \
+                     parse — use single-backtick spans: {line:?}"
+                );
+            }
             for (i, piece) in line.split('`').enumerate() {
                 if i % 2 == 1 {
                     snippets.push(piece.to_string());
@@ -127,7 +151,7 @@ fn code_snippets(markdown: &str) -> Vec<String> {
 /// be documented. Adding a ninth data command without touching the README fails here.
 #[test]
 fn readme_command_list_matches_the_binary() {
-    let full = help_subcommands(&oura_stdout(&["--help"]));
+    let full = help_subcommands(&oura_stdout(&["--help"]), 10);
     let mut data = full.clone();
     for meta in ["auth", "mcp", "help"] {
         assert!(
@@ -175,6 +199,73 @@ fn readme_command_list_matches_the_binary() {
         documented.len() >= 8,
         "suspiciously few `oura <cmd>` references in the README ({}) — tokenizer broken?",
         documented.len()
+    );
+}
+
+/// The documented `oura auth <sub>` surface ⟷ the binary's real auth subcommands, both
+/// directions (#63). The top-level tripwire above tokenizes only the word after `oura `,
+/// so `oura auth status` contributed just `auth` — a doc claiming a nonexistent auth
+/// subcommand (or an auth subcommand landing undocumented) slipped through. This closes
+/// that: every `oura auth <sub>` shown in README.md or docs/cli-contract.md must exist,
+/// and every auth subcommand the binary has must appear in the README. (Completeness is
+/// deliberately README-only: the README is the canonical front-door command list, so a
+/// new auth command must land there; cli-contract is held to existence only.)
+#[test]
+fn documented_auth_subcommands_match_the_binary() {
+    let mut auth = help_subcommands(&oura_stdout(&["auth", "--help"]), 5);
+    assert!(
+        auth.remove("help"),
+        "`oura auth --help` no longer lists the help subcommand — parser or CLI broken?"
+    );
+
+    let root = repo_root();
+    let mut documented_in_readme = BTreeSet::new();
+    let mut checked = 0;
+    for doc in ["README.md", "docs/cli-contract.md"] {
+        let text = read(&root.join(doc));
+        for snippet in code_snippets(&text) {
+            for line in snippet.lines() {
+                // `oura auth setup`, `$ oura auth logout --all`, compound lines — take
+                // the token after EVERY `oura auth ` occurrence.
+                for (idx, _) in line.match_indices("oura auth ") {
+                    if idx > 0 && line.as_bytes()[idx - 1].is_ascii_alphanumeric() {
+                        continue; // e.g. `npx -y oura-toolkit auth …` never matches; guard anyway
+                    }
+                    let token: String = line[idx + 10..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                        .collect();
+                    if !token.starts_with(|c: char| c.is_ascii_lowercase()) {
+                        continue; // bare `oura auth` or a flag follows
+                    }
+                    assert!(
+                        auth.contains(&token),
+                        "{doc} shows `oura auth {token}` but the binary has no such auth \
+                         subcommand — renamed without updating the docs? (DOCS STAY TRUE \
+                         TO THE CODE)"
+                    );
+                    checked += 1;
+                    if doc == "README.md" {
+                        documented_in_readme.insert(token);
+                    }
+                }
+            }
+        }
+    }
+
+    let undocumented: Vec<&String> = auth
+        .iter()
+        .filter(|c| !documented_in_readme.contains(*c))
+        .collect();
+    assert!(
+        undocumented.is_empty(),
+        "auth subcommands missing from the README: {undocumented:?} — a new auth command \
+         must land with its docs in the same PR (DOCS STAY TRUE TO THE CODE)"
+    );
+    assert!(
+        checked >= 6,
+        "suspiciously few `oura auth <sub>` references across the docs ({checked}) — \
+         tokenizer broken?"
     );
 }
 
