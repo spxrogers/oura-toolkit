@@ -1,21 +1,32 @@
 {
   "name": "@oura-toolkit/api",
   "version": "0.1.0",
-  "description": "OpenAPI client for @oura-toolkit/api",
-  "author": "OpenAPI-Generator",
+  "description": "Generated typescript-fetch client for the Oura Ring API v2 — part of oura-toolkit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/GIT_USER_ID/GIT_REPO_ID.git"
+    "url": "https://github.com/spxrogers/oura-toolkit.git",
+    "directory": "sdks/typescript/api"
   },
   "main": "./dist/index.js",
-  "typings": "./dist/index.d.ts",
-  "module": "./dist/esm/index.js",
   "sideEffects": false,
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.esm.json",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "prepare": "npm run build"
   },
   "devDependencies": {
     "typescript": "^4.0 || ^5.0"
-  }
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ]
 }
