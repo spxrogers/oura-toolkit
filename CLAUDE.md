@@ -169,8 +169,14 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   gen-csharp` post-patches the csproj to multi-target `netstandard2.0;net8.0;net10.0` with a
   pinned `<LangVersion>13.0</LangVersion>` and strips the generator's bogus `System.Web`
   references (both post-patches are guarded — the recipe fails if either stops applying).
-  `just sdk-check` compile-checks all five (own CI job); `just test-sandbox-sdks` runs live
-  sandbox smokes for all five (TS/Py/Go/Java/C#). Speakeasy/Fern remain an option for
+  The **typescript-fetch** packaging ships a Node-broken dual-ESM build (ESM-syntax `.js`
+  in a CJS package, reachable only via the non-standard `module` field), no `exports`
+  map, and placeholder repo metadata, so `just gen-ts` post-patches package.json to the
+  auth companion's reviewed CJS-only + exports-map shape
+  (`codegen/ts-package-postpatch.jq`) and drops `tsconfig.esm.json` (#57; guarded like
+  the C# patches, and `just sdk-check-ts` loads the exports entry via BOTH `require` and
+  a self-referencing ESM `import` smoke + asserts a dist-only `npm pack` surface). `just sdk-check` compile-checks all five (own CI job);
+  `just test-sandbox-sdks` runs live sandbox smokes for all five (TS/Py/Go/Java/C#). Speakeasy/Fern remain an option for
   companion codegen later.
 - **DO NOT hand-write any transport/HTTP client in any language.** Generate it and depend
   on it.
