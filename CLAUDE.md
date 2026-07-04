@@ -164,7 +164,7 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   CLI flag in the justfile (`oag_skip_docs`); the python generator's root metadata mis-names
   the dist and doesn't build, so `sdks/python`'s pyproject.toml + namespace `__init__.py`
   are HAND-WRITTEN (Rust-Cargo.toml precedent) and `just gen-py` copies only the generated
-  subtree + asserts the version matches the workspace. The **C#** generator emits a single
+  subtree (its version sync is guarded by `just version-check`, #59). The **C#** generator emits a single
   `netstandard2.0` (Newtonsoft-based) target and REJECTS `net10.0` outright, so `just
   gen-csharp` post-patches the csproj to multi-target `netstandard2.0;net8.0;net10.0` with a
   pinned `<LangVersion>13.0</LangVersion>` and strips the generator's bogus `System.Web`
@@ -444,12 +444,13 @@ code is a bug of the same severity as the code change that orphaned it.
   the SINGLE WRITER: `codegen/version.sh` bumps the root `Cargo.toml` source (incl. the
   two internal-crate `[workspace.dependencies]` pins) plus every hand-written manifest
   carrying the literal — TS/Python/Java/C# companion manifests, plugin.json, .mcp.json's
-  npx pin — self-verifying each rewrite, then refreshes Cargo.lock; never hand-edit those
-  versions) → commit → tag `vX.Y.Z` → push. The justfile derives `version` from
-  Cargo.toml, dist versions every installer from it, and mismatched tags fail at plan
-  time. `just version-check` is the SINGLE drift guard (same script, `check` mode;
-  replaced the per-file grep-guards that sprawled across gen-py/sdk-test-*/plugin-check)
-  and runs in the `release-config` CI job. `.github/workflows/release.yml`
+  npx pin — self-verifying each rewrite; the recipe then refreshes Cargo.lock; never
+  hand-edit those versions) → commit → tag `vX.Y.Z` → push. The justfile derives
+  `version` from Cargo.toml, dist versions every installer from it, and mismatched tags
+  fail at plan time. `just version-check` is the SINGLE drift guard (same script, `check`
+  mode; replaced the per-file grep-guards that sprawled across gen-py/sdk-test-*/
+  plugin-check) and it also round-trips the WRITER against a temp copy of the manifests,
+  so a broken rewriter fails the `release-config` CI job on the PR that broke it. `.github/workflows/release.yml`
   (dist-generated, committed, drift-checked by `dist generate --check` inside
   `just dist-check`) builds all artifacts and runs the npm + homebrew publish jobs.
   `just release` is a LOCAL smoke build only; `just publish` covers only crates.io
@@ -551,7 +552,7 @@ oura-toolkit/
 ├── .claude-plugin/marketplace.json  # at the REPO ROOT — required by the marketplace schema (see PLUGIN)
 ├── plugins/
 │   └── oura-toolkit/             # single plugin (name matches dir): plugin.json + .mcp.json + skills/
-├── codegen/                       # overlays + codegen scripts (NO justfile; recipes are in root justfile)
+├── codegen/                       # overlays + codegen/release scripts (NO justfile; recipes are in root justfile)
 └── dist-workspace.toml            # cargo-dist config
 ```
 
