@@ -74,21 +74,32 @@ public sealed class TokenManager : IDisposable
     /// <see cref="OAuthMetadata.TokenUrl"/>, the spec-pinned endpoint.
     /// </param>
     /// <param name="skewSeconds">Refresh this many seconds before actual expiry.</param>
+    /// <param name="httpTimeout">
+    /// Token-endpoint per-call timeout override (tests inject a short one to exercise the
+    /// timeout path without a 30s wait). Default: <see cref="TokenEndpointTimeout"/>.
+    /// </param>
     public TokenManager(
         TokenStore store,
         ClientCredentials? credentials,
         Tokens? tokens,
         HttpMessageHandler? handler = null,
         string? tokenUrl = null,
-        long skewSeconds = DefaultSkewSeconds)
+        long skewSeconds = DefaultSkewSeconds,
+        TimeSpan? httpTimeout = null)
     {
         _store = store;
         _credentials = credentials;
         _tokens = tokens;
         _tokenUrl = tokenUrl ?? OAuthMetadata.TokenUrl;
         _skewSeconds = skewSeconds;
-        _http = handler is null ? new HttpClient() : new HttpClient(handler);
-        _http.Timeout = TokenEndpointTimeout;
+        // The default transport REFUSES redirects (AllowAutoRedirect = false): a confidential
+        // client must never re-POST the token form (client_id + client_secret + refresh_token)
+        // to a 3xx Location host — .NET's HttpClient default WOULD follow it and leak the
+        // secret. A test may inject its own handler for hermetic mock responses.
+        _http = handler is null
+            ? new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false })
+            : new HttpClient(handler);
+        _http.Timeout = httpTimeout ?? TokenEndpointTimeout;
     }
 
     /// <summary>
@@ -218,24 +229,85 @@ public sealed class TokenManager : IDisposable
             ["client_id"] = credentials.ClientId,
             ["client_secret"] = credentials.ClientSecret,
         });
-        using var response = await _http.PostAsync(_tokenUrl, content, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+
+        HttpResponseMessage response;
+        try
         {
-            throw new TokenEndpointException((int)response.StatusCode, body);
+            response = await _http.PostAsync(_tokenUrl, content, cancellationToken).ConfigureAwait(false);
         }
-        var parsed = JsonSerializer.Deserialize<TokenResponse>(body)
-            ?? throw new TokenEndpointException((int)response.StatusCode, "empty token response");
-        return new Tokens
+        catch (TaskCanceledException e) when (!cancellationToken.IsCancellationRequested)
         {
-            AccessToken = parsed.AccessToken
-                ?? throw new TokenEndpointException((int)response.StatusCode, "token response without access_token"),
-            // Persist the ROTATED token; fall back to the old one only if the server omits it.
-            RefreshToken = parsed.RefreshToken ?? current.RefreshToken,
-            ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + parsed.ExpiresIn,
-            Scope = parsed.Scope ?? current.Scope,
-            TokenType = parsed.TokenType ?? current.TokenType,
-        };
+            // The hard token-endpoint timeout elapsed (it bounds lock-hold time). Surface a
+            // typed transport error, not a bare TaskCanceledException. A caller-requested
+            // cancellation is excluded by the filter and propagates as OperationCanceledException.
+            throw new TransportException("token endpoint request timed out", e);
+        }
+        catch (HttpRequestException e)
+        {
+            throw new TransportException("token endpoint request failed", e);
+        }
+
+        using (response)
+        {
+            var status = (int)response.StatusCode;
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            // Defense-in-depth against a redirect leaking the confidential form: the default
+            // transport already refuses to follow redirects, so a 3xx from the token endpoint
+            // surfaces here rather than being followed. Reject it explicitly — a 2xx is the ONLY
+            // success — so even an injected/misconfigured handler that leaves a bare 3xx in place
+            // cannot slip past as a silent no-op.
+            if (status is >= 300 and < 400)
+            {
+                throw new TokenEndpointException(status, body);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new TokenEndpointException(status, body);
+            }
+
+            // A hostile or broken 2xx body must fail as the typed TokenEndpointException, never a
+            // raw JsonException detonating downstream and never a half-populated token persisted
+            // (an empty access_token or a non-positive expiry would only resurface as a baffling
+            // 400 on the NEXT refresh, long after the cause). These throws all run BEFORE the
+            // store is written, so a hostile 2xx never burns the stored rotation. Messages are
+            // FIXED and secret-free: the raw body is never echoed, since a partial 2xx payload may
+            // carry token material. Mirrors go/auth/oauth.go:70-97.
+            TokenResponse? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<TokenResponse>(body);
+            }
+            catch (JsonException)
+            {
+                throw new TokenEndpointException(status, "token-endpoint 2xx response was not valid JSON");
+            }
+            if (parsed is null)
+            {
+                // The body was the literal JSON null.
+                throw new TokenEndpointException(status, "token-endpoint 2xx response was empty");
+            }
+            if (string.IsNullOrEmpty(parsed.AccessToken))
+            {
+                throw new TokenEndpointException(status, "token-endpoint 2xx response missing access_token");
+            }
+            if (parsed.ExpiresIn <= 0)
+            {
+                throw new TokenEndpointException(status, "token-endpoint 2xx response missing or invalid expires_in");
+            }
+
+            return new Tokens
+            {
+                AccessToken = parsed.AccessToken,
+                // Persist the ROTATED refresh token; treat null OR empty like a missing one and
+                // keep the current (still-valid) token. An empty refresh_token would clobber the
+                // good one and 400 every future refresh.
+                RefreshToken = string.IsNullOrEmpty(parsed.RefreshToken) ? current.RefreshToken : parsed.RefreshToken,
+                ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + parsed.ExpiresIn,
+                Scope = string.IsNullOrEmpty(parsed.Scope) ? current.Scope : parsed.Scope,
+                TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
+            };
+        }
     }
 
     /// <summary>Releases the token-endpoint HTTP client and the internal mutex.</summary>
@@ -262,5 +334,14 @@ public sealed class TokenManager : IDisposable
 
         [JsonPropertyName("scope")]
         public string? Scope { get; init; }
+
+        /// <summary>
+        /// Redacts both token fields (parity with <see cref="Tokens"/> / <see cref="ClientCredentials"/>):
+        /// the synthesized record ToString would otherwise print the raw access/refresh tokens if
+        /// this value ever reached a log line.
+        /// </summary>
+        public override string ToString() =>
+            "TokenResponse { access_token = [REDACTED], refresh_token = [REDACTED], " +
+            $"expires_in = {ExpiresIn}, token_type = {TokenType ?? "null"}, scope = {Scope ?? "null"} }}";
     }
 }

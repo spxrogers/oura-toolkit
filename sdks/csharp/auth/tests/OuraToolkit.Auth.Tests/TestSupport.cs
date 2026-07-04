@@ -1,6 +1,87 @@
 using System.Net;
+using System.Net.Sockets;
 
 namespace OuraToolkit.Auth.Tests;
+
+/// <summary>
+/// A real loopback HTTP endpoint on 127.0.0.1 (a genuine socket, NOT a mock
+/// <see cref="HttpMessageHandler"/>) so tests can exercise the production
+/// <c>SocketsHttpHandler</c> transport — the ONLY place redirect-following and connect/read
+/// timeouts actually happen. Every received request is counted (<see cref="Hits"/>); the
+/// handler decides the response.
+/// </summary>
+public sealed class LoopbackHttpServer : IDisposable
+{
+    private readonly HttpListener _listener = new();
+    private int _hits;
+
+    public LoopbackHttpServer(Func<HttpListenerContext, Task> handle)
+    {
+        Url = $"http://127.0.0.1:{FreePort()}/";
+        _listener.Prefixes.Add(Url);
+        _listener.Start();
+        _ = Task.Run(async () =>
+        {
+            while (_listener.IsListening)
+            {
+                HttpListenerContext ctx;
+                try
+                {
+                    ctx = await _listener.GetContextAsync();
+                }
+                catch
+                {
+                    break; // listener stopped/disposed
+                }
+                Interlocked.Increment(ref _hits);
+                try
+                {
+                    await handle(ctx);
+                }
+                catch
+                {
+                    // A handler fault must not tear down the accept loop or the test process.
+                }
+                try
+                {
+                    ctx.Response.Close();
+                }
+                catch
+                {
+                    // Response may already be closed.
+                }
+            }
+        });
+    }
+
+    /// <summary>The absolute base URL clients POST to (e.g. <c>http://127.0.0.1:PORT/</c>).</summary>
+    public string Url { get; }
+
+    /// <summary>Total requests this server has received (thread-safe).</summary>
+    public int Hits => Volatile.Read(ref _hits);
+
+    private static int FreePort()
+    {
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        return port;
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            _listener.Stop();
+            _listener.Close();
+        }
+        catch
+        {
+            // Best-effort teardown.
+        }
+    }
+}
 
 /// <summary>A tempdir-backed store, deleted on dispose.</summary>
 public sealed class TempStore : IDisposable

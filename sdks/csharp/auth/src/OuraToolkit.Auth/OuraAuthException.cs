@@ -62,6 +62,18 @@ public sealed class TokenEndpointException : OuraAuthException
     public string Body { get; }
 }
 
+/// <summary>
+/// The token endpoint could not be reached or did not answer in time — a connection
+/// failure, or the hard <see cref="TokenManager.TokenEndpointTimeout"/> elapsing. Distinct
+/// from <see cref="TokenEndpointException"/>, which carries an actual HTTP status the server
+/// returned; a <see cref="TransportException"/> means no usable response arrived at all.
+/// </summary>
+public sealed class TransportException : OuraAuthException
+{
+    /// <summary>Creates the exception wrapping the underlying transport failure.</summary>
+    public TransportException(string message, Exception inner) : base(message, inner) { }
+}
+
 /// <summary>A stored record failed to parse (corrupt JSON, wrong shape).</summary>
 public sealed class StoreFormatException : OuraAuthException
 {

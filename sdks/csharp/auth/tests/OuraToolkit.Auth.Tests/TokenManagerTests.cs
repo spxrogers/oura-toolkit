@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Net;
+using System.Text;
 using Xunit;
 
 namespace OuraToolkit.Auth.Tests;
@@ -250,5 +252,169 @@ public class TokenManagerTests
         Assert.Equal("fresh-access", await manager.GetAccessTokenAsync());
         Assert.Equal(1, endpoint.Calls); // sent r2, never the stale r1
         Assert.Equal("r3", temp.Store.LoadTokens()!.RefreshToken);
+    }
+
+    // -- Hostile 2xx: a malformed "success" must fail typed and NEVER persist a half-token ----
+
+    /// <summary>
+    /// A 2xx whose body is non-JSON / empty / <c>null</c> / <c>{}</c> / missing-or-empty
+    /// access_token / missing/zero/negative/non-numeric expires_in must surface the typed
+    /// <see cref="TokenEndpointException"/> — not a raw JsonException, not a persisted blank
+    /// Bearer or zero-expiry token (which would only resurface as a baffling 400 on the NEXT
+    /// refresh). It is NOT a 400, so the reload-retry arm must not fire: exactly one call, and
+    /// the store is left exactly as it was.
+    /// </summary>
+    [Theory]
+    [InlineData("this is not json")]
+    [InlineData("")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"expires_in\":3600}")] // missing access_token
+    [InlineData("{\"access_token\":\"\",\"expires_in\":3600}")] // empty access_token
+    [InlineData("{\"access_token\":\"a\"}")] // missing expires_in
+    [InlineData("{\"access_token\":\"a\",\"expires_in\":0}")] // zero expires_in
+    [InlineData("{\"access_token\":\"a\",\"expires_in\":-5}")] // negative expires_in
+    [InlineData("{\"access_token\":\"a\",\"expires_in\":\"abc\"}")] // non-numeric expires_in
+    public async Task Hostile2xxIsRejectedTypedLeavingTheStoreUntouched(string body)
+    {
+        using var temp = new TempStore();
+        var original = Fixtures.Expired("r1");
+        temp.Store.SaveTokens(original);
+        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK, body));
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r1"));
+
+        var e = await Assert.ThrowsAsync<TokenEndpointException>(() => manager.GetAccessTokenAsync());
+        Assert.Equal(200, e.StatusCode); // a 2xx, so the 400-retry arm cannot claim it
+        // The fixed diagnostic must never echo token material.
+        Assert.DoesNotContain("access_token\":\"a", e.Body);
+
+        Assert.Equal(1, endpoint.Calls); // a hostile 2xx must NOT trigger the reload-retry arm
+
+        var disk = temp.Store.LoadTokens();
+        Assert.NotNull(disk);
+        Assert.Equal("r1", disk!.RefreshToken); // rotation NOT burned
+        Assert.Equal(original.AccessToken, disk.AccessToken); // no blank Bearer persisted
+    }
+
+    /// <summary>
+    /// An EMPTY refresh_token in an otherwise-valid 2xx must be treated like a missing one:
+    /// keep the current, still-valid refresh token rather than clobbering it with a blank
+    /// (which would 400 every future refresh). Break-verify: reverting the fallback to
+    /// <c>parsed.RefreshToken ?? current.RefreshToken</c> persists "" here and fails this test.
+    /// </summary>
+    [Fact]
+    public async Task EmptyRefreshTokenInGrantKeepsTheCurrentRefreshToken()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK,
+            "{\"access_token\":\"fresh-access\",\"refresh_token\":\"\",\"expires_in\":3600}"));
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r1"));
+
+        Assert.Equal("fresh-access", await manager.GetAccessTokenAsync());
+
+        var disk = temp.Store.LoadTokens();
+        Assert.NotNull(disk);
+        Assert.Equal("r1", disk!.RefreshToken); // kept, NOT blanked
+        Assert.Equal("fresh-access", disk.AccessToken);
+        Assert.Equal(1, endpoint.Calls);
+    }
+
+    /// <summary>
+    /// A missing (omitted) refresh_token likewise keeps the current one — the server chose
+    /// not to rotate.
+    /// </summary>
+    [Fact]
+    public async Task MissingRefreshTokenInGrantKeepsTheCurrentRefreshToken()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK,
+            "{\"access_token\":\"fresh-access\",\"expires_in\":3600}"));
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r1"));
+
+        Assert.Equal("fresh-access", await manager.GetAccessTokenAsync());
+        Assert.Equal("r1", temp.Store.LoadTokens()!.RefreshToken);
+    }
+
+    // -- Redirect refusal: the confidential form must never reach a 3xx Location host ---------
+
+    /// <summary>
+    /// SOCKET-LEVEL guard for the redirect leak (a mock HttpMessageHandler cannot catch this —
+    /// it short-circuits SendAsync before any redirect logic). Two real loopback endpoints: the
+    /// token endpoint returns <c>307 Location: &lt;target&gt;</c>; the target would gladly hand
+    /// back a valid token, so IF the client followed the 307 it would re-POST client_id +
+    /// client_secret + refresh_token there and the leak would masquerade as a successful
+    /// refresh. The production transport (<c>SocketsHttpHandler</c>, AllowAutoRedirect = false)
+    /// must refuse: the 307 surfaces as a typed error and the target is NEVER contacted.
+    /// Break-verify: flip to AllowAutoRedirect = true (and drop the 3xx guard) and this fails —
+    /// the token becomes "leaked-access", the target is hit, and r2 lands on disk.
+    /// </summary>
+    [Fact]
+    public async Task DefaultTokenClientRefusesRedirectsAndNeverResendsTheSecret()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+
+        using var target = new LoopbackHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            var bytes = Encoding.UTF8.GetBytes(
+                "{\"access_token\":\"leaked-access\",\"refresh_token\":\"r2\",\"expires_in\":3600}");
+            await ctx.Response.OutputStream.WriteAsync(bytes);
+        });
+        using var redirector = new LoopbackHttpServer(ctx =>
+        {
+            ctx.Response.StatusCode = 307; // preserves method + body if (wrongly) followed
+            ctx.Response.Headers["Location"] = target.Url;
+            return Task.CompletedTask;
+        });
+
+        // NO injected handler → exercises the REAL default SocketsHttpHandler transport.
+        using var manager = new TokenManager(temp.Store, Fixtures.Credentials, Fixtures.Expired("r1"),
+            tokenUrl: redirector.Url);
+
+        var e = await Assert.ThrowsAsync<TokenEndpointException>(() => manager.GetAccessTokenAsync());
+        Assert.Equal(307, e.StatusCode);
+        Assert.Equal(0, target.Hits); // the confidential form NEVER reached the redirect target
+
+        var disk = temp.Store.LoadTokens();
+        Assert.NotNull(disk);
+        Assert.Equal("r1", disk!.RefreshToken); // a refused redirect rotates nothing
+    }
+
+    // -- Timeout: a hung endpoint must fail fast and typed, not wedge the lock for 30s --------
+
+    /// <summary>
+    /// A hung token endpoint must surface a typed <see cref="TransportException"/> on the
+    /// (injected, short) per-call timeout — never a bare TaskCanceledException, and never the
+    /// full 30s default wait (which would wedge every process queued on the store lock).
+    /// </summary>
+    [Fact]
+    public async Task HungTokenEndpointTimesOutTypedAndFast()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+
+        using var release = new SemaphoreSlim(0, 1);
+        using var hung = new LoopbackHttpServer(async ctx =>
+        {
+            await release.WaitAsync(); // never respond until the test lets it unwind
+            ctx.Response.StatusCode = 200;
+        });
+
+        using var manager = new TokenManager(temp.Store, Fixtures.Credentials, Fixtures.Expired("r1"),
+            tokenUrl: hung.Url, httpTimeout: TimeSpan.FromMilliseconds(200));
+
+        var sw = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<TransportException>(() => manager.GetAccessTokenAsync());
+        sw.Stop();
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10),
+            $"timeout must fire on the 200ms injected timeout, not the 30s default (took {sw.Elapsed})");
+
+        release.Release(); // let the hung handler unwind before teardown
+        // The store is untouched — a timed-out refresh persists nothing.
+        Assert.Equal("r1", temp.Store.LoadTokens()!.RefreshToken);
     }
 }

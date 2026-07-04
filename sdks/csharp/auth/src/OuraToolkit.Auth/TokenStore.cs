@@ -153,6 +153,13 @@ public sealed class TokenStore
         {
             return null;
         }
+        catch (UnauthorizedAccessException e)
+        {
+            // The record path is not a readable file — most commonly it is itself a directory
+            // (File.ReadAllBytes on a directory throws this on Unix). Surface it as a typed
+            // store-format error, not a raw IO exception leaking to callers.
+            throw new StoreFormatException(path, e);
+        }
         try
         {
             return JsonSerializer.Deserialize<T>(bytes)

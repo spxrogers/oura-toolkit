@@ -100,6 +100,53 @@ public class TokenStoreTests
         Assert.Contains("tokens.json", e.Message);
     }
 
+    [Fact]
+    public void LiteralJsonNullRecordThrowsATypedFormatErrorForBothRecords()
+    {
+        using var temp = new TempStore();
+        File.WriteAllText(temp.Store.TokensPath, "null");
+        var tokensError = Assert.Throws<StoreFormatException>(() => temp.Store.LoadTokens());
+        Assert.Contains("tokens.json", tokensError.Message);
+
+        File.WriteAllText(temp.Store.CredentialsPath, "null");
+        var credsError = Assert.Throws<StoreFormatException>(() => temp.Store.LoadCredentials());
+        Assert.Contains("credentials.json", credsError.Message);
+    }
+
+    [Fact]
+    public void EmptyObjectMissingRequiredFieldsThrowsATypedFormatError()
+    {
+        using var temp = new TempStore();
+        // `{}` omits the required access_token/refresh_token/expires_at — System.Text.Json's
+        // `required` enforcement must surface as a typed store error, not a raw JsonException.
+        File.WriteAllText(temp.Store.TokensPath, "{}");
+        var e = Assert.Throws<StoreFormatException>(() => temp.Store.LoadTokens());
+        Assert.Contains("tokens.json", e.Message);
+    }
+
+    [Fact]
+    public void WrongTypedExpiresAtThrowsATypedFormatError()
+    {
+        using var temp = new TempStore();
+        // expires_at is a number in the contract; a string must not silently coerce or throw raw.
+        File.WriteAllText(temp.Store.TokensPath,
+            "{\"access_token\":\"a\",\"refresh_token\":\"b\",\"expires_at\":\"not-a-number\"}");
+        var e = Assert.Throws<StoreFormatException>(() => temp.Store.LoadTokens());
+        Assert.Contains("tokens.json", e.Message);
+    }
+
+    [Fact]
+    public void RecordPathThatIsADirectoryThrowsATypedFormatError()
+    {
+        using var temp = new TempStore();
+        // A botched store where the record path is a directory: File.ReadAllBytes on a directory
+        // throws UnauthorizedAccessException on Unix — it must map to a typed store error, not
+        // escape as a raw IO exception.
+        System.IO.Directory.CreateDirectory(temp.Store.TokensPath);
+        var e = Assert.Throws<StoreFormatException>(() => temp.Store.LoadTokens());
+        Assert.Contains("tokens.json", e.Message);
+    }
+
     // -- File hygiene (Unix leg; Windows relies on %LOCALAPPDATA% ACLs) -----------------------
 
     [Fact]
