@@ -88,6 +88,18 @@ enum AuthAction {
         #[arg(long, default_value_t = 8788)]
         port: u16,
     },
+    /// Show stored auth state: client_id, scopes, token expiry (exit 4 if unauthenticated).
+    Status,
+    /// Delete stored tokens (log out). Keeps the client credentials unless --all is given.
+    Logout {
+        /// Also remove the stored client credentials (client_id + client_secret).
+        #[arg(long)]
+        all: bool,
+    },
+    /// Force a token refresh now and persist the rotated refresh token.
+    Refresh,
+    /// Print a valid access token (refreshing if needed) to stdout — and nothing else.
+    Token,
 }
 
 #[tokio::main]
@@ -118,6 +130,33 @@ async fn run() -> anyhow::Result<()> {
         Some(Command::Auth { action }) => match action {
             AuthAction::Setup { port } => auth::setup(port).await,
             AuthAction::Login { port } => auth::login(port).await,
+            AuthAction::Status => {
+                let report = auth::status(&oura_toolkit_auth::TokenStore::new()?, render)?;
+                // The report always reaches stdout (it IS the result — including the
+                // partial state that tells the user what to fix); the typed failure then
+                // rides the classifier to the documented exit 4 + hint on stderr.
+                contract::emit(&report.rendered)?;
+                match report.failure {
+                    Some(err) => Err(err.into()),
+                    None => Ok(()),
+                }
+            }
+            AuthAction::Logout { all } => {
+                contract::emit(&auth::logout(&oura_toolkit_auth::TokenStore::new()?, all)?)?;
+                Ok(())
+            }
+            AuthAction::Refresh => {
+                let store = oura_toolkit_auth::TokenStore::new()?;
+                let manager = oura_toolkit_auth::TokenManager::load()?;
+                contract::emit(&auth::refresh(&manager, &store).await?)?;
+                Ok(())
+            }
+            AuthAction::Token => {
+                let store = oura_toolkit_auth::TokenStore::new()?;
+                let manager = oura_toolkit_auth::TokenManager::load()?;
+                contract::emit(&auth::token(&manager, &store).await?)?;
+                Ok(())
+            }
         },
         Some(Command::Sleep(range)) => {
             contract::emit(&commands::sleep(&data_ctx()?, range.resolve()?).await?)?;

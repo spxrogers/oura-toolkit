@@ -372,6 +372,26 @@ auth-setup:
 auth-login:
     cargo run -p oura-toolkit-cli -- auth login
 
+# Show stored auth state (exit 4 when unauthenticated).
+[group('run')]
+auth-status:
+    cargo run -p oura-toolkit-cli -- auth status
+
+# Remove stored tokens (`oura auth logout --all` also removes the client credentials).
+[group('run')]
+auth-logout:
+    cargo run -p oura-toolkit-cli -- auth logout
+
+# Force a token refresh now (persists the rotated refresh token).
+[group('run')]
+auth-refresh:
+    cargo run -p oura-toolkit-cli -- auth refresh
+
+# Print a valid access token to stdout (the scripting workhorse).
+[group('run')]
+auth-token:
+    cargo run -p oura-toolkit-cli -- auth token
+
 # ---------------------------------------------------------------------------------------------
 # Release / publish
 # ---------------------------------------------------------------------------------------------
