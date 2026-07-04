@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Java-client live smoke against Oura's sandbox (network; run via `just test-sandbox-sdks`,
+  never CI). The recipe `mvn install`s sdks/java/api into the local repo first, then runs
+  this main; `api.version` is injected from the workspace version.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.ouratoolkit</groupId>
+    <artifactId>java-smoke</artifactId>
+    <version>0.0.0-smoke</version>
+    <packaging>jar</packaging>
+    <name>java-smoke</name>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <!-- Overridden by the justfile recipe with the workspace version. -->
+        <api.version>0.1.0</api.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ouratoolkit</groupId>
+            <artifactId>api</artifactId>
+            <version>${api.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.10.1</version>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.ouratoolkit.smoke.JavaSmoke</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.ouratoolkit:auth — the HAND-WRITTEN Java auth companion (issue #15).
+
+  Non-interactive by design (CLAUDE.md → AUTH): token store, refresh with rotation, and a
+  Bearer request interceptor for the generated com.ouratoolkit:api client. Interactive
+  OAuth (browser + loopback) lives ONLY in the CLI. Bring-your-own-credentials: Oura is a
+  confidential client (client_id + client_secret; no PKCE), so consumers register their
+  own OAuth app.
+
+  Runtime dependencies are deliberately minimal: the JDK's HttpClient plus the SAME
+  jackson version the generated api module pins — nothing else.
+
+  The <version> below must equal the workspace version in the root Cargo.toml (the single
+  version source); `just sdk-test-java` grep-asserts the match, mirroring gen-py's guard.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.ouratoolkit</groupId>
+    <artifactId>auth</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+    <name>auth</name>
+    <description>Oura OAuth2 auth companion for the oura-toolkit Java SDK: token store, refresh with rotation, Bearer interceptor.</description>
+    <url>https://github.com/spxrogers/oura-toolkit</url>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <!-- SAME jackson version as sdks/java/api/pom.xml — keep in lockstep. -->
+        <jackson-version>2.17.1</jackson-version>
+        <junit-version>5.10.2</junit-version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson-version}</version>
+        </dependency>
+
+        <!-- test dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit-version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.10.1</version>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <!-- Keep the REAL classpath in java.class.path (no manifest-only booter
+                         jar): the cross-process lock test spawns a child JVM with it. -->
+                    <useManifestOnlyJar>false</useManifestOnlyJar>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
