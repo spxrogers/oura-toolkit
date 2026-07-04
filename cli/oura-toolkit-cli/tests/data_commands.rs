@@ -112,6 +112,141 @@ async fn an_empty_range_is_success_with_empty_output() {
     assert_eq!(out, "");
 }
 
+/// Rate limiting (#28), recovery half: a 429 whose `Retry-After` fits the bound is waited
+/// out ONCE and the retry succeeds. expect() counts pin exactly two data requests.
+#[tokio::test]
+async fn a_429_with_a_short_retry_after_is_waited_out_once_and_succeeds() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    // First request: throttled, server says retry immediately. Mounted first + capped to
+    // one match so the retry falls through to the success mock.
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "0")
+                .insert_header("X-RateLimit-Reset", "1783191600"),
+        )
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], None))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let out = commands::sleep(&ctx(&server, &dir, fresh_tokens("at-1")), range())
+        .await
+        .unwrap();
+    assert_eq!(out, "2026-06-26\t80\t70\t80\t90\n");
+}
+
+/// Rate limiting (#28), give-up half: a STILL-throttled retry surfaces the typed error
+/// naming the reset time, after EXACTLY one retry — expect(2) turns a retry storm into a
+/// test failure.
+#[tokio::test]
+async fn a_persistent_429_fails_typed_after_exactly_one_retry() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "0")
+                // 2026-07-04T19:00:00Z — the reset instant the error must name.
+                .insert_header("X-RateLimit-Reset", "1783191600"),
+        )
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let err = commands::sleep(&ctx(&server, &dir, fresh_tokens("at-1")), range())
+        .await
+        .unwrap_err();
+    let rl = err
+        .downcast_ref::<oura_toolkit_cli::api::RateLimited>()
+        .expect("must surface the TYPED RateLimited error, not a stringly HTTP error");
+    assert_eq!(
+        rl.until.unwrap().to_rfc3339(),
+        "2026-07-04T19:00:00+00:00",
+        "the reset time comes from X-RateLimit-Reset"
+    );
+    assert!(
+        format!("{err:#}").contains("rate limited until 2026-07-04T19:00:00Z"),
+        "the documented message shape: {err:#}"
+    );
+}
+
+/// Rate limiting (#28), bound half: a `Retry-After` beyond the cap is NOT slept on — the
+/// typed error surfaces immediately (expect(1): no second request), and fast.
+#[tokio::test]
+async fn a_429_with_a_long_retry_after_fails_immediately_without_sleeping() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "3600"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let started = std::time::Instant::now();
+    let err = commands::sleep(&ctx(&server, &dir, fresh_tokens("at-1")), range())
+        .await
+        .unwrap_err();
+    assert!(
+        err.downcast_ref::<oura_toolkit_cli::api::RateLimited>()
+            .is_some(),
+        "{err:#}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "a >cap Retry-After must not be waited on (elapsed {:?})",
+        started.elapsed()
+    );
+}
+
+/// Rate limiting (#28), pagination half: auto-following stops CLEANLY at the first
+/// rate-limited page — the throttled page is retried once (expect(2)), no further cursor
+/// is followed, and the typed error propagates.
+#[tokio::test]
+async fn pagination_stops_cleanly_at_a_rate_limited_page() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .and(wiremock::matchers::query_param_is_missing("next_token"))
+        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], Some("t1")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Page 2 is throttled on the attempt AND the single bounded retry; a third fetch of
+    // it, or any fetch of a page 3, would break the expect(2) below.
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .and(query_param("next_token", "t1"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let err = commands::sleep(&ctx(&server, &dir, fresh_tokens("at-1")), range())
+        .await
+        .unwrap_err();
+    assert!(
+        err.downcast_ref::<oura_toolkit_cli::api::RateLimited>()
+            .is_some(),
+        "pagination must propagate the typed error: {err:#}"
+    );
+}
+
 /// A 401 triggers exactly one refresh (against the token endpoint) and one retry, which
 /// then succeeds — enforced by expect() counts on all three mocks.
 #[tokio::test]

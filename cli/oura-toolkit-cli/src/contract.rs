@@ -57,6 +57,15 @@ pub fn classify(err: &anyhow::Error) -> Failure {
                 hint: None,
             };
         }
+        // Rate limiting (#28) is a runtime failure (exit 1) — no auth flow fixes it and
+        // the invocation was fine — but the fix is known: the error line names the reset
+        // time, and the hint says what to do with it.
+        if cause.downcast_ref::<crate::api::RateLimited>().is_some() {
+            return Failure {
+                code: EXIT_ERROR,
+                hint: Some("wait until the reset time shown above, then re-run"),
+            };
+        }
         if let Some(auth) = cause.downcast_ref::<AuthError>() {
             match auth {
                 AuthError::NotAuthenticated => {
@@ -180,6 +189,31 @@ mod tests {
         let f = classify(&err);
         assert_eq!(f.code, EXIT_AUTH);
         assert_eq!(f.hint, Some("run `oura auth setup`"));
+    }
+
+    #[test]
+    fn rate_limited_exits_1_with_the_wait_hint() {
+        // #28: rate limiting is runtime-shaped (no auth flow fixes it, the invocation was
+        // fine) but carries the one non-auth hint in the contract.
+        let err = anyhow::Error::new(crate::api::RateLimited {
+            until: chrono::DateTime::parse_from_rfc3339("2026-07-04T18:30:00Z")
+                .ok()
+                .map(|t| t.to_utc()),
+        })
+        .context("fetching daily sleep");
+        let f = classify(&err);
+        assert_eq!(f.code, EXIT_ERROR);
+        assert_eq!(
+            f.hint,
+            Some("wait until the reset time shown above, then re-run")
+        );
+        assert_eq!(
+            render_report(&err),
+            "oura: fetching daily sleep: the Oura API rate limit was exceeded — rate \
+             limited until 2026-07-04T18:30:00Z\nhint: wait until the reset time shown \
+             above, then re-run",
+            "the documented error + hint shape (docs/cli-contract.md → Rate limits)"
+        );
     }
 
     #[test]
