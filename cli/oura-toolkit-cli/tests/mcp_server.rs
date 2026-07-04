@@ -34,14 +34,34 @@ fn manager(dir: &tempfile::TempDir, tokens: Option<Tokens>) -> TokenManager {
     TokenManager::from_parts(store, tokens.is_some().then_some(credentials), tokens)
 }
 
-/// Serve `OuraMcp` over an in-memory duplex and hand back a connected client.
+/// Serve `OuraMcp` over an in-memory duplex and hand back a connected client. The
+/// health store lives in its own tempdir per server (kept alive by the moved handle's
+/// dir; the tests that exercise the store pass their own via [`connect_with_store`]).
 async fn connect(
     manager: TokenManager,
     base_url: String,
 ) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
+    let store_dir = tempfile::tempdir().expect("store tempdir");
+    let store = oura_toolkit_health::HealthStore::with_dir(store_dir.path().join("health"));
+    let client = connect_with_store(manager, base_url, store).await;
+    // The server task owns the HealthStore (a path), but the TempDir handle would delete
+    // the directory on drop — keep it alive for the test process instead.
+    std::mem::forget(store_dir);
+    client
+}
+
+/// [`connect`] with an explicit health store (local-store tool tests).
+async fn connect_with_store(
+    manager: TokenManager,
+    base_url: String,
+    store: oura_toolkit_health::HealthStore,
+) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
     let (server_io, client_io) = tokio::io::duplex(1 << 16);
     tokio::spawn(async move {
-        if let Ok(running) = OuraMcp::new(manager, base_url).serve(server_io).await {
+        if let Ok(running) = OuraMcp::new(manager, base_url, store)
+            .serve(server_io)
+            .await
+        {
             let _ = running.waiting().await;
         }
     });
@@ -59,11 +79,12 @@ fn sleep_args(start: &str, end: &str) -> serde_json::Map<String, serde_json::Val
     args
 }
 
-/// Initialize succeeds on a machine with NO stored tokens, and the 8 curated tools are
-/// listed — each carrying the build-time spec-derived description (curated lead + the
-/// spec's field inventory), with out-of-band auth named in the server instructions.
+/// Initialize succeeds on a machine with NO stored tokens, and the 12 curated tools are
+/// listed — the 8 Oura ones carrying the build-time spec-derived description (curated
+/// lead + the spec's field inventory), the 4 local-store ones their hand-curated
+/// descriptions — with out-of-band auth named in the server instructions.
 #[tokio::test]
-async fn initialize_succeeds_without_tokens_and_lists_the_8_described_tools() {
+async fn initialize_succeeds_without_tokens_and_lists_the_12_described_tools() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(manager(&dir, None), "http://unused.invalid".into()).await;
 
@@ -83,19 +104,37 @@ async fn initialize_succeeds_without_tokens_and_lists_the_8_described_tools() {
     assert_eq!(
         names,
         [
+            "find_analog_weeks",
+            "get_capacity",
             "get_daily_activity",
             "get_daily_readiness",
             "get_daily_sleep",
             "get_daily_stress",
+            "get_day_context",
             "get_heart_rate",
             "get_personal_info",
             "get_sessions",
+            "get_upcoming_load",
             "get_workouts",
         ],
         "exactly the curated tool surface, nothing else"
     );
+    let local = [
+        "find_analog_weeks",
+        "get_capacity",
+        "get_day_context",
+        "get_upcoming_load",
+    ];
     for tool in &tools {
         let description = tool.description.as_deref().unwrap_or_default();
+        if local.contains(&tool.name.as_ref()) {
+            assert!(
+                description.contains("local") && description.contains("store"),
+                "{}: local tools must name the local store as their source: {description:?}",
+                tool.name
+            );
+            continue;
+        }
         assert!(
             description.contains("Oura API operation:"),
             "{}: spec-derived section missing: {description:?}",
@@ -347,6 +386,68 @@ async fn concurrent_tool_calls_share_the_manager_safely() {
     let info_result = info_result.unwrap();
     assert_eq!(info_result.is_error, Some(false));
     assert!(text_of(&info_result).contains("user@example.com"));
+
+    client.cancel().await.unwrap();
+}
+
+/// Local-store tools serve WITHOUT Oura tokens (their data plane is the day-grain
+/// store): `get_day_context` returns exactly the imported records as JSON.
+#[tokio::test]
+async fn get_day_context_reads_the_local_store_without_tokens() {
+    use oura_toolkit_health::{CalendarDay, HealthStore};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = HealthStore::with_dir(dir.path().join("health"));
+    store
+        .upsert(std::collections::BTreeMap::from([(
+            "2026-07-01".parse::<chrono::NaiveDate>().unwrap(),
+            CalendarDay {
+                meeting_hours: 4.5,
+                event_count: 6,
+                evening_event_count: 1,
+                ..Default::default()
+            },
+        )]))
+        .unwrap();
+
+    let client =
+        connect_with_store(manager(&dir, None), "http://unused.invalid".into(), store).await;
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("get_day_context")
+                .with_arguments(sleep_args("2026-07-01", "2026-07-01")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(false), "no auth needed: {result:?}");
+    let json: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+    assert_eq!(json["2026-07-01"]["calendar"]["meeting_hours"], 4.5);
+    assert_eq!(json["2026-07-01"]["calendar"]["event_count"], 6);
+
+    client.cancel().await.unwrap();
+}
+
+/// A thin-history store makes `get_capacity` a TOOL-LEVEL error whose message carries
+/// the import remediation — the local-store mirror of the structured auth error.
+#[tokio::test]
+async fn get_capacity_with_thin_history_is_a_structured_tool_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = connect(manager(&dir, None), "http://unused.invalid".into()).await;
+
+    let result = client
+        .call_tool(CallToolRequestParams::new("get_capacity"))
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(true), "thin history is a tool error");
+    let message = text_of(&result);
+    assert!(
+        message.contains("not enough history"),
+        "names the refusal: {message}"
+    );
+    assert!(
+        message.contains("oura import"),
+        "carries the remediation: {message}"
+    );
 
     client.cancel().await.unwrap();
 }

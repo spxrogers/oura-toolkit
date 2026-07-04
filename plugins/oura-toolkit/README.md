@@ -1,8 +1,10 @@
 # oura-toolkit plugin
 
-Your Oura Ring data in Claude: a local MCP server exposing eight read-only tools
-(daily sleep, readiness, activity, stress, heart rate, sessions, workouts, personal
-info) plus two skills — `/morning-checkin` and `/wellness-report`.
+Your Oura Ring data in Claude: a local MCP server exposing twelve read-only tools —
+eight over your Oura data (daily sleep, readiness, activity, stress, heart rate,
+sessions, workouts, personal info) and four over the toolkit's local health+schedule
+store (capacity, analog weeks, upcoming load, day context) — plus three skills:
+`/morning-checkin`, `/wellness-report`, and `/schedule-outlook`.
 
 ## Install
 
@@ -38,6 +40,11 @@ If a tool call reports "not authenticated", run `npx -y oura-toolkit auth login`
   takeaway.
 - **/wellness-report** — multi-day trends across sleep/readiness/activity/stress with
   cross-signal insights.
+- **/schedule-outlook** — the weeks ahead scored against your own history: upcoming
+  schedule load, the most similar past weeks and what followed them, and this week's
+  capacity. Needs imported context — run `npx -y oura-toolkit sync` and
+  `npx -y oura-toolkit import calendar <file.ics>` first (see the repo README's
+  "Local health store" section).
 
-Both are also invoked automatically when you ask Claude the matching questions ("how
-did I sleep?", "how was my week?").
+All are also invoked automatically when you ask Claude the matching questions ("how
+did I sleep?", "how was my week?", "what does my fall look like?").

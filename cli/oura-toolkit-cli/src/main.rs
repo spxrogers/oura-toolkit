@@ -5,7 +5,7 @@
 //! contract — see `docs/cli-contract.md` and the `contract` module (#21).
 
 use clap::{Parser, Subcommand};
-use oura_toolkit_cli::{api, auth, commands, contract, output};
+use oura_toolkit_cli::{api, auth, commands, contract, health, output};
 
 /// Oura Ring toolkit — CLI + MCP server for the Oura API v2.
 #[derive(Parser)]
@@ -68,10 +68,44 @@ enum Command {
     Workouts(RangeArgs),
     /// Your Oura profile (age, height, weight, …).
     PersonalInfo,
-    /// Run as a STDIO MCP server (8 read-only Oura data tools).
+    /// Pull Oura daily summaries into the local health store (default: last 90 days).
+    Sync(RangeArgs),
+    /// Import a local data export (Apple Health, calendar, Toggl) into the health store.
+    Import {
+        #[command(subcommand)]
+        source: ImportSource,
+    },
+    /// How much more this week can take, from your own history (0–100%).
+    Capacity,
+    /// The merged day-grain records (health + schedule context) the engine sees.
+    Context(RangeArgs),
+    /// Run as a STDIO MCP server (12 read-only tools: Oura data + the local store).
     // A subcommand, not a `--mcp` flag: modes and modifiers don't mix, and clap makes the
     // nonsense states unrepresentable. Decided 2026-07-02 (#21).
     Mcp,
+}
+
+#[derive(Subcommand)]
+enum ImportSource {
+    /// An Apple Health export: export.zip (or the extracted export.xml).
+    AppleHealth {
+        /// Path to export.zip / export.xml.
+        file: std::path::PathBuf,
+        /// Delete the export file after a successful import (it holds your full
+        /// plaintext health history — see the README's data-safety section).
+        #[arg(long)]
+        remove_source: bool,
+    },
+    /// A calendar export (.ics): history AND future events (future weeks feed capacity).
+    Calendar {
+        /// Path to the .ics file.
+        file: std::path::PathBuf,
+    },
+    /// A Toggl Track detailed-report CSV export.
+    Toggl {
+        /// Path to the .csv file.
+        file: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -149,6 +183,45 @@ async fn run() -> anyhow::Result<()> {
         }
         Some(Command::PersonalInfo) => {
             contract::emit(&commands::personal_info(&data_ctx()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Sync(range)) => {
+            let ctx = data_ctx()?;
+            let range = health::resolve_range_with_default(
+                range.start.as_deref(),
+                range.end.as_deref(),
+                api::local_today(),
+                health::SYNC_DEFAULT_DAYS,
+            )?;
+            let store = health::open_store(true)?;
+            contract::emit(
+                &health::sync(&ctx.manager, &ctx.base_url, &store, range, render).await?,
+            )?;
+            Ok(())
+        }
+        Some(Command::Import { source }) => {
+            let store = health::open_store(true)?;
+            let rendered = match source {
+                ImportSource::AppleHealth {
+                    file,
+                    remove_source,
+                } => health::import_apple(&store, &file, remove_source, render)?,
+                ImportSource::Calendar { file } => {
+                    health::import_calendar(&store, &file, api::local_today(), render)?
+                }
+                ImportSource::Toggl { file } => health::import_toggl(&store, &file, render)?,
+            };
+            contract::emit(&rendered)?;
+            Ok(())
+        }
+        Some(Command::Capacity) => {
+            let store = health::open_store(false)?;
+            contract::emit(&health::capacity(&store, api::local_today(), render)?)?;
+            Ok(())
+        }
+        Some(Command::Context(range)) => {
+            let store = health::open_store(false)?;
+            contract::emit(&health::context(&store, range.resolve()?, render)?)?;
             Ok(())
         }
         Some(Command::Mcp) => {

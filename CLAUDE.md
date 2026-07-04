@@ -396,6 +396,11 @@ code is a bug of the same severity as the code change that orphaned it.
   nonsense states unrepresentable.) Expose ~8 well-described tools people actually want
   (daily sleep, daily readiness, daily activity, daily stress, heart rate, sessions,
   workouts, personal info), **hide the rest**, write good LLM-facing descriptions.
+  Since 2026-07-03 the surface is **12 tools**: the 8 Oura ones plus 4 local-store
+  tools (`get_capacity`, `find_analog_weeks`, `get_upcoming_load`, `get_day_context`)
+  with HAND-CURATED descriptions (no spec to derive from; each must name the local
+  store as its source and, where outcomes are involved, carry the n=1 no-predictions
+  framing — both test-enforced).
 - **Tool generation (decided 2026-07-02; supersedes the earlier "use `rmcp-openapi`" plan;
   user-approved after a full trade-off review):** the tools are a **hybrid spec-codegen**
   over the CLI's own data plane, NOT `rmcp-openapi`. Verified against rmcp-openapi 0.31.2
@@ -428,6 +433,40 @@ code is a bug of the same severity as the code change that orphaned it.
 - stdio MCP auth is **out-of-band** per the MCP spec — do **NOT** implement
   OAuth-over-the-wire for the server, and do **NOT** make the server remote/HTTP or a
   hosted OAuth broker.
+
+---
+
+## LOCAL HEALTH STORE & CONTEXT ENGINE (added 2026-07-03; design docs: docs/feasibility-… + docs/vision-…)
+
+- **`sources/oura-toolkit-health`** owns: the day-grain store, the file importers
+  (Apple Health export.zip/xml, calendar .ics, Toggl CSV), and the deterministic
+  analog/capacity engine. NO network code lives in this crate, ever.
+- **Store**: versioned JSON (`days.json`) at `$XDG_DATA_HOME/oura-toolkit/`
+  (→ `~/.local/share/oura-toolkit/`; Windows `%LOCALAPPDATA%\oura-toolkit\data\`) —
+  the DATA sibling of the auth crate's config dir, same 0600/0700 + atomic-write +
+  advisory-lock discipline. **Day-grain aggregates only; raw samples are never
+  retained** (privacy + size). The store is a REBUILDABLE CACHE of imports — never a
+  source of truth, which keeps at-rest encryption addable later without migration.
+  (Phase-0 decision: JSON over SQLite until real row counts demand more; the vision
+  doc records the revision.)
+- **One slot per source** (`oura`/`apple`/`calendar`/`toggl` on each day record):
+  a re-import REPLACES its own slot wholesale and cannot touch another source's —
+  enforced by the `SourceDay` trait. Provider-tagged metrics stay separate fields
+  (Oura rMSSD vs Apple SDNN must NEVER blend — schema-enforced).
+- **Context privacy**: calendar/Toggl imports keep DERIVED numbers only (hours,
+  counts, clock positions). Event titles/attendees/descriptions must never outlive the
+  parse — test-enforced with hostile payloads.
+- **Engine doctrine**: Rust computes, the assistant narrates. Deterministic, no clock
+  reads inside the math (dates injected). Below **8 qualifying history weeks** the
+  engine REFUSES (`InsufficientHistory`, exit 1 / tool-level error carrying the import
+  remediation) — never extrapolate thin history. Outcome windows include the **2 weeks
+  after** a context week (lag is where schedule damage lands). Capacity = 100 −
+  attributed components (`recovery_debt`, `week_load`, `analog_risk`), bands 70/40.
+- **Safety behaviors are contract** (cli-contract.md): sync-root warning when the
+  store would land in a cloud-synced folder; the plaintext-export reminder +
+  `--remove-source` on `oura import apple-health`.
+- Do **NOT** add cloud sync, telemetry, or any second egress: the only egresses remain
+  the Oura API (user's own credentials) and MCP tool results.
 
 ---
 
@@ -532,8 +571,10 @@ oura-toolkit/
 │   ├── go/                        # api/ GENERATED; hand-written go.mod (module …/sdks/go); auth later
 │   ├── java/                      # api/ GENERATED (com.ouratoolkit:api); auth later
 │   └── csharp/                    # api/ GENERATED (OuraToolkit.Api); auth later
+├── sources/
+│   └── oura-toolkit-health/      # hand-written: local day-grain store, file importers (Apple Health, .ics, Toggl), analog/capacity engine (added 2026-07-03, owner-approved)
 ├── cli/
-│   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, mcp; depends on oura-toolkit-api + oura-toolkit-auth
+│   └── oura-toolkit-cli/         # THE app (binary `oura`): auth setup|login (loopback OAuth), data cmds, sync/import/capacity/context, mcp; depends on oura-toolkit-api + oura-toolkit-auth + oura-toolkit-health
 ├── .claude-plugin/marketplace.json  # at the REPO ROOT — required by the marketplace schema (see PLUGIN)
 ├── plugins/
 │   └── oura-toolkit/             # single plugin (name matches dir): plugin.json + .mcp.json + skills/
@@ -541,7 +582,12 @@ oura-toolkit/
 └── dist-workspace.toml            # cargo-dist config
 ```
 
-**Cargo workspace members**: `["sdks/rust/oura-toolkit-api", "sdks/rust/oura-toolkit-auth", "cli/oura-toolkit-cli"]`.
+**Cargo workspace members**: `["sdks/rust/oura-toolkit-api", "sdks/rust/oura-toolkit-auth", "sources/oura-toolkit-health", "cli/oura-toolkit-cli"]`.
+
+**`sources/` is the importer archetype's home** (added 2026-07-03): providers with no
+cloud API enter as parsed files, not generated clients — `sdks/<lang>/` stays reserved
+for spec-generated clients + auth companions, and the "no hand-written transport" rule
+is untouched (there is no transport in `sources/`; parsers and statistics only).
 
 ---
 

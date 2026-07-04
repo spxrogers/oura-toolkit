@@ -241,6 +241,25 @@ fn docs_store_paths_match_the_auth_crates_dir_name() {
     }
 }
 
+/// The README's HEALTH-store path claims ⟷ the health crate's locked directory name
+/// (the data-dir sibling of the token store's config dir).
+#[test]
+fn readme_health_store_paths_match_the_health_crates_dir_name() {
+    let unix = format!("~/.local/share/{}/", oura_toolkit_health::DATA_DIR_NAME);
+    let windows = format!(
+        "%LOCALAPPDATA%\\{}\\data\\",
+        oura_toolkit_health::DATA_DIR_NAME
+    );
+    let readme = read(&repo_root().join("README.md"));
+    for claim in [&unix, &windows] {
+        assert!(
+            readme.contains(claim.as_str()),
+            "README lost the health-store path claim {claim:?} — path renamed without \
+             updating the docs? (source: oura_toolkit_health::DATA_DIR_NAME)"
+        );
+    }
+}
+
 /// Every `just <recipe>` the docs mention exists in the justfile — a recipe rename that
 /// orphans the README or CONTRIBUTING fails CI.
 #[test]
@@ -300,22 +319,23 @@ fn documented_just_recipes_all_exist() {
     );
 }
 
-/// Every `get_*` token in the README is a real MCP tool name, and the server still has
-/// exactly the eight the README's "eight curated, described tools" claim counts.
+/// Every `get_*`/`find_*` token in the README is a real MCP tool name (the local tools
+/// include the non-`get_` `find_analog_weeks`), and the server still has exactly the
+/// twelve the README's "twelve curated, described tools" claim counts.
 #[test]
 fn readme_mcp_tool_names_are_real() {
     let known: BTreeSet<&str> = oura_toolkit_cli::mcp::tool_names().collect();
     assert_eq!(
         known.len(),
-        8,
-        "MCP tool count changed — the README's 'eight curated, described tools' claim \
-         (and the plugin README's 'eight read-only tools') need review"
+        12,
+        "MCP tool count changed — the README's 'twelve curated, described tools' claim \
+         (and the plugin README's 'twelve read-only tools') need review"
     );
     let readme = read(&repo_root().join("README.md"));
     let mut checked = 0;
     for token in readme
         .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
-        .filter(|t| t.starts_with("get_"))
+        .filter(|t| t.starts_with("get_") || t.starts_with("find_"))
     {
         assert!(
             known.contains(token),
