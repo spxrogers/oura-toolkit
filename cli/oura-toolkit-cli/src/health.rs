@@ -21,7 +21,7 @@ use chrono::NaiveDate;
 
 use oura_toolkit_auth::TokenManager;
 use oura_toolkit_health::engine::{self, AnalogReport, CapacityReport, WeekLoad};
-use oura_toolkit_health::{apple, calendar, toggl, DayMap, HealthStore, OuraDay};
+use oura_toolkit_health::{apple, calendar, habits, toggl, DayMap, HealthStore, OuraDay};
 
 use crate::api::{parse_date, DateRange};
 use crate::commands::{fetch_activity, fetch_readiness, fetch_sleep, fetch_stress};
@@ -237,6 +237,134 @@ pub fn fetch_day_context(store: &HealthStore, range: DateRange) -> Result<DayMap
         .into_iter()
         .filter(|(day, _)| *day >= range.start && *day <= range.end)
         .collect())
+}
+
+/// Shared data plane for `oura habit stats` AND the `get_habits` MCP tool.
+pub fn fetch_habits(store: &HealthStore, today: NaiveDate) -> Result<Vec<habits::HabitStats>> {
+    let days = store.load().context("reading the health store")?;
+    Ok(habits::habit_stats(&days, today))
+}
+
+/// A habit write's outcome, for the CLI line and the `log_habit` MCP result.
+#[derive(serde::Serialize)]
+pub struct HabitLogOutcome {
+    /// The canonical (normalized) habit name that was written.
+    pub habit: String,
+    pub date: NaiveDate,
+    /// True after a `log`, false after an `undo`.
+    pub logged: bool,
+    /// False when the operation was a no-op (already logged / nothing to undo).
+    pub changed: bool,
+}
+
+/// Log or undo one habit for one day — the shared write path for `oura habit
+/// log|undo` and the `log_habit` MCP tool. An invalid name is the CALLER's mistake:
+/// reclassified as a usage error (exit 2 / `invalid_params`).
+pub fn habit_write(
+    store: &HealthStore,
+    name: &str,
+    date: NaiveDate,
+    undo: bool,
+) -> Result<HabitLogOutcome> {
+    let result = if undo {
+        store.unlog_habit(date, name)
+    } else {
+        store.log_habit(date, name)
+    };
+    let (habit, changed) = result.map_err(|e| match e {
+        oura_toolkit_health::HealthError::InvalidHabitName { .. } => {
+            anyhow::Error::new(UsageError(e.to_string()))
+        }
+        other => anyhow::Error::new(other).context("writing the health store"),
+    })?;
+    Ok(HabitLogOutcome {
+        habit,
+        date,
+        logged: !undo,
+        changed,
+    })
+}
+
+/// `oura habit log` / `oura habit undo`: one confirmation line to stdout.
+pub fn habit_write_cmd(
+    store: &HealthStore,
+    name: &str,
+    date: NaiveDate,
+    undo: bool,
+    render: RenderOptions,
+) -> Result<String> {
+    let outcome = habit_write(store, name, date, undo)?;
+    let status = match (outcome.logged, outcome.changed) {
+        (true, true) => "logged".to_string(),
+        (true, false) => "already logged".to_string(),
+        (false, true) => "removed".to_string(),
+        (false, false) => "nothing to remove".to_string(),
+    };
+    let fields = [
+        ("habit", outcome.habit.clone()),
+        ("date", outcome.date.to_string()),
+        ("status", status),
+    ];
+    render_record(&outcome, &fields, render)
+}
+
+/// `oura habit stats`: the long-grain view — days/week over trailing windows.
+pub fn habit_stats_cmd(
+    store: &HealthStore,
+    today: NaiveDate,
+    render: RenderOptions,
+) -> Result<String> {
+    let stats = fetch_habits(store, today)?;
+    let mut table = Table::new(["HABIT", "7D", "28D", "91D", "DAYS", "LAST"]);
+    for s in &stats {
+        table.row([
+            s.name.clone(),
+            format!("{:.1}", s.rate_7d),
+            format!("{:.1}", s.rate_28d),
+            format!("{:.1}", s.rate_91d),
+            s.total_days.to_string(),
+            s.last_logged.to_string(),
+        ]);
+    }
+    render_result(&stats, &table, render)
+}
+
+/// `oura dashboard`: render the self-contained HTML from the store and (unless told
+/// not to) open it in the default browser. The rendered path is the RESULT (stdout);
+/// browser-opening failures are nonfatal prose (stderr) — the file exists either way.
+pub fn dashboard(
+    store: &HealthStore,
+    today: NaiveDate,
+    out: Option<&Path>,
+    open_browser: bool,
+) -> Result<String> {
+    let days = store.load().context("reading the health store")?;
+    let html = crate::dashboard::render(&days, today, &store.dir().display().to_string());
+    let path = match out {
+        Some(p) => p.to_path_buf(),
+        None => store.dir().join("dashboard.html"),
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    std::fs::write(&path, html).with_context(|| format!("writing {}", path.display()))?;
+    // Derived from health data → same owner-only posture as the store records.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("securing {}", path.display()))?;
+    }
+    if open_browser {
+        if let Err(e) = open::that(&path) {
+            eprintln!(
+                "could not open a browser ({e}) — open the file manually: {}",
+                path.display()
+            );
+        }
+    }
+    Ok(format!("{}\n", path.display()))
 }
 
 // ---------------------------------------------------------------------------------------

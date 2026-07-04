@@ -95,10 +95,33 @@ const LOCAL_DESCRIPTIONS: &[(&str, &str)] = &[
          calendar day, the Oura dailies (sleep/readiness/activity scores, stress), \
          Apple Health aggregates (sleep stages, resting HR, HRV SDNN, steps, workouts, \
          SpO2, wrist temperature), calendar schedule shape (meeting hours, event \
-         counts - derived numbers only, never event titles), and Toggl tracked-time \
-         shape. Args: start/end (today, yesterday, or YYYY-MM-DD; default last 7 \
-         days). Data source: the local store. Note Oura HRV (rMSSD) and Apple HRV \
-         (SDNN) are different statistics - never compare them to each other.",
+         counts - derived numbers only, never event titles), Toggl tracked-time \
+         shape, and the day's logged habits. Args: start/end (today, yesterday, or \
+         YYYY-MM-DD; default last 7 days). Data source: the local store. Note Oura \
+         HRV (rMSSD) and Apple HRV (SDNN) are different statistics - never compare \
+         them to each other.",
+    ),
+    (
+        "get_habits",
+        "Every tracked habit's LONG-GRAIN consistency read from the local store: \
+         days-per-week rates over trailing 7/28/91-day windows (each clamped to the \
+         period the habit has actually been tracked), total days logged, and \
+         first/last log dates. The design premise: consistency happens over weeks - \
+         present the 28-day rate as the headline ('strength training 3.8x/week over \
+         the last 4 weeks'), use 7d-vs-91d divergence to describe drift, and do NOT \
+         frame results as daily checkboxes or streaks. Empty result means no habits \
+         logged yet - suggest `oura habit log <name>` or the log_habit tool.",
+    ),
+    (
+        "log_habit",
+        "WRITES to the local store: mark a boolean habit done (or undo one) for a \
+         day. This is the server's only writing tool; the write is local-only \
+         (nothing leaves the machine) and reversible with undo=true. Args: name (the \
+         habit - names canonicalize, so 'Strength Training' and 'strength-training' \
+         are the same habit), date (today, yesterday, or YYYY-MM-DD; default today), \
+         undo (default false). Returns the canonical name and whether anything \
+         changed (logging twice is an idempotent no-op). Log when the user SAYS they \
+         did the thing - do not infer habits from other data and log them unasked.",
     ),
 ];
 
@@ -324,6 +347,50 @@ impl OuraMcp {
         let range = params.resolve()?;
         tool_result(health::fetch_day_context(&self.store, range))
     }
+
+    #[tool(name = "get_habits")]
+    async fn get_habits(&self) -> Result<CallToolResult, ErrorData> {
+        tool_result(health::fetch_habits(&self.store, api::local_today()))
+    }
+
+    #[tool(name = "log_habit")]
+    async fn log_habit(
+        &self,
+        Parameters(params): Parameters<HabitLogParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let date = match &params.date {
+            None => api::local_today(),
+            Some(s) => api::parse_date(s, api::local_today()).map_err(|err| {
+                ErrorData::invalid_params(crate::output::sanitize(&format!("{err:#}")), None)
+            })?,
+        };
+        // An invalid habit name is the caller's arguments being wrong — the shared
+        // write path tags it UsageError; surface it as invalid_params like bad dates.
+        match health::habit_write(
+            &self.store,
+            &params.name,
+            date,
+            params.undo.unwrap_or(false),
+        ) {
+            Err(err) if err.downcast_ref::<contract::UsageError>().is_some() => Err(
+                ErrorData::invalid_params(crate::output::sanitize(&format!("{err:#}")), None),
+            ),
+            outcome => tool_result(outcome),
+        }
+    }
+}
+
+/// Parameters for the `log_habit` write tool.
+#[derive(serde::Deserialize, schemars::JsonSchema, Default)]
+pub struct HabitLogParams {
+    /// The habit name (canonicalized: case/spacing/underscores fold into one habit).
+    pub name: String,
+    /// Day to log: `today`, `yesterday`, or `YYYY-MM-DD` (local). Default: today.
+    #[serde(default)]
+    pub date: Option<String>,
+    /// True to REMOVE the log for that day instead of adding it. Default: false.
+    #[serde(default)]
+    pub undo: Option<bool>,
 }
 
 /// Target-week parameter for `find_analog_weeks`: any day of the week of interest.
@@ -383,13 +450,14 @@ impl ServerHandler for OuraMcp {
                 "Read-only access to the user's Oura Ring data (sleep, readiness, \
                  activity, stress, heart rate, sessions, workouts, profile) plus their \
                  LOCAL day-grain health+schedule store (capacity, analog weeks, \
-                 upcoming load, day context — fed by `oura sync` and `oura import`). \
-                 Authentication is out of band: if a tool reports that the user is not \
-                 authenticated, ask them to run `oura auth login` in a terminal, then \
-                 retry. If a local-store tool reports not enough history, relay its \
-                 import instructions. Local-store results are n=1 observational data — \
-                 describe what followed similar weeks in the user's own history; never \
-                 present them as predictions.",
+                 upcoming load, day context, habits — fed by `oura sync` and `oura \
+                 import`). The one writing tool is log_habit, which only edits the \
+                 local habit log. Authentication is out of band: if a tool reports \
+                 that the user is not authenticated, ask them to run `oura auth login` \
+                 in a terminal, then retry. If a local-store tool reports not enough \
+                 history, relay its import instructions. Local-store results are n=1 \
+                 observational data — describe what followed similar weeks in the \
+                 user's own history; never present them as predictions.",
             )
     }
 }
@@ -438,11 +506,14 @@ mod tests {
         for entry in std::fs::read_dir(&skills_dir).unwrap() {
             let skill = entry.unwrap().path().join("SKILL.md");
             let text = std::fs::read_to_string(&skill).unwrap();
-            // Every `get_…`/`find_…` token in a skill must be one of the server's tool
-            // names (the local tools include the non-`get_` `find_analog_weeks`).
+            // Every `get_…`/`find_…`/`log_…` token in a skill must be one of the
+            // server's tool names (the local tools include the non-`get_`
+            // `find_analog_weeks` and `log_habit`).
             for token in text
                 .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
-                .filter(|t| t.starts_with("get_") || t.starts_with("find_"))
+                .filter(|t| {
+                    t.starts_with("get_") || t.starts_with("find_") || t.starts_with("log_")
+                })
             {
                 assert!(
                     known.contains(&token),

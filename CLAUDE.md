@@ -396,11 +396,13 @@ code is a bug of the same severity as the code change that orphaned it.
   nonsense states unrepresentable.) Expose ~8 well-described tools people actually want
   (daily sleep, daily readiness, daily activity, daily stress, heart rate, sessions,
   workouts, personal info), **hide the rest**, write good LLM-facing descriptions.
-  Since 2026-07-03 the surface is **12 tools**: the 8 Oura ones plus 4 local-store
-  tools (`get_capacity`, `find_analog_weeks`, `get_upcoming_load`, `get_day_context`)
-  with HAND-CURATED descriptions (no spec to derive from; each must name the local
-  store as its source and, where outcomes are involved, carry the n=1 no-predictions
-  framing — both test-enforced).
+  Since 2026-07-03 the surface is **14 tools**: the 8 Oura ones plus 6 local-store
+  tools (`get_capacity`, `find_analog_weeks`, `get_upcoming_load`, `get_day_context`,
+  `get_habits`, `log_habit`) with HAND-CURATED descriptions (no spec to derive from;
+  each must name the local store as its source and, where outcomes are involved,
+  carry the n=1 no-predictions framing — both test-enforced). `log_habit` is the ONE
+  writing tool, local-only by definition; its description must say it writes and
+  instruct the model to log only what the user says they did.
 - **Tool generation (decided 2026-07-02; supersedes the earlier "use `rmcp-openapi`" plan;
   user-approved after a full trade-off review):** the tools are a **hybrid spec-codegen**
   over the CLI's own data plane, NOT `rmcp-openapi`. Verified against rmcp-openapi 0.31.2
@@ -465,6 +467,16 @@ code is a bug of the same severity as the code change that orphaned it.
 - **Safety behaviors are contract** (cli-contract.md): sync-root warning when the
   store would land in a cloud-synced folder; the plaintext-export reminder +
   `--remove-source` on `oura import apple-health`.
+- **Habits** (added 2026-07-03, owner-specified design): boolean per-day logs in a
+  fifth `habits` slot — user-EDITED (not a `SourceDay`; dedicated locked
+  read-modify-write store methods), names canonicalized to kebab-case. The READ is
+  deliberately long-grain: days/week moving-average rates over trailing 7/28/91-day
+  windows (clamped to the tracked period) — never streaks or daily checkboxes.
+- **Dashboard** (added 2026-07-03): `oura dashboard` renders ONE self-contained HTML
+  file (inline everything; NO network references — test-enforced) and opens the
+  browser. A static file, never a localhost server. Charts: small multiples, one
+  axis each, daily values recessive + 7-day MA carrying the hue, validated palette
+  with selected dark mode, crosshair tooltips, weekly-means table views.
 - Do **NOT** add cloud sync, telemetry, or any second egress: the only egresses remain
   the Oura API (user's own credentials) and MCP tool results.
 

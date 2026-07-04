@@ -9,6 +9,7 @@ pub mod api;
 pub mod auth;
 pub mod commands;
 pub mod contract;
+pub mod dashboard;
 pub mod health;
 pub mod loopback;
 pub mod mcp;

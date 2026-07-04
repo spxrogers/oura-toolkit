@@ -34,6 +34,8 @@ pub struct DayRecord {
     pub calendar: Option<CalendarDay>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toggl: Option<TogglDay>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub habits: Option<HabitsDay>,
 }
 
 impl DayRecord {
@@ -43,6 +45,7 @@ impl DayRecord {
             && self.apple.is_none()
             && self.calendar.is_none()
             && self.toggl.is_none()
+            && self.habits.is_none()
     }
 }
 
@@ -179,6 +182,19 @@ pub struct TogglDay {
     pub last_end_min: Option<u32>,
 }
 source_day!(TogglDay, toggl, "Toggl");
+
+/// User-logged boolean habits for one day: the set of normalized habit names marked
+/// done. Deliberately NOT a [`SourceDay`]: habits are user-EDITED (one log at a time,
+/// via `oura habit log` or the `log_habit` MCP tool), not file-imported — so the
+/// wholesale-replace upsert semantics would be wrong, and the store exposes dedicated
+/// read-modify-write methods instead. The point of the feature is the long grain:
+/// consistency reads as a moving-average rate (×/week over trailing windows, see
+/// `habits::habit_stats`), not a daily yes/no or a streak.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct HabitsDay {
+    /// Normalized habit names (see `habits::normalize_habit_name`) logged done.
+    pub done: std::collections::BTreeSet<String>,
+}
 
 #[cfg(test)]
 mod tests {
