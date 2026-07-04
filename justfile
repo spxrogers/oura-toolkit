@@ -288,6 +288,11 @@ ci:
 mcp:
     cargo run -p oura-toolkit-cli -- mcp
 
+# Render and open the local dashboard from the health store.
+[group('run')]
+dashboard:
+    cargo run -p oura-toolkit-cli -- dashboard
+
 # Guided Oura OAuth app registration (terminal prompts), then chain into login.
 [group('run')]
 auth-setup:

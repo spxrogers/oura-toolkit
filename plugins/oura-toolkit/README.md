@@ -1,9 +1,10 @@
 # oura-toolkit plugin
 
-Your Oura Ring data in Claude: a local MCP server exposing twelve read-only tools —
+Your Oura Ring data in Claude: a local MCP server exposing fourteen curated tools —
 eight over your Oura data (daily sleep, readiness, activity, stress, heart rate,
-sessions, workouts, personal info) and four over the toolkit's local health+schedule
-store (capacity, analog weeks, upcoming load, day context) — plus three skills:
+sessions, workouts, personal info) and six over the toolkit's local health+schedule
+store (capacity, analog weeks, upcoming load, day context, habit rates, and habit
+logging — the one writing tool, local-only) — plus three skills:
 `/morning-checkin`, `/wellness-report`, and `/schedule-outlook`.
 
 ## Install

@@ -80,6 +80,21 @@ fi
   re-import REPLACES that source's slot for the days it covers and never touches other
   sources' data.
 
+## Habits & dashboard
+
+- `oura habit log|undo <name>` writes one day's boolean log (names canonicalize:
+  case/whitespace/underscores fold to `kebab-case`). An **invalid habit name is a
+  usage error (exit 2)** — the invocation is wrong, not the store. Re-logging and
+  undoing an absent log are idempotent no-ops (reported in the confirmation line,
+  still exit 0). Habit writes never touch imported source data.
+- `oura habit stats` reads at the long grain: days/week over trailing 7/28/91-day
+  windows, each clamped to the habit's tracked period.
+- `oura dashboard` writes a **self-contained HTML file** (owner-only modes; default
+  location: the health data dir) and prints its PATH as the stdout result. It makes
+  no network references — that is a tested guarantee, not prose. A browser that
+  fails to open is nonfatal stderr prose (the file exists either way); `--no-open`
+  skips the attempt.
+
 ## Error style
 
 One line to stderr: `oura: <what failed>: <why>` — followed by a `hint:` line when the fix

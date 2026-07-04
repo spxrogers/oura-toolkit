@@ -115,6 +115,9 @@ oura import calendar work.ics          # calendar history AND future events
 oura import toggl report.csv           # Toggl Track detailed-report CSV
 oura capacity                          # how much more this week can take (0-100%)
 oura context                           # the merged day-grain records the engine sees
+oura habit log exercise                # mark a habit done (today, or --date …)
+oura habit stats                       # habit rates: days/week over 7/28/91-day windows
+oura dashboard                         # the local GUI: trends + habits in your browser
 ```
 
 **Apple Health (Apple Watch)** — on the iPhone: Health app → your picture (top right) →
@@ -142,6 +145,29 @@ history it refuses instead of guessing — and everything it reports is n=1
 observational data: *"in your history, weeks like this were followed by…"*, never a
 prediction.
 
+### Dashboard (the desktop view)
+
+`oura dashboard` renders everything above into a **single self-contained HTML file**
+and opens it in your default browser — no server, no account, and by design **no
+network requests of any kind** (no CDN scripts, fonts, or images; test-enforced), so
+the page inherits the store's privacy. You get: this week's capacity with its full
+attribution, per-source import coverage (what's in the store, at a glance), 26 weeks
+of trend timelines (readiness, sleep, Apple Watch sleep/HRV, meeting load, tracked
+time — daily values faint, 7-day moving average as the line), and every habit's
+moving-average rate. Dark mode follows your OS. `--out <path>` picks the location,
+`--no-open` skips the browser; the file is owner-only like the store itself.
+
+### Habits (consistency, not streaks)
+
+`oura habit log <name>` marks a boolean habit done for a day — but the *read* side is
+deliberately long-grain: `oura habit stats` (and the dashboard) report **days-per-week
+rates over trailing 7/28/91-day windows**, because "am I strength training 4×/week?"
+is a question about a month, not about today. Names canonicalize ("Strength Training"
+= `strength-training`), logging twice is a no-op, `oura habit undo` reverses a log,
+and young habits' windows clamp to their tracked period so the rates read honestly.
+Through the MCP server, Claude can read the same rates (`get_habits`) and — only when
+you say you did the thing — log for you (`log_habit`).
+
 ### Where the data lives, and its safety properties
 
 - The store is `~/.local/share/oura-toolkit/` (`$XDG_DATA_HOME`; Windows:
@@ -165,14 +191,15 @@ prediction.
 oura mcp
 ```
 
-runs a STDIO MCP server exposing twelve curated, described tools: eight over your Oura
-data (`get_daily_sleep`, `get_daily_readiness`, …) and four over the local store
-(`get_capacity`, `find_analog_weeks`, `get_upcoming_load`, `get_day_context`). Tool
-results are read by whichever AI assistant you connect — that's the point — while
-credentials stay local. The server reuses the same stored tokens and refreshes them
-silently; if you haven't logged in, tool calls return a structured error telling you to
-run `oura auth login` — the server never prompts or opens a browser itself. The
-local-store tools need no Oura auth at all, only imported data.
+runs a STDIO MCP server exposing fourteen curated, described tools: eight over your
+Oura data (`get_daily_sleep`, `get_daily_readiness`, …) and six over the local store
+(`get_capacity`, `find_analog_weeks`, `get_upcoming_load`, `get_day_context`,
+`get_habits`, and `log_habit` — the one writing tool, which only edits your local
+habit log). Tool results are read by whichever AI assistant you connect — that's the
+point — while credentials stay local. The server reuses the same stored tokens and
+refreshes them silently; if you haven't logged in, tool calls return a structured
+error telling you to run `oura auth login` — the server never prompts or opens a
+browser itself. The local-store tools need no Oura auth at all, only imported data.
 
 For Claude Code:
 
