@@ -249,14 +249,21 @@ sdk-test-java:
     cd sdks/java/auth && mvn --quiet test
 
 # Requires the dotnet SDK (absent locally is a real failure, not a skip — CI has it; a
-# silent skip here would let a broken C# client ship).
+# silent skip here would let a broken C# client ship). Builds BOTH halves: the generated api
+# client AND the hand-written auth companion, whose multi-target csproj
+# (netstandard2.0;net8.0;net10.0) makes a single `dotnet build` compile every TFM — so a
+# netstandard2.0-only break (missing UnixFileMode/SocketsHttpHandler polyfill, etc.) fails here.
 [group('codegen')]
 sdk-check-csharp:
     dotnet build --nologo -v quiet sdks/csharp/api/src/OuraToolkit.Api
+    dotnet build --nologo -v quiet sdks/csharp/auth/src/OuraToolkit.Auth
 
 # HAND-WRITTEN C# auth companion tests (hermetic: mock HttpMessageHandler + temp-dir
-# stores; run by the sdk-compile CI job). The csproj version must match the workspace
-# version — same single-source rule as sdks/python (see gen-py).
+# stores; run by the sdk-compile CI job). The multi-target test project (net8.0;net10.0)
+# means one `dotnet test` runs the whole suite on BOTH modern runtimes — including the direct
+# PosixInterop tests that cover the netstandard2.0-only libc atomic-0600 path (unloadable by a
+# modern host, so exercised via the always-compiled helper). The csproj version must match the
+# workspace version — same single-source rule as sdks/python (see gen-py).
 [group('codegen')]
 sdk-test-csharp:
     @grep -q '<Version>{{version}}</Version>' sdks/csharp/auth/src/OuraToolkit.Auth/OuraToolkit.Auth.csproj || { echo "sdks/csharp/auth csproj version does not match workspace {{version}} — update it"; exit 1; }

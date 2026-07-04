@@ -6,13 +6,22 @@
        System.Net.Http) — no transport is hand-written here; data-plane HTTP stays in the
        generated client, and the single token-endpoint POST is the OAuth flow itself. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- Multi-target: netstandard2.0 (broadest reach — .NET Framework, Mono, Unity, old
+         runtimes) plus the two modern LTS-ish runtimes. On net7+ the store uses the in-box
+         UnixFileMode/File.Move APIs; on netstandard2.0 those do not exist, so a libc P/Invoke
+         leg (PosixInterop) reproduces the SAME atomic-0600 + atomic-rename guarantees. See the
+         `#if NETSTANDARD2_0` branches in TokenStore/TokenManager and Polyfills.cs. -->
+    <TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>
     <AssemblyName>OuraToolkit.Auth</AssemblyName>
     <PackageId>OuraToolkit.Auth</PackageId>
     <RootNamespace>OuraToolkit.Auth</RootNamespace>
     <!-- Version must equal the workspace version (root Cargo.toml, the single version
          source) — enforced by `just sdk-test-csharp`, same rule as sdks/python. -->
     <Version>0.1.0</Version>
+    <!-- records / `required` / `init` need C# 9+/11; the netstandard2.0 leg would otherwise
+         default to C# 7.3. The missing compiler-required attributes are polyfilled
+         (Polyfills.cs, fenced to netstandard2.0). -->
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -21,6 +30,12 @@
     <Description>Non-interactive OAuth2 auth companion (token store + refresh with rotation) for the OuraToolkit.Api client. Bring your own Oura OAuth app credentials.</Description>
     <RepositoryUrl>https://github.com/spxrogers/oura-toolkit</RepositoryUrl>
   </PropertyGroup>
+
+  <!-- System.Text.Json is in-box on net8/net10; on netstandard2.0 it is a NuGet dependency.
+       This is the only non-BCL runtime reference, and only on the netstandard2.0 leg. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="OuraToolkit.Auth.Tests" />

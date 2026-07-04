@@ -97,10 +97,25 @@ public sealed class TokenManager : IDisposable
         // to a 3xx Location host — .NET's HttpClient default WOULD follow it and leak the
         // secret. A test may inject its own handler for hermetic mock responses.
         _http = handler is null
-            ? new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false })
+            ? new HttpClient(CreateRedirectRefusingHandler())
             : new HttpClient(handler);
         _http.Timeout = httpTimeout ?? TokenEndpointTimeout;
     }
+
+    /// <summary>
+    /// The default token-endpoint transport, refusing to auto-follow redirects (see the
+    /// constructor comment). <c>SocketsHttpHandler</c> is netstandard2.1+, so the
+    /// netstandard2.0 leg uses <c>HttpClientHandler</c>; both set
+    /// <c>AllowAutoRedirect = false</c>. This is defense-in-depth — the framework-agnostic 3xx
+    /// rejection in <see cref="RefreshAtAsync"/> is the actual backstop and catches a leak
+    /// even if a handler is misconfigured.
+    /// </summary>
+    private static HttpMessageHandler CreateRedirectRefusingHandler() =>
+#if NETSTANDARD2_0
+        new HttpClientHandler { AllowAutoRedirect = false };
+#else
+        new SocketsHttpHandler { AllowAutoRedirect = false };
+#endif
 
     /// <summary>
     /// Whether tokens are loaded (does not validate them, and does not imply a refresh is
@@ -250,7 +265,13 @@ public sealed class TokenManager : IDisposable
         using (response)
         {
             var status = (int)response.StatusCode;
+            // The CancellationToken overload of ReadAsStringAsync is net5+; netstandard2.0 has
+            // only the parameterless form. The read is bounded either way by _http.Timeout.
+#if NETSTANDARD2_0
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+#else
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+#endif
 
             // Defense-in-depth against a redirect leaking the confidential form: the default
             // transport already refuses to follow redirects, so a 3xx from the token endpoint
@@ -298,11 +319,14 @@ public sealed class TokenManager : IDisposable
 
             return new Tokens
             {
-                AccessToken = parsed.AccessToken,
+                // Non-null: guarded by the IsNullOrEmpty check above. The `!` is for the
+                // netstandard2.0 BCL, whose string.IsNullOrEmpty lacks the [NotNullWhen(false)]
+                // flow annotation that net8/net10 carry (there it is simply redundant).
+                AccessToken = parsed.AccessToken!,
                 // Persist the ROTATED refresh token; treat null OR empty like a missing one and
                 // keep the current (still-valid) token. An empty refresh_token would clobber the
                 // good one and 400 every future refresh.
-                RefreshToken = string.IsNullOrEmpty(parsed.RefreshToken) ? current.RefreshToken : parsed.RefreshToken,
+                RefreshToken = string.IsNullOrEmpty(parsed.RefreshToken) ? current.RefreshToken : parsed.RefreshToken!,
                 ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + parsed.ExpiresIn,
                 Scope = string.IsNullOrEmpty(parsed.Scope) ? current.Scope : parsed.Scope,
                 TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
