@@ -383,3 +383,111 @@ fn fetch_day_context_windows_the_store() {
     assert_eq!(window.len(), 1, "only the requested day");
     assert!(window.contains_key(&"2026-07-01".parse().unwrap()));
 }
+
+#[test]
+fn habit_log_stats_undo_flow_at_the_binary_level() {
+    let home = tempfile::tempdir().unwrap();
+    let data = home.path().join("data");
+
+    // Log with a messy name on two days; the canonical habit accumulates.
+    oura(&home, &data)
+        .args(["habit", "log", "Strength Training", "--date", "2026-07-01"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("strength-training"));
+    oura(&home, &data)
+        .args(["habit", "log", "strength_training", "--date", "2026-07-02"])
+        .assert()
+        .success();
+
+    let out = oura(&home, &data)
+        .args(["habit", "stats"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        stdout.starts_with("strength-training\t"),
+        "one canonical habit row: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("\t2\t2026-07-02"),
+        "2 days total, last log named: {stdout:?}"
+    );
+
+    // Undo one day; the count drops.
+    oura(&home, &data)
+        .args(["habit", "undo", "strength-training", "--date", "2026-07-02"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("removed"));
+    let stdout = String::from_utf8(
+        oura(&home, &data)
+            .args(["habit", "stats"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert!(
+        stdout.contains("\t1\t2026-07-01"),
+        "undo dropped a day: {stdout:?}"
+    );
+}
+
+#[test]
+fn an_invalid_habit_name_is_a_usage_error_exit_2() {
+    let home = tempfile::tempdir().unwrap();
+    let data = home.path().join("data");
+    let out = oura(&home, &data)
+        .args(["habit", "log", "!!!"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2), "bad name = bad invocation");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("invalid habit name"),
+        "names the problem: {stderr:?}"
+    );
+    assert!(out.stdout.is_empty(), "errors never write to stdout");
+}
+
+#[test]
+fn dashboard_writes_a_self_contained_file_and_prints_its_path() {
+    let home = tempfile::tempdir().unwrap();
+    let data = home.path().join("data");
+    oura(&home, &data)
+        .args(["habit", "log", "meditate", "--date", "2026-07-01"])
+        .assert()
+        .success();
+
+    let out_file = home.path().join("dash.html");
+    let out = oura(&home, &data)
+        .args(["dashboard", "--no-open", "--out"])
+        .arg(&out_file)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert_eq!(
+        stdout.trim(),
+        out_file.display().to_string(),
+        "the rendered path is the RESULT"
+    );
+    let html = std::fs::read_to_string(&out_file).unwrap();
+    assert!(html.contains("meditate"), "the logged habit renders");
+    assert!(
+        !html.contains("http://") && !html.contains("https://"),
+        "the dashboard makes no network references"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&out_file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "derived health data is owner-only");
+    }
+}

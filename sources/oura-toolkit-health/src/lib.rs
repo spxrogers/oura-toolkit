@@ -15,10 +15,13 @@ pub mod apple;
 pub mod calendar;
 pub mod engine;
 pub mod error;
+pub mod habits;
 pub mod model;
 pub mod store;
 pub mod toggl;
 
 pub use error::HealthError;
-pub use model::{AppleDay, CalendarDay, DayMap, DayRecord, OuraDay, SourceDay, TogglDay};
+pub use model::{
+    AppleDay, CalendarDay, DayMap, DayRecord, HabitsDay, OuraDay, SourceDay, TogglDay,
+};
 pub use store::{HealthStore, UpsertStats, DATA_DIR_NAME};

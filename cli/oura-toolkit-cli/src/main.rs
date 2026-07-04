@@ -79,10 +79,47 @@ enum Command {
     Capacity,
     /// The merged day-grain records (health + schedule context) the engine sees.
     Context(RangeArgs),
-    /// Run as a STDIO MCP server (12 read-only tools: Oura data + the local store).
+    /// Track boolean habits, read as moving-average rates (days/week), not streaks.
+    Habit {
+        #[command(subcommand)]
+        action: HabitAction,
+    },
+    /// Render the local dashboard (a self-contained HTML file) and open it.
+    Dashboard {
+        /// Write the HTML here instead of the store directory.
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+        /// Only write the file; don't open a browser.
+        #[arg(long)]
+        no_open: bool,
+    },
+    /// Run as a STDIO MCP server (14 tools: Oura data + the local store + habits).
     // A subcommand, not a `--mcp` flag: modes and modifiers don't mix, and clap makes the
     // nonsense states unrepresentable. Decided 2026-07-02 (#21).
     Mcp,
+}
+
+#[derive(Subcommand)]
+enum HabitAction {
+    /// Mark a habit done for a day (names canonicalize: "Strength Training" ==
+    /// strength-training).
+    Log {
+        /// The habit, e.g. exercise, meditate, strength-training.
+        name: String,
+        /// Day to log: today, yesterday, or YYYY-MM-DD.
+        #[arg(long, default_value = "today")]
+        date: String,
+    },
+    /// Remove a habit log (the undo of `log`).
+    Undo {
+        /// The habit to un-log.
+        name: String,
+        /// Day to undo: today, yesterday, or YYYY-MM-DD.
+        #[arg(long, default_value = "today")]
+        date: String,
+    },
+    /// Every habit's moving-average rates: days/week over 7/28/91-day windows.
+    Stats,
 }
 
 #[derive(Subcommand)]
@@ -222,6 +259,36 @@ async fn run() -> anyhow::Result<()> {
         Some(Command::Context(range)) => {
             let store = health::open_store(false)?;
             contract::emit(&health::context(&store, range.resolve()?, render)?)?;
+            Ok(())
+        }
+        Some(Command::Habit { action }) => {
+            let rendered = match action {
+                HabitAction::Log { name, date } => {
+                    let store = health::open_store(true)?;
+                    let date = api::parse_date(&date, api::local_today())?;
+                    health::habit_write_cmd(&store, &name, date, false, render)?
+                }
+                HabitAction::Undo { name, date } => {
+                    let store = health::open_store(true)?;
+                    let date = api::parse_date(&date, api::local_today())?;
+                    health::habit_write_cmd(&store, &name, date, true, render)?
+                }
+                HabitAction::Stats => {
+                    let store = health::open_store(false)?;
+                    health::habit_stats_cmd(&store, api::local_today(), render)?
+                }
+            };
+            contract::emit(&rendered)?;
+            Ok(())
+        }
+        Some(Command::Dashboard { out, no_open }) => {
+            let store = health::open_store(false)?;
+            contract::emit(&health::dashboard(
+                &store,
+                api::local_today(),
+                out.as_deref(),
+                !no_open,
+            )?)?;
             Ok(())
         }
         Some(Command::Mcp) => {

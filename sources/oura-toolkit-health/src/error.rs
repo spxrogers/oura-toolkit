@@ -31,6 +31,12 @@ pub enum HealthError {
          (`oura import calendar`, `oura sync`, `oura import apple-health`)"
     )]
     InsufficientHistory { needed: u32, have: u32 },
+
+    /// A habit name that normalization cannot make safe/canonical (empty after
+    /// sanitization, or too long). The CLI classifies this as a usage error — the
+    /// invocation, not the store, is what's wrong.
+    #[error("invalid habit name: {reason} (use letters/digits, e.g. `strength-training`)")]
+    InvalidHabitName { reason: String },
 }
 
 impl From<serde_json::Error> for HealthError {

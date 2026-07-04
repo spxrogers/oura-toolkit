@@ -140,11 +140,12 @@ impl HealthStore {
                 None => {
                     *slot = Some(incoming);
                     // "added" counts days new to the store; a new slot on an existing
-                    // day is an update to that day.
+                    // day (any other source's, or user-logged habits) is an update.
                     if entry.oura.is_some() as u8
                         + entry.apple.is_some() as u8
                         + entry.calendar.is_some() as u8
                         + entry.toggl.is_some() as u8
+                        + entry.habits.is_some() as u8
                         == 1
                     {
                         stats.added += 1;
@@ -156,6 +157,55 @@ impl HealthStore {
         }
         self.save(&all)?;
         Ok(stats)
+    }
+
+    /// Mark `habit` done on `date` (name normalized via
+    /// [`crate::habits::normalize_habit_name`]). Read→modify→write under the exclusive
+    /// store lock — logging one habit can never clobber the day's other habits or any
+    /// source slot. Returns the canonical name and whether the log is NEW (false = it
+    /// was already logged; idempotent).
+    pub fn log_habit(&self, date: NaiveDate, habit: &str) -> Result<(String, bool), HealthError> {
+        let name = crate::habits::normalize_habit_name(habit)?;
+        self.ensure_dir()?;
+        let _lock = self.lock_exclusive()?;
+        let mut all = self.load()?;
+        let day = all.entry(date).or_default();
+        let changed = day
+            .habits
+            .get_or_insert_with(crate::model::HabitsDay::default)
+            .done
+            .insert(name.clone());
+        if changed {
+            self.save(&all)?;
+        }
+        Ok((name, changed))
+    }
+
+    /// Remove `habit` from `date` (the undo of [`Self::log_habit`]). Returns the
+    /// canonical name and whether anything was actually removed. An emptied habits set
+    /// is dropped from the record (and an emptied record from the store) so undo leaves
+    /// no husks behind.
+    pub fn unlog_habit(&self, date: NaiveDate, habit: &str) -> Result<(String, bool), HealthError> {
+        let name = crate::habits::normalize_habit_name(habit)?;
+        self.ensure_dir()?;
+        let _lock = self.lock_exclusive()?;
+        let mut all = self.load()?;
+        let mut changed = false;
+        if let Some(day) = all.get_mut(&date) {
+            if let Some(h) = &mut day.habits {
+                changed = h.done.remove(&name);
+                if h.done.is_empty() {
+                    day.habits = None;
+                }
+            }
+            if day.is_empty() {
+                all.remove(&date);
+            }
+        }
+        if changed {
+            self.save(&all)?;
+        }
+        Ok((name, changed))
     }
 
     fn save(&self, days: &DayMap) -> Result<(), HealthError> {
@@ -541,6 +591,112 @@ mod tests {
             assert_eq!(
                 dir,
                 PathBuf::from("C:\\Users\\u\\AppData\\Local\\oura-toolkit\\data")
+            );
+        }
+    }
+
+    #[test]
+    fn habit_log_is_idempotent_and_coexists_with_source_slots() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = HealthStore::with_dir(dir.path().join("data"));
+        let day = date("2026-07-01");
+        store
+            .upsert(BTreeMap::from([(
+                day,
+                CalendarDay {
+                    meeting_hours: 2.0,
+                    ..Default::default()
+                },
+            )]))
+            .unwrap();
+
+        let (name, changed) = store.log_habit(day, "Strength Training").unwrap();
+        assert_eq!(name, "strength-training", "name is canonicalized");
+        assert!(changed, "first log is new");
+        let (_, changed) = store.log_habit(day, "strength-training").unwrap();
+        assert!(!changed, "re-log is an idempotent no-op");
+        store.log_habit(day, "meditate").unwrap();
+
+        let rec = &store.load().unwrap()[&day];
+        assert_eq!(rec.habits.as_ref().unwrap().done.len(), 2);
+        assert_eq!(
+            rec.calendar.as_ref().unwrap().meeting_hours,
+            2.0,
+            "habit writes must not touch source slots"
+        );
+
+        // A calendar re-import must not touch habits either (slot independence both ways).
+        store
+            .upsert(BTreeMap::from([(day, CalendarDay::default())]))
+            .unwrap();
+        let rec = &store.load().unwrap()[&day];
+        assert_eq!(rec.habits.as_ref().unwrap().done.len(), 2);
+    }
+
+    #[test]
+    fn habit_unlog_removes_and_leaves_no_husks() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = HealthStore::with_dir(dir.path().join("data"));
+        let day = date("2026-07-01");
+        store.log_habit(day, "meditate").unwrap();
+
+        let (_, changed) = store.unlog_habit(day, "MEDITATE").unwrap();
+        assert!(changed, "normalized name matches the stored log");
+        assert!(
+            !store.load().unwrap().contains_key(&day),
+            "an emptied record is dropped, not stored as a husk"
+        );
+        let (_, changed) = store.unlog_habit(day, "meditate").unwrap();
+        assert!(!changed, "undoing an absent log is a no-op");
+    }
+
+    #[test]
+    fn invalid_habit_names_are_typed_errors_and_never_stored() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = HealthStore::with_dir(dir.path().join("data"));
+        let err = store
+            .log_habit(date("2026-07-01"), "!!!\u{202e}")
+            .unwrap_err();
+        assert!(
+            matches!(err, HealthError::InvalidHabitName { .. }),
+            "hostile name must be a typed refusal: {err}"
+        );
+        assert!(store.load().unwrap().is_empty(), "nothing was written");
+    }
+
+    #[test]
+    fn concurrent_habit_logs_from_real_threads_lose_no_logs() {
+        // Same real-concurrency requirement as the upsert test: two threads logging
+        // DIFFERENT habits into the same days race read-modify-write; with a no-op
+        // lock one side's logs vanish.
+        let dir = tempfile::tempdir().unwrap();
+        let store_dir = dir.path().join("data");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let mk = |i: u32| date(&format!("2026-07-{:02}", i + 1));
+
+        let handles: Vec<_> = ["exercise", "meditate"]
+            .into_iter()
+            .map(|habit| {
+                let store = HealthStore::with_dir(&store_dir);
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    for i in 0..15 {
+                        store.log_habit(mk(i), habit).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let all = HealthStore::with_dir(&store_dir).load().unwrap();
+        for i in 0..15 {
+            let done = &all[&mk(i)].habits.as_ref().unwrap().done;
+            assert!(
+                done.contains("exercise") && done.contains("meditate"),
+                "day {i}: both writers' logs must survive: {done:?}"
             );
         }
     }

@@ -79,12 +79,12 @@ fn sleep_args(start: &str, end: &str) -> serde_json::Map<String, serde_json::Val
     args
 }
 
-/// Initialize succeeds on a machine with NO stored tokens, and the 12 curated tools are
+/// Initialize succeeds on a machine with NO stored tokens, and the 14 curated tools are
 /// listed — the 8 Oura ones carrying the build-time spec-derived description (curated
-/// lead + the spec's field inventory), the 4 local-store ones their hand-curated
+/// lead + the spec's field inventory), the 6 local-store ones their hand-curated
 /// descriptions — with out-of-band auth named in the server instructions.
 #[tokio::test]
-async fn initialize_succeeds_without_tokens_and_lists_the_12_described_tools() {
+async fn initialize_succeeds_without_tokens_and_lists_the_14_described_tools() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(manager(&dir, None), "http://unused.invalid".into()).await;
 
@@ -111,11 +111,13 @@ async fn initialize_succeeds_without_tokens_and_lists_the_12_described_tools() {
             "get_daily_sleep",
             "get_daily_stress",
             "get_day_context",
+            "get_habits",
             "get_heart_rate",
             "get_personal_info",
             "get_sessions",
             "get_upcoming_load",
             "get_workouts",
+            "log_habit",
         ],
         "exactly the curated tool surface, nothing else"
     );
@@ -124,6 +126,8 @@ async fn initialize_succeeds_without_tokens_and_lists_the_12_described_tools() {
         "get_capacity",
         "get_day_context",
         "get_upcoming_load",
+        "get_habits",
+        "log_habit",
     ];
     for tool in &tools {
         let description = tool.description.as_deref().unwrap_or_default();
@@ -447,6 +451,89 @@ async fn get_capacity_with_thin_history_is_a_structured_tool_error() {
     assert!(
         message.contains("oura import"),
         "carries the remediation: {message}"
+    );
+
+    client.cancel().await.unwrap();
+}
+
+/// The habit write→read loop over real MCP: `log_habit` canonicalizes and persists,
+/// re-logging is an idempotent no-op, `get_habits` reports the long-grain rates, and
+/// `undo` reverses the write. A hostile habit name is `invalid_params`, not a write.
+#[tokio::test]
+async fn log_habit_and_get_habits_round_trip() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = oura_toolkit_health::HealthStore::with_dir(dir.path().join("health"));
+    let client = connect_with_store(
+        manager(&dir, None),
+        "http://unused.invalid".into(),
+        store.clone(),
+    )
+    .await;
+
+    let log_args = |name: &str, undo: bool| {
+        let mut args = serde_json::Map::new();
+        args.insert("name".into(), name.into());
+        args.insert("date".into(), "2026-07-01".into());
+        if undo {
+            args.insert("undo".into(), true.into());
+        }
+        args
+    };
+
+    // Write: the name canonicalizes and the change is reported.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("log_habit")
+                .with_arguments(log_args("Strength Training", false)),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(false), "{result:?}");
+    let json: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+    assert_eq!(json["habit"], "strength-training");
+    assert_eq!(json["changed"], true);
+
+    // Idempotent re-log.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("log_habit")
+                .with_arguments(log_args("strength-training", false)),
+        )
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+    assert_eq!(json["changed"], false, "re-log is a no-op");
+
+    // Read: the rates view sees the log.
+    let result = client
+        .call_tool(CallToolRequestParams::new("get_habits"))
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(false));
+    let json: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+    assert_eq!(json[0]["name"], "strength-training");
+    assert_eq!(json[0]["total_days"], 1);
+
+    // Undo reverses it; the store really is empty afterwards.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("log_habit")
+                .with_arguments(log_args("strength training", true)),
+        )
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+    assert_eq!(json["changed"], true);
+    assert!(store.load().unwrap().is_empty(), "undo left no husks");
+
+    // A hostile name is the caller's arguments being wrong: protocol invalid_params.
+    let err = client
+        .call_tool(CallToolRequestParams::new("log_habit").with_arguments(log_args("!!!", false)))
+        .await
+        .expect_err("invalid habit name must be a protocol error");
+    assert!(
+        err.to_string().contains("invalid habit name"),
+        "names the problem: {err}"
     );
 
     client.cancel().await.unwrap();
