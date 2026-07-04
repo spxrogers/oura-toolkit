@@ -1,0 +1,59 @@
+{
+  "$comment": [
+    "Cross-language auth-companion conformance cases (#58) — the SINGLE SOURCE for the",
+    "two bug families every companion review loop found independently (hostile-but-2xx",
+    "token responses; hostile store files), plus the canonical store records that pin",
+    "cross-language store compatibility (the #54 fixture-drift check).",
+    "",
+    "EVERY companion's test suite (Rust, TypeScript, Python, Go, Java, C#) iterates this",
+    "file. New hostile cases are added HERE, never to a single language's suite.",
+    "",
+    "Required behavior per table:",
+    " - hostile_token_responses: a token-endpoint 2xx with this JSON body must make the",
+    "   refresh/exchange fail with the language's TYPED auth error (never a raw",
+    "   KeyError/NullPointerException/panic/untyped throw), and must leave the on-disk",
+    "   store UNTOUCHED — persisting a blank/expired Bearer would also burn the",
+    "   still-valid rotated refresh token.",
+    " - hostile_store_files: loading a store record with this exact file content must",
+    "   fail with the language's TYPED store-format error — never a zero/null-filled",
+    "   record that makes is-authenticated lie, and never an untyped crash.",
+    " - valid_records: the canonical on-disk shapes (field names are the wire format",
+    "   shared by ALL languages — source of truth: oura-toolkit-auth's store.rs). Every",
+    "   language must load these exact contents, observe these exact field values, and",
+    "   round-trip them through its own persist path."
+  ],
+  "hostile_token_responses": [
+    { "name": "missing_access_token", "body": { "refresh_token": "rt-hostile-new", "expires_in": 3600 } },
+    { "name": "null_access_token", "body": { "access_token": null, "refresh_token": "rt-hostile-new", "expires_in": 3600 } },
+    { "name": "empty_access_token", "body": { "access_token": "", "refresh_token": "rt-hostile-new", "expires_in": 3600 } },
+    { "name": "wrong_type_access_token", "body": { "access_token": 42, "refresh_token": "rt-hostile-new", "expires_in": 3600 } },
+    { "name": "missing_expires_in", "body": { "access_token": "at-hostile-new", "refresh_token": "rt-hostile-new" } },
+    { "name": "zero_expires_in", "body": { "access_token": "at-hostile-new", "refresh_token": "rt-hostile-new", "expires_in": 0 } },
+    { "name": "negative_expires_in", "body": { "access_token": "at-hostile-new", "refresh_token": "rt-hostile-new", "expires_in": -300 } },
+    { "name": "non_numeric_expires_in", "body": { "access_token": "at-hostile-new", "refresh_token": "rt-hostile-new", "expires_in": "soon" } },
+    { "name": "body_not_json", "raw_body": "welcome to the token endpoint" },
+    { "name": "body_json_array", "raw_body": "[]" }
+  ],
+  "hostile_store_files": [
+    { "name": "tokens_literal_null", "file": "tokens.json", "content": "null" },
+    { "name": "tokens_not_json", "file": "tokens.json", "content": "{not json" },
+    { "name": "tokens_json_array", "file": "tokens.json", "content": "[]" },
+    { "name": "tokens_partial_record", "file": "tokens.json", "content": "{\"access_token\": \"at-only\"}" },
+    { "name": "tokens_wrong_type_expires_at", "file": "tokens.json", "content": "{\"access_token\": \"at\", \"refresh_token\": \"rt\", \"expires_at\": \"tomorrow\"}" },
+    { "name": "tokens_null_fields", "file": "tokens.json", "content": "{\"access_token\": null, \"refresh_token\": null, \"expires_at\": null}" },
+    { "name": "credentials_literal_null", "file": "credentials.json", "content": "null" },
+    { "name": "credentials_not_json", "file": "credentials.json", "content": "{not json" },
+    { "name": "credentials_partial_record", "file": "credentials.json", "content": "{\"client_id\": \"cid-only\"}" },
+    { "name": "credentials_wrong_type_client_id", "file": "credentials.json", "content": "{\"client_id\": 7, \"client_secret\": \"cs\"}" }
+  ],
+  "valid_records": {
+    "credentials.json": { "client_id": "cid-conformance", "client_secret": "cs-conformance" },
+    "tokens.json": {
+      "access_token": "at-conformance",
+      "refresh_token": "rt-conformance",
+      "expires_at": 4102444800,
+      "scope": "personal daily",
+      "token_type": "Bearer"
+    }
+  }
+}

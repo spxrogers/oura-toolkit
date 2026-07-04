@@ -369,6 +369,16 @@ Every change MUST satisfy all of the following (added 2026-07-02; enforced from 
 
 ---
 
+**Cross-language auth conformance (#58):** `codegen/conformance/auth-cases.json` is the
+SINGLE SOURCE for the hostile token-endpoint responses, hostile store files, and canonical
+store records every auth companion must survive (the two bug families found independently
+by four companion review loops, plus the #54 store-fixture-drift check). ALL SIX companion
+suites — the Rust reference included — iterate the fixture FROM THE FILE. A new hostile
+case goes into the fixture, never into just one language's suite; a companion that fails a
+case gets fixed — the fixture is never weakened to accommodate an implementation.
+
+---
+
 ## DOCS STAY TRUE TO THE CODE (added 2026-07-03 — same weight as TESTING & VERIFICATION)
 
 `README.md` is the front door, and `CONTRIBUTING.md` / `docs/cli-contract.md` /

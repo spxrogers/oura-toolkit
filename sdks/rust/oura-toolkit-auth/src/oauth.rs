@@ -113,7 +113,19 @@ async fn post_token(
             body,
         });
     }
-    Ok(resp.json::<TokenResponse>().await?)
+    let resp = resp.json::<TokenResponse>().await?;
+    // Hostile-but-2xx burn prevention (#58, conformance: codegen/conformance/
+    // auth-cases.json): a 200 whose payload would install a blank or already-expired
+    // Bearer must fail typed BEFORE any caller can persist it — persisting would also
+    // burn the still-valid rotated refresh token. (Missing/wrong-typed fields already
+    // fail serde decode above; these two are the well-typed-but-unusable shapes.)
+    if resp.access_token.is_empty() {
+        return Err(AuthError::InvalidTokenResponse("empty access_token"));
+    }
+    if resp.expires_in <= 0 {
+        return Err(AuthError::InvalidTokenResponse("non-positive expires_in"));
+    }
+    Ok(resp)
 }
 
 fn expires_at(expires_in: i64) -> i64 {
