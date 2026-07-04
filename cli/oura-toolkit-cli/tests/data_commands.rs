@@ -112,20 +112,22 @@ async fn an_empty_range_is_success_with_empty_output() {
     assert_eq!(out, "");
 }
 
-/// Rate limiting (#28), recovery half: a 429 whose `Retry-After` fits the bound is waited
-/// out ONCE and the retry succeeds. expect() counts pin exactly two data requests.
+/// Rate limiting (#28), recovery half: a 429 whose `Retry-After` fits the bound is
+/// genuinely WAITED OUT once — elapsed time proves the sleep actually happens (a no-wait
+/// retry would hammer a still-throttled server inside its requested cooldown) — and the
+/// retry succeeds. expect() counts pin exactly two data requests.
 #[tokio::test]
 async fn a_429_with_a_short_retry_after_is_waited_out_once_and_succeeds() {
     let server = MockServer::start().await;
     let dir = tempfile::tempdir().unwrap();
 
-    // First request: throttled, server says retry immediately. Mounted first + capped to
-    // one match so the retry falls through to the success mock.
+    // First request: throttled, server asks for a 1-second wait. Mounted first + capped
+    // to one match so the retry falls through to the success mock.
     Mock::given(method("GET"))
         .and(path("/v2/usercollection/daily_sleep"))
         .respond_with(
             ResponseTemplate::new(429)
-                .insert_header("Retry-After", "0")
+                .insert_header("Retry-After", "1")
                 .insert_header("X-RateLimit-Reset", "1783191600"),
         )
         .up_to_n_times(1)
@@ -139,10 +141,79 @@ async fn a_429_with_a_short_retry_after_is_waited_out_once_and_succeeds() {
         .mount(&server)
         .await;
 
+    let started = std::time::Instant::now();
     let out = commands::sleep(&ctx(&server, &dir, fresh_tokens("at-1")), range())
         .await
         .unwrap();
     assert_eq!(out, "2026-06-26\t80\t70\t80\t90\n");
+    assert!(
+        started.elapsed() >= std::time::Duration::from_secs(1),
+        "the server-requested Retry-After must actually be slept out, not skipped \
+         (elapsed {:?})",
+        started.elapsed()
+    );
+}
+
+/// Rate limiting (#28), budget half: pagination shares ONE RateLimitBudget per command
+/// invocation, so at most RATE_LIMIT_MAX_WAITS throttled pages get the bounded retry —
+/// page 4's 429 must fail typed IMMEDIATELY (expect(1): no retry) once pages 1-3 spent
+/// the budget, capping a hostile throttle-every-page server at bounded added wall time.
+#[tokio::test]
+async fn pagination_shares_one_rate_limit_budget_per_invocation() {
+    assert_eq!(
+        oura_toolkit_cli::api::RATE_LIMIT_MAX_WAITS,
+        3,
+        "this test's page layout encodes the budget size - update both together"
+    );
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    let base = || Mock::given(method("GET")).and(path("/v2/usercollection/daily_sleep"));
+    // Pages 1-3: throttled once (Retry-After: 0 - budget units, not wall time), then OK.
+    base()
+        .and(wiremock::matchers::query_param_is_missing("next_token"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    base()
+        .and(wiremock::matchers::query_param_is_missing("next_token"))
+        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], Some("t1")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for (token, next) in [("t1", "t2"), ("t2", "t3")] {
+        base()
+            .and(query_param("next_token", token))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        base()
+            .and(query_param("next_token", token))
+            .respond_with(page(vec![sleep_doc("2026-06-27", 81)], Some(next)))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    // Page 4: throttled with the budget spent - exactly ONE request, no retry.
+    base()
+        .and(query_param("next_token", "t3"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let err = commands::sleep(&ctx(&server, &dir, fresh_tokens("at-1")), range())
+        .await
+        .unwrap_err();
+    assert!(
+        err.downcast_ref::<oura_toolkit_cli::api::RateLimited>()
+            .is_some(),
+        "budget exhaustion must surface the typed error: {err:#}"
+    );
 }
 
 /// Rate limiting (#28), give-up half: a STILL-throttled retry surfaces the typed error

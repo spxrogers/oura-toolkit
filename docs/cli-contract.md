@@ -105,6 +105,8 @@ oura: fetching daily sleep: the Oura API rate limit was exceeded — rate limite
 hint: wait until the reset time shown above, then re-run
 ```
 
-Never more than one rate-limit retry (no retry storms); auto-followed pagination stops at
-the first rate-limited page. MCP tool calls surface the same message and hint as a
-structured tool error.
+Never more than one rate-limit retry per request (no retry storms), and never more than
+3 rate-limit waits across one command invocation — auto-followed pagination shares that
+budget, so a throttle-every-page server cannot stretch a command indefinitely, and
+pagination stops at the first rate-limited page that fails. MCP tool calls surface the
+same message and hint as a structured tool error.

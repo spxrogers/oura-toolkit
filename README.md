@@ -106,10 +106,10 @@ Every windowed command takes `--start` / `--end` (`today`, `yesterday`, or
 is followed automatically.
 
 Oura rate-limits the API per access token and per application (rolling windows — the
-429 response headers carry the current ceiling and reset time). When a request is
-rate-limited, the toolkit waits out a short `Retry-After` once (at most 10 seconds) and
-retries; if the API is still throttling, the command fails with `rate limited until
-<time>` instead of retry-storming — details in
+429 response headers carry the retry guidance). When a request is rate-limited, the
+toolkit waits out a short `Retry-After` once (at most 10 seconds, and at most
+3 rate-limit waits across one command) and retries; if the API is still throttling, the
+command fails with `rate limited until <time>` instead of retry-storming — details in
 [docs/cli-contract.md](docs/cli-contract.md).
 
 Output adapts to context: aligned tables on a terminal, stable tab-separated lines when

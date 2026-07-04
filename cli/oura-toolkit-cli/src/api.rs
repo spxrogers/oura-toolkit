@@ -2,8 +2,9 @@
 //! `oura-toolkit-auth`, with 401-refresh-retry and cursor pagination.
 //!
 //! No hand-rolled HTTP: every request goes through the generated client; this module only
-//! supplies auth (Bearer header from `TokenManager`), the one 401 retry, the `next_token`
-//! loop, and date parsing. All of it is hermetically tested against wiremock (see
+//! supplies auth (Bearer header from `TokenManager`), the one 401 retry, the bounded 429
+//! wait-and-retry with its per-invocation budget (#28), the `next_token` loop, and date
+//! parsing. All of it is hermetically tested against wiremock (see
 //! `commands.rs` tests) — including the literal query strings the generated client emits.
 
 use std::future::Future;
@@ -50,6 +51,42 @@ pub async fn authorized_client(
 /// immediately — one bounded wait-and-retry, never a retry storm. Deliberately below the
 /// 30s per-request timeout so a rate-limited command still finishes promptly.
 pub const RATE_LIMIT_WAIT_CAP_SECS: u64 = 10;
+
+/// How many rate-limit waits ONE command invocation may spend in total (#28 review):
+/// pagination re-enters [`with_auth_retry`] once per page, so without a shared budget a
+/// throttle-then-succeed server could stretch a single command to `MAX_PAGES ×`
+/// [`RATE_LIMIT_WAIT_CAP_SECS`] (~2.8 h) of sleeps. With it, added wall time is capped at
+/// `RATE_LIMIT_MAX_WAITS × RATE_LIMIT_WAIT_CAP_SECS` (30 s) per invocation.
+pub const RATE_LIMIT_MAX_WAITS: u32 = 3;
+
+/// The per-invocation wait allowance. Each data command / MCP tool call creates ONE and
+/// shares it across every page fetch; when it runs dry, a 429 fails typed immediately
+/// instead of sleeping.
+#[derive(Debug)]
+pub struct RateLimitBudget(std::sync::atomic::AtomicU32);
+
+impl RateLimitBudget {
+    pub fn new() -> Self {
+        Self(std::sync::atomic::AtomicU32::new(RATE_LIMIT_MAX_WAITS))
+    }
+
+    /// Consume one wait if any remain.
+    fn try_take(&self) -> bool {
+        self.0
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |n| n.checked_sub(1),
+            )
+            .is_ok()
+    }
+}
+
+impl Default for RateLimitBudget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Typed rate-limit failure (#28): the Oura API answered 429 and the bounded retry (if
 /// any) did not clear it. Carries the reset instant so every consumer — CLI stderr and
@@ -143,11 +180,14 @@ enum AttemptError {
 ///   and retry exactly once; a second 401 means the stored tokens are genuinely dead →
 ///   typed [`AuthError::NotAuthenticated`] (CLI contract: exit 4 + login hint).
 /// - **429** (#28) → honor `Retry-After` up to [`RATE_LIMIT_WAIT_CAP_SECS`] and retry
-///   exactly once; a second 429, a longer ask, or a missing `Retry-After` → typed
-///   [`RateLimited`] naming the reset time. Never more than one rate-limit retry.
+///   exactly once, spending one unit of the caller's shared [`RateLimitBudget`]; a second
+///   429, a longer ask, a missing `Retry-After`, or an exhausted budget → typed
+///   [`RateLimited`] naming the reset time. Never more than one rate-limit retry per
+///   call, never more than [`RATE_LIMIT_MAX_WAITS`] waits per command invocation.
 pub async fn with_auth_retry<T, E, F, Fut>(
     manager: &TokenManager,
     base_url: &str,
+    budget: &RateLimitBudget,
     call: F,
 ) -> Result<T>
 where
@@ -157,7 +197,10 @@ where
 {
     match attempt(manager, base_url, &call).await {
         Ok(value) => Ok(value),
-        Err(AttemptError::RateLimited(info)) => match info.bounded_wait() {
+        Err(AttemptError::RateLimited(info)) => match info
+            .bounded_wait()
+            .filter(|_| budget.try_take())
+        {
             Some(wait) => {
                 tokio::time::sleep(wait).await;
                 match attempt(manager, base_url, &call).await {
@@ -581,6 +624,37 @@ mod tests {
                 "no parseable guidance ⇒ fail fast, never sleep"
             );
         }
+    }
+
+    #[test]
+    fn a_parseable_but_huge_retry_after_cannot_panic_the_until_derivation() {
+        // u64-valid but overflows chrono::TimeDelta: the `.ok()` guard on from_std must
+        // degrade `until` to None (an `.unwrap()` regression panics right here), and the
+        // cap keeps it unwaitable.
+        let info =
+            RateLimitInfo::from_headers(&headers(&[("retry-after", "99999999999999999")]), now());
+        assert_eq!(
+            info.retry_after,
+            Some(std::time::Duration::from_secs(99_999_999_999_999_999))
+        );
+        assert_eq!(
+            info.until, None,
+            "overflowing delta must not fabricate an until"
+        );
+        assert_eq!(info.bounded_wait(), None);
+    }
+
+    #[test]
+    fn budget_allows_exactly_max_waits_then_runs_dry() {
+        let budget = RateLimitBudget::new();
+        for i in 0..RATE_LIMIT_MAX_WAITS {
+            assert!(budget.try_take(), "wait {i} must fit the budget");
+        }
+        assert!(
+            !budget.try_take(),
+            "the budget must run dry after MAX_WAITS"
+        );
+        assert!(!budget.try_take(), "and STAY dry (no underflow wraparound)");
     }
 
     #[test]
