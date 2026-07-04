@@ -36,7 +36,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        MultiDocumentResponsePublicDailyCardiovascularAge MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        MultiDocumentResponsePublicDailyCardiovascularAge MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
 
         /// <summary>
         /// Multiple Daily Cardiovascular Age Documents
@@ -50,7 +50,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
         /// <summary>
         /// Single Daily Cardiovascular Age Document
         /// </summary>
@@ -91,7 +91,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Multiple Daily Cardiovascular Age Documents
@@ -106,7 +106,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyCardiovascularAge)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Single Daily Cardiovascular Age Document
         /// </summary>
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        public MultiDocumentResponsePublicDailyCardiovascularAge MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public MultiDocumentResponsePublicDailyCardiovascularAge MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> localVarResponse = MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo(startDate, endDate, nextToken, fields);
             return localVarResponse.Data;
@@ -367,7 +367,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -431,7 +431,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> localVarResponse = await MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(startDate, endDate, nextToken, fields, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -447,7 +447,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyCardiovascularAge)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> MultipleDailyCardiovascularAgeDocumentsV2UsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

@@ -36,7 +36,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyActivity</returns>
-        MultiDocumentResponsePublicDailyActivity MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        MultiDocumentResponsePublicDailyActivity MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
 
         /// <summary>
         /// Multiple Daily Activity Documents
@@ -50,7 +50,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyActivity</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        ApiResponse<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
         /// <summary>
         /// Single Daily Activity Document
         /// </summary>
@@ -91,7 +91,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyActivity</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Multiple Daily Activity Documents
@@ -106,7 +106,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyActivity)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyActivity>> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyActivity>> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Single Daily Activity Document
         /// </summary>
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyActivity</returns>
-        public MultiDocumentResponsePublicDailyActivity MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public MultiDocumentResponsePublicDailyActivity MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> localVarResponse = MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo(startDate, endDate, nextToken, fields);
             return localVarResponse.Data;
@@ -367,7 +367,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyActivity</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -431,7 +431,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyActivity</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> localVarResponse = await MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfoAsync(startDate, endDate, nextToken, fields, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -447,7 +447,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyActivity)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity>> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity>> MultipleDailyActivityDocumentsV2UsercollectionDailyActivityGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

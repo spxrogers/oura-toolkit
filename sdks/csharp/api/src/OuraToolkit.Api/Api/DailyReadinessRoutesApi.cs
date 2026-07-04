@@ -36,7 +36,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyReadiness</returns>
-        MultiDocumentResponsePublicDailyReadiness MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        MultiDocumentResponsePublicDailyReadiness MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
 
         /// <summary>
         /// Multiple Daily Readiness Documents
@@ -50,7 +50,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyReadiness</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        ApiResponse<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
         /// <summary>
         /// Single Daily Readiness Document
         /// </summary>
@@ -91,7 +91,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyReadiness</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Multiple Daily Readiness Documents
@@ -106,7 +106,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyReadiness)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyReadiness>> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyReadiness>> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Single Daily Readiness Document
         /// </summary>
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyReadiness</returns>
-        public MultiDocumentResponsePublicDailyReadiness MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public MultiDocumentResponsePublicDailyReadiness MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> localVarResponse = MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo(startDate, endDate, nextToken, fields);
             return localVarResponse.Data;
@@ -367,7 +367,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyReadiness</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -431,7 +431,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyReadiness</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> localVarResponse = await MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfoAsync(startDate, endDate, nextToken, fields, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -447,7 +447,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyReadiness)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness>> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness>> MultipleDailyReadinessDocumentsV2UsercollectionDailyReadinessGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

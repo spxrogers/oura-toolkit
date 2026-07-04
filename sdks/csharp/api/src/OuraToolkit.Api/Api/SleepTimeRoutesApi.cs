@@ -36,7 +36,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicSleepTime</returns>
-        MultiDocumentResponsePublicSleepTime MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        MultiDocumentResponsePublicSleepTime MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
 
         /// <summary>
         /// Multiple Sleep Time Documents
@@ -50,7 +50,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicSleepTime</returns>
-        ApiResponse<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        ApiResponse<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
         /// <summary>
         /// Single Sleep Time Document
         /// </summary>
@@ -91,7 +91,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicSleepTime</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Multiple Sleep Time Documents
@@ -106,7 +106,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicSleepTime)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicSleepTime>> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicSleepTime>> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Single Sleep Time Document
         /// </summary>
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>MultiDocumentResponsePublicSleepTime</returns>
-        public MultiDocumentResponsePublicSleepTime MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public MultiDocumentResponsePublicSleepTime MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> localVarResponse = MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo(startDate, endDate, nextToken, fields);
             return localVarResponse.Data;
@@ -367,7 +367,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicSleepTime</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -431,7 +431,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicSleepTime</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> localVarResponse = await MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfoAsync(startDate, endDate, nextToken, fields, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -447,7 +447,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">Comma-separated list of fields to include in the response, in addition to the always returned fields. Defaults to all fields if not provided. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicSleepTime)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime>> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime>> MultipleSleepTimeDocumentsV2UsercollectionSleepTimeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

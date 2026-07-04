@@ -36,7 +36,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>MultiDocumentResponseTagModel</returns>
-        MultiDocumentResponseTagModel MultipleTagDocumentsV2UsercollectionTagGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        MultiDocumentResponseTagModel MultipleTagDocumentsV2UsercollectionTagGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
 
         /// <summary>
         /// Multiple Tag Documents
@@ -50,7 +50,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseTagModel</returns>
-        ApiResponse<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        ApiResponse<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
         /// <summary>
         /// Single Tag Document
         /// </summary>
@@ -91,7 +91,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseTagModel</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Multiple Tag Documents
@@ -106,7 +106,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseTagModel)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseTagModel>> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseTagModel>> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Single Tag Document
         /// </summary>
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>MultiDocumentResponseTagModel</returns>
-        public MultiDocumentResponseTagModel MultipleTagDocumentsV2UsercollectionTagGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public MultiDocumentResponseTagModel MultipleTagDocumentsV2UsercollectionTagGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> localVarResponse = MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfo(startDate, endDate, nextToken, fields);
             return localVarResponse.Data;
@@ -367,7 +367,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseTagModel</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -431,7 +431,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseTagModel</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponseTagModel> MultipleTagDocumentsV2UsercollectionTagGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> localVarResponse = await MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfoAsync(startDate, endDate, nextToken, fields, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -447,7 +447,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseTagModel)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel>> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel>> MultipleTagDocumentsV2UsercollectionTagGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

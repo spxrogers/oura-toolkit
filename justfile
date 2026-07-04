@@ -172,7 +172,19 @@ gen-csharp: spec-overlay
     # The generator mints a FRESH solution GUID every run — the .sln is the one
     # non-deterministic output file, and sdk-check builds the csproj directly. Drop it.
     rm -f sdks/csharp/api/git_push.sh sdks/csharp/api/.travis.yml sdks/csharp/api/appveyor.yml sdks/csharp/api/OuraToolkit.Api.sln
-    @echo "Generated sdks/csharp/api (OuraToolkit.Api {{version}})"
+    # Multi-target post-patch: the generator emits a single netstandard2.0 target (and rejects
+    # net10.0 outright), so widen it to the shipped TFM set. Deterministic (drift-safe): the
+    # sed target is the generator's fixed line. netstandard2.0 = broad reach; net8.0/net10.0 =
+    # modern assemblies. The Newtonsoft-based netstandard2.0 code compiles unchanged on all three.
+    sed -i 's|<TargetFramework>netstandard2.0</TargetFramework>|<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>\n    <LangVersion>latest</LangVersion>|' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    @grep -q '<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: multi-target post-patch did not apply — generator csproj shape changed?"; exit 1; }
+    @grep -q '<LangVersion>latest</LangVersion>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: LangVersion post-patch did not apply (needed for <Nullable>annotations</Nullable> on the netstandard2.0 leg, whose default is C# 7.3)"; exit 1; }
+    # Strip the generator's bogus System.Web ItemGroups (a .NET-Framework-only assembly the code
+    # never uses) — wrapper and all, so no empty ItemGroups linger. It emits MSB3245 "could not
+    # resolve" on every modern TFM otherwise.
+    perl -0pi -e 's{\s*<ItemGroup>\s*<(?:None Remove|Reference Include)="System\.Web"\s*/>\s*</ItemGroup>}{}g' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    @! grep -q 'System.Web' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: System.Web strip did not apply"; exit 1; }
+    @echo "Generated sdks/csharp/api (OuraToolkit.Api {{version}}; netstandard2.0;net8.0;net10.0)"
 
 # Compile/import-check every committed breadth client (the generated code must actually
 # build — release gate: a check CI can't see doesn't exist; CI runs this as its own job).
