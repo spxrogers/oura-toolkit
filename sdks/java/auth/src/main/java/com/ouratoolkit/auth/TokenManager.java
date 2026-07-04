@@ -79,6 +79,11 @@ public final class TokenManager {
         this.tokens = tokens;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
+                // Pin the JDK default: NEVER follow redirects from the token endpoint. A
+                // 3xx from a hostile/misconfigured endpoint must NOT silently re-POST the
+                // confidential-client form (client_id + client_secret + refresh_token) to
+                // the redirect target — it surfaces as a typed non-2xx error instead.
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -241,11 +246,23 @@ public final class TokenManager {
         } catch (IOException e) {
             throw new TransportException("token endpoint returned unparseable JSON", e);
         }
-        JsonNode accessToken = node.get("access_token");
-        JsonNode expiresIn = node.get("expires_in");
-        if (accessToken == null || !accessToken.isTextual() || expiresIn == null) {
+        // A hostile or broken 2xx body must fail as a typed error, never a half-populated
+        // token persisted to the store (an empty access_token or a non-positive expiry
+        // would only resurface as a baffling 400 on the NEXT refresh, long after the cause).
+        // Mirrors go/auth/oauth.go:74-79. Messages carry NO token/secret material — the raw
+        // body is never echoed, since a partial 2xx payload may contain token material.
+        JsonNode accessToken = node == null ? null : node.get("access_token");
+        JsonNode expiresIn = node == null ? null : node.get("expires_in");
+        if (accessToken == null || !accessToken.isTextual() || accessToken.asText().isEmpty()) {
             throw new TransportException(
-                    "token endpoint response missing access_token/expires_in",
+                    "token endpoint 2xx response missing or empty access_token",
+                    null);
+        }
+        // Reject 0, negative, AND non-numeric (e.g. "expires_in":"abc", where a bare
+        // asLong() would silently coerce to 0 and be treated as immediately expired).
+        if (expiresIn == null || !expiresIn.canConvertToLong() || expiresIn.asLong() <= 0) {
+            throw new TransportException(
+                    "token endpoint 2xx response missing or invalid expires_in",
                     null);
         }
         String rotatedRefresh = node.hasNonNull("refresh_token")

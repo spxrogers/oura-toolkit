@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -85,7 +86,11 @@ public final class TokenStore {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             // Match serde's default: unknown fields are ignored, not fatal — a newer
             // writer adding a field must not brick older readers of the shared store.
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            // A JSON `null` for a primitive field (e.g. "expires_at": null) must be a typed
+            // store-format error, NOT silently coerced to 0L (which would masquerade as an
+            // already-expired token). serde rejects this; match it.
+            .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
 
     private final Path dir;
 
@@ -114,8 +119,12 @@ public final class TokenStore {
         return dir.resolve("tokens.json");
     }
 
-    /** Load the client credentials, or empty if {@code auth setup} has never run. */
-    public Optional<ClientCredentials> loadCredentials() throws IOException {
+    /**
+     * Load the client credentials, or empty if {@code auth setup} has never run. A record
+     * that exists but is malformed (bad JSON, wrong-typed/missing field, or a literal
+     * {@code null}) surfaces as {@link StoreException}, never a crash.
+     */
+    public Optional<ClientCredentials> loadCredentials() throws IOException, StoreException {
         return load(credentialsPath(), ClientCredentials.class);
     }
 
@@ -124,8 +133,12 @@ public final class TokenStore {
         save(credentialsPath(), credentials);
     }
 
-    /** Load the tokens, or empty if no login has succeeded yet. */
-    public Optional<Tokens> loadTokens() throws IOException {
+    /**
+     * Load the tokens, or empty if no login has succeeded yet. A record that exists but is
+     * malformed (bad JSON, wrong-typed/missing field, or a literal {@code null}) surfaces
+     * as {@link StoreException}, never a crash.
+     */
+    public Optional<Tokens> loadTokens() throws IOException, StoreException {
         return load(tokensPath(), Tokens.class);
     }
 
@@ -213,16 +226,32 @@ public final class TokenStore {
         return FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     }
 
-    private <T> Optional<T> load(Path path, Class<T> type) throws IOException {
+    private <T> Optional<T> load(Path path, Class<T> type)
+            throws IOException, StoreException {
         final byte[] bytes;
         try {
             bytes = Files.readAllBytes(path);
         } catch (NoSuchFileException e) {
             return Optional.empty();
         }
-        // Corrupt records surface as JsonProcessingException (an IOException subtype),
-        // mirroring the Rust store's typed Serde error.
-        return Optional.of(MAPPER.readValue(bytes, type));
+        final T value;
+        try {
+            value = MAPPER.readValue(bytes, type);
+        } catch (JsonProcessingException e) {
+            // Malformed JSON, a wrong-typed or missing required field, or a JSON null for a
+            // primitive (FAIL_ON_NULL_FOR_PRIMITIVES): surface ONE typed store-format error,
+            // mirroring the Rust store's typed Serde error. The message names the file but
+            // NEVER echoes its bytes (the record holds secrets).
+            throw new StoreException(path.getFileName() + " is not a valid store record", e);
+        }
+        if (value == null) {
+            // A literal `null` JSON document deserializes to Java null. Left as
+            // Optional.of(null) it would throw an UNCHECKED NullPointerException that
+            // escapes callers' IOException handling and crashes raw — surface it typed.
+            throw new StoreException(
+                    path.getFileName() + " is not a valid store record (JSON null)", null);
+        }
+        return Optional.of(value);
     }
 
     private void save(Path path, Object record) throws IOException {

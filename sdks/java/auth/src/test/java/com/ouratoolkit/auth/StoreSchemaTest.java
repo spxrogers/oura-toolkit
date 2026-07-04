@@ -48,7 +48,7 @@ class StoreSchemaTest {
     Path dir;
 
     @Test
-    void readsRustWrittenCredentials() throws IOException {
+    void readsRustWrittenCredentials() throws Exception {
         TokenStore store = new TokenStore(dir);
         Files.createDirectories(dir);
         Files.write(store.credentialsPath(), RUST_CREDENTIALS_JSON.getBytes(StandardCharsets.UTF_8));
@@ -59,7 +59,7 @@ class StoreSchemaTest {
     }
 
     @Test
-    void readsRustWrittenTokens() throws IOException {
+    void readsRustWrittenTokens() throws Exception {
         TokenStore store = new TokenStore(dir);
         Files.createDirectories(dir);
         Files.write(store.tokensPath(), RUST_TOKENS_JSON.getBytes(StandardCharsets.UTF_8));
@@ -112,7 +112,7 @@ class StoreSchemaTest {
     }
 
     @Test
-    void toleratesUnknownFieldsLikeSerdeDefault() throws IOException {
+    void toleratesUnknownFieldsLikeSerdeDefault() throws Exception {
         TokenStore store = new TokenStore(dir);
         Files.createDirectories(dir);
         String withExtra = RUST_TOKENS_JSON.replaceFirst("\\{",

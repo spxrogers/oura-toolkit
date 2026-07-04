@@ -27,10 +27,16 @@ final class TokenEndpointStub implements AutoCloseable {
     static final class Response {
         final int status;
         final String body;
+        final String location; // when non-null, sent as a Location header (redirect tests)
 
         Response(int status, String body) {
+            this(status, body, null);
+        }
+
+        Response(int status, String body, String location) {
             this.status = status;
             this.body = body;
+            this.location = location;
         }
     }
 
@@ -45,6 +51,9 @@ final class TokenEndpointStub implements AutoCloseable {
             Response response = handler.apply(form);
             byte[] bytes = response.body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
+            if (response.location != null) {
+                exchange.getResponseHeaders().set("Location", response.location);
+            }
             exchange.sendResponseHeaders(response.status, bytes.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(bytes);

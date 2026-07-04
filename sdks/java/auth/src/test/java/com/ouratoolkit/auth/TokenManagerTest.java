@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.http.HttpTimeoutException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -226,6 +227,83 @@ class TokenManagerTest {
                 "the documented hard 30s token-endpoint timeout (bounds lock-hold time)");
         assertEquals(60, TokenManager.DEFAULT_SKEW_SECS,
                 "the documented 60s proactive-refresh skew");
+    }
+
+    @Test
+    void hostile2xxBodiesAreRejectedTypedAndLeaveTheStoreUntouched() throws Exception {
+        // A malformed but 2xx token response must fail as a typed TransportException — never
+        // persist a half-populated token (an empty access_token or a non-positive/
+        // non-numeric expires_in would only resurface as a baffling 400 on the NEXT
+        // refresh). Each case: exactly one endpoint call (no misfired 400-reload-retry) and
+        // the store's r1 record left byte-for-byte untouched. Mirrors go/auth/oauth.go.
+        String[][] cases = {
+            {"non-JSON body", "this is not json"},
+            {"empty body", ""},
+            {"empty object", "{}"},
+            {"missing access_token", "{\"expires_in\":3600}"},
+            {"empty access_token", "{\"access_token\":\"\",\"expires_in\":3600}"},
+            {"missing expires_in", "{\"access_token\":\"a\"}"},
+            {"expires_in zero", "{\"access_token\":\"a\",\"expires_in\":0}"},
+            {"expires_in negative", "{\"access_token\":\"a\",\"expires_in\":-5}"},
+            {"expires_in as JSON string", "{\"access_token\":\"a\",\"expires_in\":\"abc\"}"},
+        };
+        for (String[] c : cases) {
+            assertHostile2xxRejected(c[0], c[1]);
+        }
+    }
+
+    private void assertHostile2xxRejected(String label, String body) throws Exception {
+        // Isolate each case in its own store dir so an unexpected persist can't leak across
+        // cases (and so "store untouched" is checked against a pristine r1 each time).
+        Path caseDir = Files.createTempDirectory(dir, "hostile2xx");
+        TokenStore store = new TokenStore(caseDir);
+        Tokens original = expiredTokens("r1");
+        store.saveTokens(original);
+
+        try (TokenEndpointStub stub = new TokenEndpointStub(
+                form -> new TokenEndpointStub.Response(200, body))) {
+            TokenManager m = new TokenManager(store, credentials(), expiredTokens("r1"));
+            m.overrideTokenUrl(stub.url());
+
+            assertThrows(TransportException.class, m::getAccessToken,
+                    label + ": a malformed 2xx must surface a typed TransportException");
+            assertEquals(1, stub.requests.get(),
+                    label + ": a malformed 2xx is not a 400 — the reload-retry arm must "
+                            + "NOT fire (endpoint hit exactly once)");
+            assertEquals(original, store.loadTokens().orElseThrow(),
+                    label + ": a malformed 2xx must leave the store UNCHANGED — persisting "
+                            + "a half-token would 400 the next refresh long after the cause");
+        }
+    }
+
+    @Test
+    void tokenEndpointRefusesRedirectsAndNeverResendsTheSecretToTheTarget() throws Exception {
+        TokenStore store = new TokenStore(dir);
+        Tokens original = expiredTokens("r1");
+        store.saveTokens(original);
+
+        // The redirect target would gladly hand back a valid token — proving that IF the
+        // client followed the 307 it would re-POST the confidential form (client_id +
+        // client_secret + refresh_token) here. It must never be contacted.
+        try (TokenEndpointStub target = new TokenEndpointStub(
+                form -> TokenEndpointStub.ok("leaked-access", "r2", 3600))) {
+            try (TokenEndpointStub redirector = new TokenEndpointStub(
+                    form -> new TokenEndpointStub.Response(307, "", target.url()))) {
+                TokenManager m = new TokenManager(store, credentials(), expiredTokens("r1"));
+                m.overrideTokenUrl(redirector.url());
+
+                TokenEndpointException e =
+                        assertThrows(TokenEndpointException.class, m::getAccessToken,
+                                "a 3xx from the token endpoint must surface as a typed "
+                                        + "non-2xx error, not be silently followed");
+                assertEquals(307, e.getStatus());
+                assertEquals(0, target.requests.get(),
+                        "following the redirect would RE-POST the secret-bearing form to the "
+                                + "target — the client (followRedirects=NEVER) must refuse");
+                assertEquals(original, store.loadTokens().orElseThrow(),
+                        "a refused redirect must persist nothing");
+            }
+        }
     }
 
     @Test

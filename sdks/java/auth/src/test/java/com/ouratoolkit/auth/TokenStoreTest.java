@@ -12,7 +12,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -34,7 +33,7 @@ class TokenStoreTest {
     }
 
     @Test
-    void bothRecordsRoundTrip() throws IOException {
+    void bothRecordsRoundTrip() throws Exception {
         TokenStore store = new TokenStore(dir);
         assertTrue(store.loadCredentials().isEmpty(), "no setup yet: credentials absent");
         assertTrue(store.loadTokens().isEmpty(), "no login yet: tokens absent");
@@ -77,15 +76,18 @@ class TokenStoreTest {
     }
 
     @Test
-    void corruptRecordSurfacesTypedParseError() throws IOException {
+    void corruptRecordSurfacesTypedStoreError() throws IOException {
         TokenStore store = new TokenStore(dir);
         Files.createDirectories(dir);
         Files.write(store.tokensPath(), "{not json".getBytes(StandardCharsets.UTF_8));
 
-        assertThrows(
-                JsonProcessingException.class,
+        StoreException e = assertThrows(
+                StoreException.class,
                 store::loadTokens,
-                "corrupt tokens.json must surface a typed parse error, not a crash or empty");
+                "corrupt tokens.json must surface a typed StoreException, not a crash or empty");
+        assertFalse(
+                e.getMessage().contains("not json"),
+                "the error must NOT echo the record's bytes (they can hold secrets)");
     }
 
     @Test
@@ -96,7 +98,7 @@ class TokenStoreTest {
     }
 
     @Test
-    void writesAreAtomicIntoPlace() throws IOException {
+    void writesAreAtomicIntoPlace() throws Exception {
         TokenStore store = new TokenStore(dir);
         store.saveTokens(sampleTokens());
         // Overwrite with different content; a non-atomic writer could leave a truncated
