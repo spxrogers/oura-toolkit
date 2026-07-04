@@ -391,6 +391,33 @@ fn documented_just_recipes_all_exist() {
     );
 }
 
+/// The rate-limit numbers the docs state ⟷ the constants the code enforces (#28). Both
+/// docs write the wait cap and the per-invocation budget as literals; a constant bump
+/// that skips the prose must fail CI, not wait for a reader to notice.
+#[test]
+fn documented_rate_limit_numbers_match_the_constants() {
+    let cap = format!(
+        "{} seconds",
+        oura_toolkit_cli::api::RATE_LIMIT_WAIT_CAP_SECS
+    );
+    let budget = format!(
+        "{} rate-limit waits",
+        oura_toolkit_cli::api::RATE_LIMIT_MAX_WAITS
+    );
+    let root = repo_root();
+    for doc in ["README.md", "docs/cli-contract.md"] {
+        let text = read(&root.join(doc));
+        assert!(
+            text.contains(&cap),
+            "{doc} no longer states the Retry-After cap as {cap:?} — constant bumped              without the docs, or prose rephrased? (source: api::RATE_LIMIT_WAIT_CAP_SECS)"
+        );
+        assert!(
+            text.contains(&budget),
+            "{doc} no longer states the per-invocation budget as {budget:?} — constant              bumped without the docs? (source: api::RATE_LIMIT_MAX_WAITS)"
+        );
+    }
+}
+
 /// Every `get_*` token in the README is a real MCP tool name, and the server still has
 /// exactly the eight the README's "eight curated, described tools" claim counts.
 #[test]

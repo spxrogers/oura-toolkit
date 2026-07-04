@@ -119,8 +119,9 @@ fn tool_result<T: serde::Serialize>(
                      registered credentials), then retry this tool.",
                 );
             } else if let Some(hint) = failure.hint {
-                // Defensive: every hint today is auth-shaped (consumed above); this
-                // keeps a future non-auth hint from being silently dropped.
+                // Non-auth hints ride along verbatim — today that is the rate-limit
+                // hint (#28): the error line names the reset time, the hint tells the
+                // model/user to wait for it and retry the tool.
                 message.push_str(&format!("\nhint: {hint}"));
             }
             Ok(CallToolResult::error(vec![ContentBlock::text(message)]))

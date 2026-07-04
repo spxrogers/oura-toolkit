@@ -8,7 +8,7 @@ changes for users' scripts and require a deliberate decision.
 | code | meaning | example |
 |------|---------|---------|
 | `0` | success | data returned, auth flow completed |
-| `1` | runtime error | Oura API 5xx, network failure, I/O error |
+| `1` | runtime error | Oura API 5xx, network failure, I/O error, rate limited (429) after the bounded retry |
 | `2` | usage error | unknown flag/command, missing argument, bare `oura`, invalid flag values (malformed `--start`/`--end` date, inverted range) |
 | `4` | authentication required | no stored tokens/credentials, or a refresh rejected as invalid by the token endpoint (HTTP 400, e.g. `invalid_grant`) — an auth flow will fix it |
 
@@ -92,3 +92,21 @@ hint: run `oura auth login`
 ```
 
 No backtraces for expected errors.
+
+## Rate limits (429)
+
+Oura enforces per-access-token and per-application limits (rolling windows; the 429
+response headers carry the specifics). On a 429 the toolkit honors `Retry-After` **once**,
+and only when it asks for ≤ 10 seconds — then the request fails as a runtime error
+(exit `1`) whose message names the reset time:
+
+```
+oura: fetching daily sleep: the Oura API rate limit was exceeded — rate limited until 2026-07-04T18:30:00Z
+hint: wait until the reset time shown above, then re-run
+```
+
+Never more than one rate-limit retry per request (no retry storms), and never more than
+3 rate-limit waits across one command invocation — auto-followed pagination shares that
+budget, so a throttle-every-page server cannot stretch a command indefinitely, and
+pagination stops at the first rate-limited page that fails. MCP tool calls surface the
+same message and hint as a structured tool error.

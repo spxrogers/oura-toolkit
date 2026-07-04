@@ -143,6 +143,45 @@ async fn first_tool_call_without_tokens_is_a_structured_auth_error() {
     client.cancel().await.unwrap();
 }
 
+/// Rate limiting (#28): a persistently-throttled data plane surfaces a STRUCTURED
+/// tool-level error — the model-visible text names the reset time and carries the
+/// wait-and-retry hint — after exactly one bounded retry (expect(2): no storm).
+#[tokio::test]
+async fn a_rate_limited_tool_call_is_a_structured_tool_error_naming_the_reset_time() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "0")
+                // 2026-07-04T19:00:00Z
+                .insert_header("X-RateLimit-Reset", "1783191600"),
+        )
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let client = connect(manager(&dir, Some(fresh_tokens("at-1"))), server.uri()).await;
+    let result = client
+        .call_tool(CallToolRequestParams::new("get_daily_sleep"))
+        .await
+        .expect("must be a tool-level error, not a protocol error");
+    assert_eq!(result.is_error, Some(true));
+    let text = text_of(&result);
+    assert!(
+        text.contains("rate limited until 2026-07-04T19:00:00Z"),
+        "the reset time must be in the model-visible text: {text}"
+    );
+    assert!(
+        text.contains("hint: wait until the reset time shown above, then re-run"),
+        "the rate-limit hint must ride into the tool error: {text}"
+    );
+
+    client.cancel().await.unwrap();
+}
+
 /// Tool calls fetch through the real data plane: literal date query params on the wire,
 /// auto-pagination across 3 pages, and the GENERATED models serialized as JSON content.
 #[tokio::test]

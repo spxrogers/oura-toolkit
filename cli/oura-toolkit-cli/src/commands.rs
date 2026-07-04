@@ -33,8 +33,10 @@ pub async fn fetch_sleep(
     range: DateRange,
 ) -> Result<Vec<types::PublicDailySleep>> {
     let (start, end) = (range.start, range.end);
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| async move {
-        let resp = with_auth_retry(manager, base_url, |client| {
+        let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
             let token = token.clone();
             async move {
                 client
@@ -78,8 +80,10 @@ pub async fn fetch_readiness(
     range: DateRange,
 ) -> Result<Vec<types::PublicDailyReadiness>> {
     let (start, end) = (range.start, range.end);
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| async move {
-        let resp = with_auth_retry(manager, base_url, |client| {
+        let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
             let token = token.clone();
             async move {
                 client
@@ -120,8 +124,10 @@ pub async fn fetch_activity(
     range: DateRange,
 ) -> Result<Vec<types::PublicDailyActivity>> {
     let (start, end) = (range.start, range.end);
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| async move {
-        let resp = with_auth_retry(manager, base_url, |client| {
+        let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
             let token = token.clone();
             async move {
                 client
@@ -163,8 +169,10 @@ pub async fn fetch_stress(
     range: DateRange,
 ) -> Result<Vec<types::PublicDailyStress>> {
     let (start, end) = (range.start, range.end);
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| async move {
-        let resp = with_auth_retry(manager, base_url, |client| {
+        let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
             let token = token.clone();
             async move {
                 client
@@ -206,9 +214,11 @@ pub async fn fetch_heartrate(
     range: DateRange,
 ) -> Result<Vec<types::PublicHeartRateRow>> {
     let (start, end) = range.as_utc_bounds();
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| {
         async move {
-            let resp = with_auth_retry(manager, base_url, |client| {
+            let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
                 let token = token.clone();
                 async move {
                     client
@@ -256,8 +266,10 @@ pub async fn fetch_sessions(
     range: DateRange,
 ) -> Result<Vec<types::PublicSession>> {
     let (start, end) = (range.start, range.end);
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| async move {
-        let resp = with_auth_retry(manager, base_url, |client| {
+        let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
             let token = token.clone();
             async move {
                 client
@@ -299,8 +311,10 @@ pub async fn fetch_workouts(
     range: DateRange,
 ) -> Result<Vec<types::PublicWorkout>> {
     let (start, end) = (range.start, range.end);
+    let rate_budget = crate::api::RateLimitBudget::new();
+    let rate_budget = &rate_budget;
     paginate(|token| async move {
-        let resp = with_auth_retry(manager, base_url, |client| {
+        let resp = with_auth_retry(manager, base_url, rate_budget, |client| {
             let token = token.clone();
             async move {
                 client
@@ -340,14 +354,17 @@ pub async fn fetch_personal_info(
     manager: &TokenManager,
     base_url: &str,
 ) -> Result<types::PersonalInfoResponse> {
-    Ok(with_auth_retry(manager, base_url, |client| async move {
-        client
-            .single_personal_info_document_v2_usercollection_personal_info_get()
-            .await
-    })
-    .await
-    .context("fetching personal info")?
-    .into_inner())
+    let rate_budget = crate::api::RateLimitBudget::new();
+    Ok(
+        with_auth_retry(manager, base_url, &rate_budget, |client| async move {
+            client
+                .single_personal_info_document_v2_usercollection_personal_info_get()
+                .await
+        })
+        .await
+        .context("fetching personal info")?
+        .into_inner(),
+    )
 }
 
 pub async fn personal_info(ctx: &Ctx) -> Result<String> {

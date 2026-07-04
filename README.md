@@ -105,6 +105,13 @@ Every windowed command takes `--start` / `--end` (`today`, `yesterday`, or
 `YYYY-MM-DD`, in your local timezone) and defaults to the last 7 days. Cursor pagination
 is followed automatically.
 
+Oura rate-limits the API per access token and per application (rolling windows — the
+429 response headers carry the retry guidance). When a request is rate-limited, the
+toolkit waits out a short `Retry-After` once (at most 10 seconds, and at most
+3 rate-limit waits across one command) and retries; if the API is still throttling, the
+command fails with `rate limited until <time>` instead of retry-storming — details in
+[docs/cli-contract.md](docs/cli-contract.md).
+
 Output adapts to context: aligned tables on a terminal, stable tab-separated lines when
 piped (`cut`/`awk`-safe), pretty JSON with `--json`. Exit codes are a documented
 contract (`0` ok, `1` runtime, `2` usage, `4` auth needed) — details in

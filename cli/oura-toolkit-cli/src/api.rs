@@ -2,8 +2,9 @@
 //! `oura-toolkit-auth`, with 401-refresh-retry and cursor pagination.
 //!
 //! No hand-rolled HTTP: every request goes through the generated client; this module only
-//! supplies auth (Bearer header from `TokenManager`), the one 401 retry, the `next_token`
-//! loop, and date parsing. All of it is hermetically tested against wiremock (see
+//! supplies auth (Bearer header from `TokenManager`), the one 401 retry, the bounded 429
+//! wait-and-retry with its per-invocation budget (#28), the `next_token` loop, and date
+//! parsing. All of it is hermetically tested against wiremock (see
 //! `commands.rs` tests) — including the literal query strings the generated client emits.
 
 use std::future::Future;
@@ -45,13 +46,148 @@ pub async fn authorized_client(
     Ok(oura_toolkit_api::Client::new_with_client(base_url, http))
 }
 
-/// Run one generated-client call with the contract's auth semantics: on a 401, force a
-/// refresh (adopting another process's rotation if one exists, #22) and retry exactly
-/// once. A second 401 means the stored tokens are genuinely dead → typed
-/// [`AuthError::NotAuthenticated`], which the CLI contract maps to exit 4 + login hint.
+/// Honor `Retry-After` only up to this many seconds (#28): a short throttle is waited out
+/// ONCE; anything longer (or a second 429) surfaces as the typed [`RateLimited`] error
+/// immediately — one bounded wait-and-retry, never a retry storm. Deliberately below the
+/// 30s per-request timeout so a rate-limited command still finishes promptly.
+pub const RATE_LIMIT_WAIT_CAP_SECS: u64 = 10;
+
+/// How many rate-limit waits ONE command invocation may spend in total (#28 review):
+/// pagination re-enters [`with_auth_retry`] once per page, so without a shared budget a
+/// throttle-then-succeed server could stretch a single command to `MAX_PAGES ×`
+/// [`RATE_LIMIT_WAIT_CAP_SECS`] (~2.8 h) of sleeps. With it, added wall time is capped at
+/// `RATE_LIMIT_MAX_WAITS × RATE_LIMIT_WAIT_CAP_SECS` (30 s) per invocation.
+pub const RATE_LIMIT_MAX_WAITS: u32 = 3;
+
+/// The per-invocation wait allowance. Each data command / MCP tool call creates ONE and
+/// shares it across every page fetch; when it runs dry, a 429 fails typed immediately
+/// instead of sleeping.
+#[derive(Debug)]
+pub struct RateLimitBudget(std::sync::atomic::AtomicU32);
+
+impl RateLimitBudget {
+    pub fn new() -> Self {
+        Self(std::sync::atomic::AtomicU32::new(RATE_LIMIT_MAX_WAITS))
+    }
+
+    /// Consume one wait if any remain.
+    fn try_take(&self) -> bool {
+        self.0
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |n| n.checked_sub(1),
+            )
+            .is_ok()
+    }
+}
+
+impl Default for RateLimitBudget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Typed rate-limit failure (#28): the Oura API answered 429 and the bounded retry (if
+/// any) did not clear it. Carries the reset instant so every consumer — CLI stderr and
+/// MCP tool errors alike — can say WHEN to come back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RateLimited {
+    /// When the quota window resets: `X-RateLimit-Reset` (epoch seconds) when the server
+    /// sent it, else now + `Retry-After`, else unknown.
+    pub until: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl std::fmt::Display for RateLimited {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The contract's documented shape (docs/cli-contract.md → Error style): scripts
+        // and the MCP model both read "rate limited until <time>" out of this line.
+        match self.until {
+            Some(until) => write!(
+                f,
+                "the Oura API rate limit was exceeded — rate limited until {}",
+                until.format("%Y-%m-%dT%H:%M:%SZ")
+            ),
+            None => write!(
+                f,
+                "the Oura API rate limit was exceeded (HTTP 429; the server gave no reset time)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RateLimited {}
+
+/// What a 429 response told us about retrying (parsed from the spec-documented headers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RateLimitInfo {
+    /// Server-requested wait (`Retry-After`: integer seconds, or an HTTP-date).
+    retry_after: Option<std::time::Duration>,
+    /// Absolute reset instant (`X-RateLimit-Reset`: epoch seconds, preferred; else
+    /// derived from `Retry-After`).
+    until: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl RateLimitInfo {
+    /// Parse the spec's rate-limit response headers. Unparseable values read as absent —
+    /// a hostile or garbled header must degrade to "don't wait", never to a huge sleep.
+    fn from_headers(headers: &HeaderMap, now: chrono::DateTime<chrono::Utc>) -> Self {
+        let header_str = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+        let retry_after = header_str("retry-after").and_then(|v| {
+            let v = v.trim();
+            v.parse::<u64>()
+                .ok()
+                .map(std::time::Duration::from_secs)
+                .or_else(|| {
+                    // RFC 7231 also allows an HTTP-date form.
+                    chrono::DateTime::parse_from_rfc2822(v)
+                        .ok()
+                        .and_then(|at| (at.to_utc() - now).to_std().ok())
+                })
+        });
+        let until = header_str("x-ratelimit-reset")
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .and_then(|epoch| chrono::DateTime::from_timestamp(epoch, 0))
+            .or_else(|| {
+                retry_after
+                    .and_then(|d| chrono::TimeDelta::from_std(d).ok().map(|delta| now + delta))
+            });
+        Self { retry_after, until }
+    }
+
+    /// The wait to perform, if the server's ask fits the bound; `None` = fail now.
+    fn bounded_wait(&self) -> Option<std::time::Duration> {
+        self.retry_after
+            .filter(|d| *d <= std::time::Duration::from_secs(RATE_LIMIT_WAIT_CAP_SECS))
+    }
+}
+
+impl From<RateLimitInfo> for RateLimited {
+    fn from(info: RateLimitInfo) -> Self {
+        Self { until: info.until }
+    }
+}
+
+/// One attempt's failure, split so the 429 wrapper can see rate limiting distinctly.
+enum AttemptError {
+    RateLimited(RateLimitInfo),
+    Other(anyhow::Error),
+}
+
+/// Run one generated-client call with the contract's full retry semantics:
+///
+/// - **401** → force a refresh (adopting another process's rotation if one exists, #22)
+///   and retry exactly once; a second 401 means the stored tokens are genuinely dead →
+///   typed [`AuthError::NotAuthenticated`] (CLI contract: exit 4 + login hint).
+/// - **429** (#28) → honor `Retry-After` up to [`RATE_LIMIT_WAIT_CAP_SECS`] and retry
+///   exactly once, spending one unit of the caller's shared [`RateLimitBudget`]; a second
+///   429, a longer ask, a missing `Retry-After`, or an exhausted budget → typed
+///   [`RateLimited`] naming the reset time. Never more than one rate-limit retry per
+///   call, never more than [`RATE_LIMIT_MAX_WAITS`] waits per command invocation.
 pub async fn with_auth_retry<T, E, F, Fut>(
     manager: &TokenManager,
     base_url: &str,
+    budget: &RateLimitBudget,
     call: F,
 ) -> Result<T>
 where
@@ -59,19 +195,58 @@ where
     Fut: Future<Output = Result<T, oura_toolkit_api::Error<E>>>,
     E: std::fmt::Debug + Send + Sync + 'static,
 {
-    let client = authorized_client(manager, base_url).await?;
+    match attempt(manager, base_url, &call).await {
+        Ok(value) => Ok(value),
+        Err(AttemptError::RateLimited(info)) => match info
+            .bounded_wait()
+            .filter(|_| budget.try_take())
+        {
+            Some(wait) => {
+                tokio::time::sleep(wait).await;
+                match attempt(manager, base_url, &call).await {
+                    Ok(value) => Ok(value),
+                    // Still throttled after the server's own suggested wait: report,
+                    // preferring the SECOND response's reset info (it is fresher).
+                    Err(AttemptError::RateLimited(info2)) => Err(RateLimited::from(info2).into()),
+                    Err(AttemptError::Other(e)) => Err(e),
+                }
+            }
+            None => Err(RateLimited::from(info).into()),
+        },
+        Err(AttemptError::Other(e)) => Err(e),
+    }
+}
+
+/// The auth-retrying core: one call, with the single 401-refresh-retry.
+async fn attempt<T, E, F, Fut>(
+    manager: &TokenManager,
+    base_url: &str,
+    call: &F,
+) -> Result<T, AttemptError>
+where
+    F: Fn(oura_toolkit_api::Client) -> Fut,
+    Fut: Future<Output = Result<T, oura_toolkit_api::Error<E>>>,
+    E: std::fmt::Debug + Send + Sync + 'static,
+{
+    let auth = |e: anyhow::Error| AttemptError::Other(e);
+    let client = authorized_client(manager, base_url).await.map_err(auth)?;
     match call(client).await {
         Ok(value) => Ok(value),
         Err(e) if is_unauthorized(&e) => {
-            manager.force_refresh().await?;
-            let client = authorized_client(manager, base_url).await?;
+            manager
+                .force_refresh()
+                .await
+                .map_err(|e| AttemptError::Other(e.into()))?;
+            let client = authorized_client(manager, base_url).await.map_err(auth)?;
             match call(client).await {
                 Ok(value) => Ok(value),
-                Err(e2) if is_unauthorized(&e2) => Err(AuthError::NotAuthenticated.into()),
-                Err(e2) => Err(api_error(e2)),
+                Err(e2) if is_unauthorized(&e2) => {
+                    Err(AttemptError::Other(AuthError::NotAuthenticated.into()))
+                }
+                Err(e2) => Err(classify_api_error(e2)),
             }
         }
-        Err(e) => Err(api_error(e)),
+        Err(e) => Err(classify_api_error(e)),
     }
 }
 
@@ -79,14 +254,26 @@ fn is_unauthorized<E>(e: &oura_toolkit_api::Error<E>) -> bool {
     e.status() == Some(reqwest::StatusCode::UNAUTHORIZED)
 }
 
-/// Map a generated-client error to a single-line anyhow error per the contract's style.
-fn api_error<E: std::fmt::Debug + Send + Sync + 'static>(
+/// Map a generated-client error: 429s become [`AttemptError::RateLimited`] (with the
+/// spec's guidance headers parsed); everything else keeps the contract's single-line
+/// anyhow shape.
+fn classify_api_error<E: std::fmt::Debug + Send + Sync + 'static>(
     e: oura_toolkit_api::Error<E>,
-) -> anyhow::Error {
-    match e.status() {
+) -> AttemptError {
+    // 429 has no schema-defined body in the (overlay-pruned) spec, so it always arrives
+    // as `UnexpectedResponse` — the raw `reqwest::Response`, headers included.
+    if let oura_toolkit_api::Error::UnexpectedResponse(r) = &e {
+        if r.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return AttemptError::RateLimited(RateLimitInfo::from_headers(
+                r.headers(),
+                chrono::Utc::now(),
+            ));
+        }
+    }
+    AttemptError::Other(match e.status() {
         Some(status) => anyhow::anyhow!("Oura API returned HTTP {status}"),
         None => anyhow::anyhow!("request to the Oura API failed: {e}"),
-    }
+    })
 }
 
 /// Follow `next_token` cursor pagination to completion, aggregating every page's records.
@@ -361,6 +548,142 @@ mod tests {
         };
         let (start, _) = r.utc_bounds_in(&tz);
         assert_eq!(start.to_rfc3339(), "2023-11-05T04:00:00+00:00"); // 00:00:00 -04:00 (CDT)
+    }
+
+    // --- rate limiting (#28) -----------------------------------------------------------
+
+    fn headers(pairs: &[(&str, &str)]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                HeaderValue::from_str(v).unwrap(),
+            );
+        }
+        h
+    }
+
+    fn now() -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339("2026-07-04T18:00:00Z")
+            .unwrap()
+            .to_utc()
+    }
+
+    #[test]
+    fn retry_after_integer_seconds_parses_and_derives_until() {
+        let info = RateLimitInfo::from_headers(&headers(&[("retry-after", "42")]), now());
+        assert_eq!(info.retry_after, Some(std::time::Duration::from_secs(42)));
+        assert_eq!(
+            info.until.unwrap().to_rfc3339(),
+            "2026-07-04T18:00:42+00:00",
+            "until derives from now + Retry-After when no reset header exists"
+        );
+    }
+
+    #[test]
+    fn retry_after_http_date_parses() {
+        let info = RateLimitInfo::from_headers(
+            &headers(&[("retry-after", "Sat, 04 Jul 2026 18:00:30 GMT")]),
+            now(),
+        );
+        assert_eq!(info.retry_after, Some(std::time::Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn reset_epoch_wins_over_derived_until() {
+        let info = RateLimitInfo::from_headers(
+            // 2026-07-04T19:00:00Z = 1783191600
+            &headers(&[("retry-after", "5"), ("x-ratelimit-reset", "1783191600")]),
+            now(),
+        );
+        assert_eq!(
+            info.until.unwrap().to_rfc3339(),
+            "2026-07-04T19:00:00+00:00",
+            "X-RateLimit-Reset is authoritative for the reset instant"
+        );
+        assert_eq!(info.retry_after, Some(std::time::Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn hostile_or_missing_headers_degrade_to_absent_never_to_a_wait() {
+        // (Control bytes can't appear here: reqwest rejects them at the HeaderValue
+        // layer, so "garbled" means printable-but-unparseable.)
+        for bad in [
+            &[("retry-after", "soon")][..],
+            &[("retry-after", "-5")],
+            &[("retry-after", "12.5")],
+            &[("retry-after", "999999999999999999999999")],
+            &[],
+        ] {
+            let info = RateLimitInfo::from_headers(&headers(bad), now());
+            assert_eq!(info.retry_after, None, "{bad:?} must not produce a wait");
+            assert_eq!(info.until, None);
+            assert_eq!(
+                info.bounded_wait(),
+                None,
+                "no parseable guidance ⇒ fail fast, never sleep"
+            );
+        }
+    }
+
+    #[test]
+    fn a_parseable_but_huge_retry_after_cannot_panic_the_until_derivation() {
+        // u64-valid but overflows chrono::TimeDelta: the `.ok()` guard on from_std must
+        // degrade `until` to None (an `.unwrap()` regression panics right here), and the
+        // cap keeps it unwaitable.
+        let info =
+            RateLimitInfo::from_headers(&headers(&[("retry-after", "99999999999999999")]), now());
+        assert_eq!(
+            info.retry_after,
+            Some(std::time::Duration::from_secs(99_999_999_999_999_999))
+        );
+        assert_eq!(
+            info.until, None,
+            "overflowing delta must not fabricate an until"
+        );
+        assert_eq!(info.bounded_wait(), None);
+    }
+
+    #[test]
+    fn budget_allows_exactly_max_waits_then_runs_dry() {
+        let budget = RateLimitBudget::new();
+        for i in 0..RATE_LIMIT_MAX_WAITS {
+            assert!(budget.try_take(), "wait {i} must fit the budget");
+        }
+        assert!(
+            !budget.try_take(),
+            "the budget must run dry after MAX_WAITS"
+        );
+        assert!(!budget.try_take(), "and STAY dry (no underflow wraparound)");
+    }
+
+    #[test]
+    fn bounded_wait_honors_the_cap() {
+        let at =
+            |secs: &str| RateLimitInfo::from_headers(&headers(&[("retry-after", secs)]), now());
+        assert_eq!(
+            at("10").bounded_wait(),
+            Some(std::time::Duration::from_secs(RATE_LIMIT_WAIT_CAP_SECS)),
+            "exactly the cap is still waitable"
+        );
+        assert_eq!(
+            at("11").bounded_wait(),
+            None,
+            "one second past the cap ⇒ immediate typed error"
+        );
+        assert_eq!(at("0").bounded_wait(), Some(std::time::Duration::ZERO));
+    }
+
+    #[test]
+    fn rate_limited_display_names_the_reset_time() {
+        let with_until = RateLimited { until: Some(now()) };
+        assert_eq!(
+            with_until.to_string(),
+            "the Oura API rate limit was exceeded — rate limited until 2026-07-04T18:00:00Z",
+            "the documented 'rate limited until <time>' shape (docs/cli-contract.md)"
+        );
+        let without = RateLimited { until: None };
+        assert!(without.to_string().contains("no reset time"), "{without}");
     }
 
     /// A server that mints a NEW token every page defeats the non-advancing check; the
