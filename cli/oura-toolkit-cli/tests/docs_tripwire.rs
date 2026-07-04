@@ -112,6 +112,26 @@ fn code_snippets(markdown: &str) -> Vec<String> {
             block.push_str(line);
             block.push('\n');
         } else {
+            // Silent-under-scan guards (#63's review): an indented command block or a
+            // double-backtick span would read as prose (contents skipped, a false
+            // negative) — fail loudly instead of scanning blind, like the ~~~ guard.
+            let trimmed = line.trim_start();
+            assert!(
+                !(line.starts_with("    ")
+                    && (trimmed.starts_with("oura ") || trimmed.starts_with("just "))),
+                "doc uses a 4-space-indented command block, which this scanner does not \
+                 parse — use ``` fences: {line:?}"
+            );
+            let bytes = line.as_bytes();
+            for (i, _) in line.match_indices("``") {
+                let part_of_triple =
+                    (i > 0 && bytes[i - 1] == b'`') || bytes.get(i + 2) == Some(&b'`');
+                assert!(
+                    part_of_triple,
+                    "doc uses a ``double-backtick`` span, which this scanner does not \
+                     parse — use single-backtick spans: {line:?}"
+                );
+            }
             for (i, piece) in line.split('`').enumerate() {
                 if i % 2 == 1 {
                     snippets.push(piece.to_string());
@@ -187,7 +207,9 @@ fn readme_command_list_matches_the_binary() {
 /// so `oura auth status` contributed just `auth` — a doc claiming a nonexistent auth
 /// subcommand (or an auth subcommand landing undocumented) slipped through. This closes
 /// that: every `oura auth <sub>` shown in README.md or docs/cli-contract.md must exist,
-/// and every auth subcommand the binary has must appear in the README.
+/// and every auth subcommand the binary has must appear in the README. (Completeness is
+/// deliberately README-only: the README is the canonical front-door command list, so a
+/// new auth command must land there; cli-contract is held to existence only.)
 #[test]
 fn documented_auth_subcommands_match_the_binary() {
     let mut auth = help_subcommands(&oura_stdout(&["auth", "--help"]), 5);
