@@ -143,9 +143,7 @@ gen-py: spec-overlay
     {{oag}} generate {{oag_skip_docs}} -c codegen/python.yaml -i {{overlaid_spec}} -o {{build_dir}}/python-gen --additional-properties=packageVersion={{version}}
     mkdir -p sdks/python/oura_toolkit
     cp -R {{build_dir}}/python-gen/oura_toolkit/api sdks/python/oura_toolkit/api
-    # Version sync: the hand-written dist metadata must match the workspace version, same
-    # single-source rule as the plugin manifests (`just plugin-check`).
-    @grep -q '^version = "{{version}}"' sdks/python/pyproject.toml || { echo "sdks/python/pyproject.toml version does not match workspace {{version}} — update it"; exit 1; }
+    # (The hand-written pyproject.toml's version sync is guarded by `just version-check`.)
     @echo "Generated sdks/python/oura_toolkit/api (oura-toolkit {{version}})"
 
 # Generate the Go SDK client (openapi-generator) -> sdks/go/api. The module file
@@ -204,12 +202,11 @@ sdk-check-ts:
     cd sdks/typescript/api && npm install --no-package-lock --no-fund --no-audit && npm run build
 
 # Hand-written TS auth companion (#15): build + the hermetic node:test suite (mock token
-# endpoint on 127.0.0.1, tempdir stores — no network, no real credentials). The version
-# grep mirrors gen-py's guard: the hand-written package.json must match the workspace.
+# endpoint on 127.0.0.1, tempdir stores — no network, no real credentials). (package.json's
+# version sync is guarded by `just version-check`.)
 [group('codegen')]
 sdk-test-ts:
     cd sdks/typescript/auth && npm install --no-package-lock --no-fund --no-audit && npm run build && npm test
-    @grep -q '"version": "{{version}}"' sdks/typescript/auth/package.json || { echo "sdks/typescript/auth/package.json version does not match workspace {{version}} — update it"; exit 1; }
 
 [group('codegen')]
 sdk-check-py:
@@ -247,11 +244,10 @@ sdk-check-java:
     cd sdks/java/api && mvn --quiet -DskipTests compile
 
 # Java auth-companion unit tests (sdks/java/auth — hermetic: loopback token endpoint via
-# jdk.httpserver, @TempDir stores, injected env lookups). The grep guard mirrors gen-py's:
-# the hand-written pom's version must match the workspace version (single version source).
+# jdk.httpserver, @TempDir stores, injected env lookups). (The hand-written pom's version
+# sync is guarded by `just version-check`.)
 [group('codegen')]
 sdk-test-java:
-    @grep -A1 '<artifactId>auth</artifactId>' sdks/java/auth/pom.xml | grep -q '<version>{{version}}</version>' || { echo "sdks/java/auth/pom.xml version does not match workspace {{version}} — update it"; exit 1; }
     cd sdks/java/auth && mvn --quiet test
 
 # Requires the dotnet SDK (absent locally is a real failure, not a skip — CI has it; a
@@ -268,11 +264,10 @@ sdk-check-csharp:
 # stores; run by the sdk-compile CI job). The multi-target test project (net8.0;net10.0)
 # means one `dotnet test` runs the whole suite on BOTH modern runtimes — including the direct
 # PosixInterop tests that cover the netstandard2.0-only libc atomic-0600 path (unloadable by a
-# modern host, so exercised via the always-compiled helper). The csproj version must match the
-# workspace version — same single-source rule as sdks/python (see gen-py).
+# modern host, so exercised via the always-compiled helper). (The csproj's version sync is
+# guarded by `just version-check`.)
 [group('codegen')]
 sdk-test-csharp:
-    @grep -q '<Version>{{version}}</Version>' sdks/csharp/auth/src/OuraToolkit.Auth/OuraToolkit.Auth.csproj || { echo "sdks/csharp/auth csproj version does not match workspace {{version}} — update it"; exit 1; }
     dotnet test --nologo -v quiet sdks/csharp/auth/tests/OuraToolkit.Auth.Tests
 
 # ---------------------------------------------------------------------------------------------
@@ -431,13 +426,29 @@ publish-check:
     # let run 2 cache-hit the build script and silently prove nothing again.
     tmp=$(mktemp -d) && gzip -dc target/package/oura-toolkit-auth-{{version}}.crate 2>/dev/null | tar x -C "$tmp" && CARGO_TARGET_DIR={{justfile_directory()}}/target/publish-check cargo build --manifest-path "$tmp/oura-toolkit-auth-{{version}}/Cargo.toml" && rm -rf "$tmp"
 
-# Plugin release-config guards (#12): the version pins are mechanically synced to the
-# single version source (the plugin.json version and .mcp.json's npx pin must equal the
-# workspace version — deferred from #11), and both manifests validate under --strict.
+# Bump the workspace version EVERYWHERE, in one command (#59): codegen/version.sh is the
+# single writer over the root Cargo.toml (the source, incl. the internal-crate dep pins)
+# plus every hand-written manifest that carries the literal (TS/Python/Java/C# companions,
+# plugin.json, .mcp.json's npx pin), and it self-verifies each rewrite. Then refresh
+# Cargo.lock. Release = this, commit, tag vX.Y.Z.
+[group('release')]
+set-version new_version:
+    codegen/version.sh set {{new_version}}
+    cargo update --workspace --quiet
+    @echo "Now commit, then tag v{{new_version}} and push to release (CLAUDE.md → DISTRIBUTION)."
+
+# THE single version-drift guard (#59): every hand-written manifest equals the workspace
+# version. Replaces the per-file grep-guards that used to sprawl across gen-py/sdk-test-*/
+# plugin-check; run by the release-config CI job on every PR.
+[group('release')]
+version-check:
+    codegen/version.sh check
+
+# Plugin release-config guards (#12): both manifests validate under --strict, and the
+# marketplace↔plugin source linkage resolves. (The version pins — plugin.json's version and
+# .mcp.json's npx pin — are guarded by `just version-check` like every other manifest, #59.)
 [group('release')]
 plugin-check:
-    jq -e --arg v "{{version}}" '.version == $v' plugins/oura-toolkit/.claude-plugin/plugin.json > /dev/null || { echo "plugin.json version is not {{version}} — sync it to the workspace Cargo.toml"; exit 1; }
-    jq -e --arg v "{{version}}" '.mcpServers.oura.args == ["-y", "oura-toolkit@" + $v, "mcp"]' plugins/oura-toolkit/.mcp.json > /dev/null || { echo ".mcp.json args must be exactly [-y, oura-toolkit@{{version}}, mcp] — a mispositioned pin would make npx execute the wrong package"; exit 1; }
     # `claude plugin validate .` does NOT resolve marketplace source paths (break-verified:
     # a nonexistent source passes strict) — assert the linkage ourselves. The length
     # precheck keeps a zero-plugin marketplace (which the loop would skip) from passing.
