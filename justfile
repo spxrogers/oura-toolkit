@@ -134,11 +134,11 @@ gen-ts: spec-overlay
     # the non-standard `module` field), no exports map, and placeholder repo metadata.
     # Pre-guards pin the generator shape we patch — if an upgrade changes it, fail here so
     # the overlay gets revisited instead of silently mispatching.
-    @jq -e '.module and .typings and (.scripts.build | contains("tsconfig.esm.json"))' sdks/typescript/api/package.json > /dev/null || { echo "gen-ts: generator package.json shape changed (module/typings/dual-build gone) — update codegen/ts-package-overlay.jq and this recipe"; exit 1; }
+    @jq -e '.module and .typings and (.scripts.build | contains("tsconfig.esm.json"))' sdks/typescript/api/package.json > /dev/null || { echo "gen-ts: generator package.json shape changed (module/typings/dual-build gone) — update codegen/ts-package-postpatch.jq and this recipe"; exit 1; }
     @test -f sdks/typescript/api/tsconfig.esm.json || { echo "gen-ts: generator no longer emits tsconfig.esm.json — update this recipe"; exit 1; }
-    jq -f codegen/ts-package-overlay.jq sdks/typescript/api/package.json > sdks/typescript/api/package.json.tmp && mv sdks/typescript/api/package.json.tmp sdks/typescript/api/package.json
+    jq -f codegen/ts-package-postpatch.jq sdks/typescript/api/package.json > sdks/typescript/api/package.json.tmp && mv sdks/typescript/api/package.json.tmp sdks/typescript/api/package.json
     rm -f sdks/typescript/api/tsconfig.esm.json
-    @jq -e '(.exports["."] == {"types": "./dist/index.d.ts", "default": "./dist/index.js"}) and (.module | not) and (.typings | not) and .files == ["dist"] and .types == "./dist/index.d.ts"' sdks/typescript/api/package.json > /dev/null || { echo "gen-ts: packaging post-patch did not apply — see codegen/ts-package-overlay.jq"; exit 1; }
+    @jq -e '(.exports["."] == {"types": "./dist/index.d.ts", "default": "./dist/index.js"}) and (.module | not) and (.typings | not) and .files == ["dist"] and .types == "./dist/index.d.ts"' sdks/typescript/api/package.json > /dev/null || { echo "gen-ts: packaging post-patch did not apply — see codegen/ts-package-postpatch.jq"; exit 1; }
     @echo "Generated sdks/typescript/api (@oura-toolkit/api {{version}}; CJS + exports map)"
 
 # Generate the Python SDK client (openapi-generator) -> sdks/python/oura_toolkit/api.
@@ -214,8 +214,13 @@ sdk-check-ts:
     # dist path or ESM-syntax entry throws here), the stale dual-ESM tree must be gone,
     # and the publish surface stays dist-only (npm pack must never ship src/tsconfigs).
     cd sdks/typescript/api && node -e "const e = require('./package.json').exports['.']; const m = require(e.default); if (typeof m.Configuration !== 'function') throw new Error('exports[.].default did not load the client (Configuration missing)'); require('fs').accessSync(e.types);"
+    # The headline #57 guarantee is the ESM consumer story, so exercise it for real:
+    # a self-referencing `import` resolves through the exports map (self-reference REQUIRES
+    # exports) and named exports must survive Node's CJS interop (cjs-module-lexer) — a
+    # regression here leaves require() green and breaks `import {…}` consumers.
+    cd sdks/typescript/api && node --input-type=module -e "const m = await import('@oura-toolkit/api'); if (typeof m.Configuration !== 'function') throw new Error('ESM named import via the exports map broke (interop/lexer regression?)');"
     @test ! -d sdks/typescript/api/dist/esm || { echo "sdk-check-ts: dist/esm reappeared — the CJS-only packaging post-patch (#57) regressed"; exit 1; }
-    cd sdks/typescript/api && npm pack --dry-run --json | jq -e '.[0].files | map(.path) | all(. == "package.json" or . == "README.md" or startswith("dist/")) and any(startswith("dist/"))' > /dev/null || { echo "sdk-check-ts: npm pack would ship files outside dist/ (src, tsconfigs?) — files allowlist broken"; exit 1; }
+    cd sdks/typescript/api && npm pack --dry-run --json | jq -e '.[0].files | map(.path) | all(. == "package.json" or . == "README.md" or . == "LICENSE" or startswith("dist/")) and any(startswith("dist/"))' > /dev/null || { echo "sdk-check-ts: npm pack would ship files outside dist/ (src, tsconfigs?) — files allowlist broken"; exit 1; }
 
 # Hand-written TS auth companion (#15): build + the hermetic node:test suite (mock token
 # endpoint on 127.0.0.1, tempdir stores — no network, no real credentials). (package.json's
