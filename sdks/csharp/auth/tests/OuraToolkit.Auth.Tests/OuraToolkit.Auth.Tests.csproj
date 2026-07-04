@@ -5,7 +5,11 @@
        no network, no real credentials, no global state. Test-only dependencies (xunit)
        are allowed; the shipped library stays BCL-only. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- Run the shared behavior suite AND the always-compiled libc-helper test on both
+         modern runtimes. The library's netstandard2.0 asset cannot be loaded by a modern test
+         host (by design) — the security-critical netstandard2.0 create path is covered instead
+         by the direct PosixInterop tests, which run here on net8.0 + net10.0. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>

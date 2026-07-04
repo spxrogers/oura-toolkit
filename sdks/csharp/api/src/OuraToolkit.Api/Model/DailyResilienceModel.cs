@@ -51,7 +51,7 @@ namespace OuraToolkit.Api.Model
         /// <param name="day">Day when the resilience record was recorded. (required).</param>
         /// <param name="contributors">Contributors to the resilience score. (required).</param>
         /// <param name="level">Resilience level. (required).</param>
-        public DailyResilienceModel(string id = default, DateOnly day = default, ResilienceContributors contributors = default, LongTermResilienceLevel level = default)
+        public DailyResilienceModel(string id = default, DateTime day = default, ResilienceContributors contributors = default, LongTermResilienceLevel level = default)
         {
             // to ensure "id" is required (not null)
             if (id == null)
@@ -80,7 +80,8 @@ namespace OuraToolkit.Api.Model
         /// </summary>
         /// <value>Day when the resilience record was recorded.</value>
         [DataMember(Name = "day", IsRequired = true, EmitDefaultValue = true)]
-        public DateOnly Day { get; set; }
+        [JsonConverter(typeof(OpenAPIDateConverter))]
+        public DateTime Day { get; set; }
 
         /// <summary>
         /// Contributors to the resilience score.

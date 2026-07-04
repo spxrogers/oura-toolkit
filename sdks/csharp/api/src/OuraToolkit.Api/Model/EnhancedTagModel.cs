@@ -48,7 +48,7 @@ namespace OuraToolkit.Api.Model
         /// <param name="endDay">endDay.</param>
         /// <param name="comment">comment.</param>
         /// <param name="customName">customName.</param>
-        public EnhancedTagModel(string id = default, string tagTypeCode = default, string startTime = default, string endTime = default, DateOnly startDay = default, DateOnly? endDay = default, string comment = default, string customName = default)
+        public EnhancedTagModel(string id = default, string tagTypeCode = default, string startTime = default, string endTime = default, DateTime startDay = default, DateTime? endDay = default, string comment = default, string customName = default)
         {
             // to ensure "id" is required (not null)
             if (id == null)
@@ -99,13 +99,15 @@ namespace OuraToolkit.Api.Model
         /// </summary>
         /// <value>Day of the tag (if no duration) or the start day of the tag (with duration).</value>
         [DataMember(Name = "start_day", IsRequired = true, EmitDefaultValue = true)]
-        public DateOnly StartDay { get; set; }
+        [JsonConverter(typeof(OpenAPIDateConverter))]
+        public DateTime StartDay { get; set; }
 
         /// <summary>
         /// Gets or Sets EndDay
         /// </summary>
         [DataMember(Name = "end_day", EmitDefaultValue = true)]
-        public DateOnly? EndDay { get; set; }
+        [JsonConverter(typeof(OpenAPIDateConverter))]
+        public DateTime? EndDay { get; set; }
 
         /// <summary>
         /// Gets or Sets Comment

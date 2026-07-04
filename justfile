@@ -63,6 +63,9 @@ setup:
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
+    # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an
+    # 8.x/9.x SDK cannot build the net10.0 leg). Only relevant to the C# breadth-SDK recipes.
+    @dotnet --list-sdks 2>/dev/null | grep -q '^10\.' || echo "!! install the .NET 10 SDK -- needed by 'just sdk-check-csharp' / 'just sdk-test-csharp' (net10.0 target)"
     # Release tooling (`just dist-check` / `just release`).
     command -v dist >/dev/null || cargo install cargo-dist --locked
 
@@ -172,7 +175,22 @@ gen-csharp: spec-overlay
     # The generator mints a FRESH solution GUID every run — the .sln is the one
     # non-deterministic output file, and sdk-check builds the csproj directly. Drop it.
     rm -f sdks/csharp/api/git_push.sh sdks/csharp/api/.travis.yml sdks/csharp/api/appveyor.yml sdks/csharp/api/OuraToolkit.Api.sln
-    @echo "Generated sdks/csharp/api (OuraToolkit.Api {{version}})"
+    # Multi-target post-patch: the generator emits a single netstandard2.0 target (and rejects
+    # net10.0 outright), so widen it to the shipped TFM set. Deterministic (drift-safe): the
+    # sed target is the generator's fixed line. netstandard2.0 = broad reach; net8.0/net10.0 =
+    # modern assemblies. The Newtonsoft-based netstandard2.0 code compiles unchanged on all three.
+    # Pin LangVersion to 13.0 (not `latest`): `latest` floats with the installed SDK, so codegen
+    # output would drift under gen-check as CI's dotnet updates. A fixed version is deterministic
+    # and still >= the C# 9 the netstandard2.0 <Nullable>annotations</Nullable> leg needs.
+    sed -i 's|<TargetFramework>netstandard2.0</TargetFramework>|<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>\n    <LangVersion>13.0</LangVersion>|' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    @grep -q '<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: multi-target post-patch did not apply — generator csproj shape changed?"; exit 1; }
+    @grep -q '<LangVersion>13.0</LangVersion>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: LangVersion post-patch did not apply (needed for <Nullable>annotations</Nullable> on the netstandard2.0 leg, whose default is C# 7.3)"; exit 1; }
+    # Strip the generator's bogus System.Web ItemGroups (a .NET-Framework-only assembly the code
+    # never uses) — wrapper and all, so no empty ItemGroups linger. It emits MSB3245 "could not
+    # resolve" on every modern TFM otherwise.
+    perl -0pi -e 's{\s*<ItemGroup>\s*<(?:None Remove|Reference Include)="System\.Web"\s*/>\s*</ItemGroup>}{}g' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    @! grep -q 'System.Web' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: System.Web strip did not apply"; exit 1; }
+    @echo "Generated sdks/csharp/api (OuraToolkit.Api {{version}}; netstandard2.0;net8.0;net10.0)"
 
 # Compile/import-check every committed breadth client (the generated code must actually
 # build — release gate: a check CI can't see doesn't exist; CI runs this as its own job).
@@ -237,14 +255,21 @@ sdk-test-java:
     cd sdks/java/auth && mvn --quiet test
 
 # Requires the dotnet SDK (absent locally is a real failure, not a skip — CI has it; a
-# silent skip here would let a broken C# client ship).
+# silent skip here would let a broken C# client ship). Builds BOTH halves: the generated api
+# client AND the hand-written auth companion, whose multi-target csproj
+# (netstandard2.0;net8.0;net10.0) makes a single `dotnet build` compile every TFM — so a
+# netstandard2.0-only break (missing UnixFileMode/SocketsHttpHandler polyfill, etc.) fails here.
 [group('codegen')]
 sdk-check-csharp:
     dotnet build --nologo -v quiet sdks/csharp/api/src/OuraToolkit.Api
+    dotnet build --nologo -v quiet sdks/csharp/auth/src/OuraToolkit.Auth
 
 # HAND-WRITTEN C# auth companion tests (hermetic: mock HttpMessageHandler + temp-dir
-# stores; run by the sdk-compile CI job). The csproj version must match the workspace
-# version — same single-source rule as sdks/python (see gen-py).
+# stores; run by the sdk-compile CI job). The multi-target test project (net8.0;net10.0)
+# means one `dotnet test` runs the whole suite on BOTH modern runtimes — including the direct
+# PosixInterop tests that cover the netstandard2.0-only libc atomic-0600 path (unloadable by a
+# modern host, so exercised via the always-compiled helper). The csproj version must match the
+# workspace version — same single-source rule as sdks/python (see gen-py).
 [group('codegen')]
 sdk-test-csharp:
     @grep -q '<Version>{{version}}</Version>' sdks/csharp/auth/src/OuraToolkit.Auth/OuraToolkit.Auth.csproj || { echo "sdks/csharp/auth csproj version does not match workspace {{version}} — update it"; exit 1; }

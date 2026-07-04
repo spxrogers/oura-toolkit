@@ -45,7 +45,7 @@ namespace OuraToolkit.Api.Model
         /// <param name="text">text (required).</param>
         /// <param name="timestamp">timestamp (required).</param>
         /// <param name="tags">Selected tags for the tag. (required).</param>
-        public TagModel(string id = default, DateOnly day = default, string text = default, string timestamp = default, List<string> tags = default)
+        public TagModel(string id = default, DateTime day = default, string text = default, string timestamp = default, List<string> tags = default)
         {
             // to ensure "id" is required (not null)
             if (id == null)
@@ -85,7 +85,8 @@ namespace OuraToolkit.Api.Model
         /// </summary>
         /// <value>Day that the note belongs to.</value>
         [DataMember(Name = "day", IsRequired = true, EmitDefaultValue = true)]
-        public DateOnly Day { get; set; }
+        [JsonConverter(typeof(OpenAPIDateConverter))]
+        public DateTime Day { get; set; }
 
         /// <summary>
         /// Gets or Sets Text

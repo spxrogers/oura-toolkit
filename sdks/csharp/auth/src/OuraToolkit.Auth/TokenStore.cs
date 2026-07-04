@@ -43,9 +43,28 @@ public sealed class TokenStore
 
     /// <summary>Store at the default per-platform config location.</summary>
     public TokenStore()
-        : this(ResolveConfigDir(Environment.GetEnvironmentVariable, OperatingSystem.IsWindows()))
+        : this(ResolveConfigDir(Environment.GetEnvironmentVariable, !IsPosix))
     {
     }
+
+    /// <summary>
+    /// True when NOT running on Windows (i.e. a POSIX host whose file modes matter). Carried
+    /// as a single guard so the two legs differ only in HOW they answer: net7+ uses
+    /// <c>OperatingSystem.IsWindows()</c> — which the platform-compatibility analyzer also
+    /// recognizes (via the <c>[UnsupportedOSPlatformGuard("windows")]</c> on this member)
+    /// as a guard for the <c>[UnsupportedOSPlatform("windows")]</c> UnixFileMode APIs —
+    /// while netstandard2.0 (no <c>OperatingSystem</c> type) uses <c>RuntimeInformation</c>.
+    /// </summary>
+#if !NETSTANDARD2_0
+    [System.Runtime.Versioning.UnsupportedOSPlatformGuard("windows")]
+#endif
+    private static bool IsPosix =>
+#if NETSTANDARD2_0
+        !System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+            System.Runtime.InteropServices.OSPlatform.Windows);
+#else
+        !OperatingSystem.IsWindows();
+#endif
 
     /// <summary>Store rooted at an explicit directory (used by tests).</summary>
     public TokenStore(string directory) => Directory = directory;
@@ -113,21 +132,9 @@ public sealed class TokenStore
     public StoreLock? TryAcquireLock()
     {
         EnsureDirectory();
-        var options = new FileStreamOptions
-        {
-            Mode = FileMode.OpenOrCreate,
-            Access = FileAccess.ReadWrite,
-            // Exclusivity: no other handle (in this or any other process honoring the
-            // sharing mode) may hold the file while we do.
-            Share = FileShare.None,
-        };
-        if (!OperatingSystem.IsWindows())
-        {
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        }
         try
         {
-            return new StoreLock(new FileStream(LockPath, options));
+            return new StoreLock(OpenExclusiveLock(LockPath));
         }
         catch (IOException)
         {
@@ -136,6 +143,39 @@ public sealed class TokenStore
             // a bounded critical section, and EnsureDirectory above rules out the dir.
             return null;
         }
+    }
+
+    /// <summary>
+    /// Open the <c>.lock</c> file with exclusive sharing (<see cref="FileShare.None"/>), the
+    /// primitive the advisory lock is built on. The lock file is secret-free, so its 0600 on
+    /// Unix is hygiene, not a security guarantee. net7+: <c>FileStreamOptions.UnixCreateMode</c>
+    /// sets 0600 at creation. netstandard2.0: the classic constructor (no mode support), then a
+    /// best-effort <c>chmod</c> — a brief non-0600 window is acceptable for a contentless lock.
+    /// </summary>
+    private static FileStream OpenExclusiveLock(string path)
+    {
+#if NETSTANDARD2_0
+        var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        if (IsPosix)
+        {
+            PosixInterop.TryChmod(path, PosixInterop.Mode0600);
+        }
+        return stream;
+#else
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.OpenOrCreate,
+            Access = FileAccess.ReadWrite,
+            // Exclusivity: no other handle (in this or any other process honoring the
+            // sharing mode) may hold the file while we do.
+            Share = FileShare.None,
+        };
+        if (IsPosix)
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+        return new FileStream(path, options);
+#endif
     }
 
     private T? LoadRecord<T>(string path) where T : class
@@ -174,12 +214,16 @@ public sealed class TokenStore
     private void EnsureDirectory()
     {
         System.IO.Directory.CreateDirectory(Directory);
-        if (!OperatingSystem.IsWindows())
+        if (IsPosix)
         {
             // 0700, every time (CreateDirectory does not re-mode an existing dir).
+#if NETSTANDARD2_0
+            PosixInterop.TryChmod(Directory, PosixInterop.Mode0700);
+#else
             File.SetUnixFileMode(
                 Directory,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+#endif
         }
     }
 
@@ -194,24 +238,16 @@ public sealed class TokenStore
         var dir = Path.GetDirectoryName(path)
             ?? throw new InvalidOperationException("store paths always have a parent dir");
         var temp = Path.Combine(dir, $".tmp-{Guid.NewGuid():N}");
-        var options = new FileStreamOptions
-        {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Share = FileShare.None,
-        };
-        if (!OperatingSystem.IsWindows())
-        {
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        }
         try
         {
-            using (var stream = new FileStream(temp, options))
+            using (var stream = CreateExclusiveOwnerOnly(temp))
             {
-                stream.Write(data);
+                // Write(byte[], int, int) — not the Write(ReadOnlySpan<byte>) overload, which
+                // is absent on netstandard2.0; this form is identical on every TFM.
+                stream.Write(data, 0, data.Length);
                 stream.Flush(flushToDisk: true);
             }
-            File.Move(temp, path, overwrite: true);
+            ReplaceAtomically(temp, path);
         }
         catch
         {
@@ -228,6 +264,63 @@ public sealed class TokenStore
     }
 
     /// <summary>
+    /// Create a brand-new temp file for writing, owner-only (0600) on Unix, failing if it
+    /// somehow already exists. net7+: <c>FileStreamOptions.UnixCreateMode</c> pins the mode at
+    /// creation. netstandard2.0: <see cref="PosixInterop.CreateExclusive0600"/> does the same
+    /// via <c>open(O_CREAT|O_EXCL, 0600)</c> — NO wider window than the modern leg. On
+    /// Windows/.NET Framework, <c>FileMode.CreateNew</c> and the user-private ACLs of
+    /// <c>%LOCALAPPDATA%</c> provide the protection.
+    /// </summary>
+    private static FileStream CreateExclusiveOwnerOnly(string temp)
+    {
+#if NETSTANDARD2_0
+        if (IsPosix)
+        {
+            return PosixInterop.CreateExclusive0600(temp);
+        }
+        return new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+#else
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+        };
+        if (IsPosix)
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+        return new FileStream(temp, options);
+#endif
+    }
+
+    /// <summary>
+    /// Atomically move <paramref name="temp"/> onto <paramref name="path"/>, replacing any
+    /// existing record last-writer-wins. net5+: <c>File.Move(overwrite: true)</c>.
+    /// netstandard2.0 on Unix: <c>rename(2)</c> (atomic replace). netstandard2.0 on
+    /// Windows/.NET Framework: the 2-arg <c>File.Move</c> refuses an existing destination, so
+    /// delete-then-move — a brief window covered by <c>%LOCALAPPDATA%</c>'s ACLs, the same
+    /// place that leg relies on for confidentiality anyway.
+    /// </summary>
+    private static void ReplaceAtomically(string temp, string path)
+    {
+#if NETSTANDARD2_0
+        if (IsPosix)
+        {
+            PosixInterop.Rename(temp, path);
+            return;
+        }
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+        File.Move(temp, path);
+#else
+        File.Move(temp, path, overwrite: true);
+#endif
+    }
+
+    /// <summary>
     /// Testable core of the default-path resolution (injected env lookup — mirrors the Rust
     /// companion's <c>config_dir_from</c>; no racy global env mutation in tests, and both
     /// platform branches are exercisable everywhere via <paramref name="isWindows"/>).
@@ -240,7 +333,9 @@ public sealed class TokenStore
         string? Usable(string key)
         {
             var value = env(key);
-            return !string.IsNullOrEmpty(value) && IsAbsolute(value, isWindows) ? value : null;
+            // value is non-null in the true branch (guarded by !IsNullOrEmpty); the `!` is for
+            // the netstandard2.0 BCL, whose IsNullOrEmpty lacks [NotNullWhen(false)].
+            return !string.IsNullOrEmpty(value) && IsAbsolute(value!, isWindows) ? value : null;
         }
 
         var separator = isWindows ? '\\' : '/';
@@ -273,17 +368,22 @@ public sealed class TokenStore
     {
         if (!isWindows)
         {
-            return path.StartsWith('/');
+            return path.Length > 0 && path[0] == '/';
         }
         if (path.StartsWith(@"\\", StringComparison.Ordinal))
         {
             return true; // UNC
         }
         return path.Length >= 3
-            && char.IsAsciiLetter(path[0])
+            && IsAsciiLetter(path[0])
             && path[1] == ':'
             && (path[2] == '\\' || path[2] == '/');
     }
+
+    // char.IsAsciiLetter is net7+; this ASCII-only check is TFM-agnostic and equivalent here
+    // (drive letters are ASCII).
+    private static bool IsAsciiLetter(char c) =>
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
 /// <summary>

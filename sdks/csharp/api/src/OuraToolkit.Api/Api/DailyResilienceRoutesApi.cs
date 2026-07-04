@@ -36,7 +36,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>MultiDocumentResponseDailyResilienceModel</returns>
-        MultiDocumentResponseDailyResilienceModel MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        MultiDocumentResponseDailyResilienceModel MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
 
         /// <summary>
         /// Multiple Daily Resilience Documents
@@ -50,7 +50,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseDailyResilienceModel</returns>
-        ApiResponse<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default);
+        ApiResponse<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default);
         /// <summary>
         /// Single Daily Resilience Document
         /// </summary>
@@ -91,7 +91,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseDailyResilienceModel</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Multiple Daily Resilience Documents
@@ -106,7 +106,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseDailyResilienceModel)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseDailyResilienceModel>> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseDailyResilienceModel>> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Single Daily Resilience Document
         /// </summary>
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>MultiDocumentResponseDailyResilienceModel</returns>
-        public MultiDocumentResponseDailyResilienceModel MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public MultiDocumentResponseDailyResilienceModel MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> localVarResponse = MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo(startDate, endDate, nextToken, fields);
             return localVarResponse.Data;
@@ -367,7 +367,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseDailyResilienceModel</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -431,7 +431,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseDailyResilienceModel</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> localVarResponse = await MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfoAsync(startDate, endDate, nextToken, fields, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -447,7 +447,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="fields">N/A. This route does not support field selection yet, all fields will be returned. (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseDailyResilienceModel)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel>> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel>> MultipleDailyResilienceDocumentsV2UsercollectionDailyResilienceGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, string? fields = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

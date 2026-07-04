@@ -35,7 +35,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyActivity</returns>
-        MultiDocumentResponsePublicDailyActivity SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicDailyActivity SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Activity Documents
@@ -48,7 +48,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyActivity</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Cardiovascular Age Documents
         /// </summary>
@@ -57,7 +57,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        MultiDocumentResponsePublicDailyCardiovascularAge SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicDailyCardiovascularAge SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Cardiovascular Age Documents
@@ -70,7 +70,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Readiness Documents
         /// </summary>
@@ -79,7 +79,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyReadiness</returns>
-        MultiDocumentResponsePublicDailyReadiness SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicDailyReadiness SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Readiness Documents
@@ -92,7 +92,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyReadiness</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Resilience Documents
         /// </summary>
@@ -101,7 +101,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponseDailyResilienceModel</returns>
-        MultiDocumentResponseDailyResilienceModel SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponseDailyResilienceModel SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Resilience Documents
@@ -114,7 +114,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseDailyResilienceModel</returns>
-        ApiResponse<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Sleep Documents
         /// </summary>
@@ -123,7 +123,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailySleep</returns>
-        MultiDocumentResponsePublicDailySleep SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicDailySleep SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Sleep Documents
@@ -136,7 +136,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailySleep</returns>
-        ApiResponse<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Spo2 Documents
         /// </summary>
@@ -145,7 +145,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailySpO2</returns>
-        MultiDocumentResponsePublicDailySpO2 SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2Get(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicDailySpO2 SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2Get(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Spo2 Documents
@@ -158,7 +158,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailySpO2</returns>
-        ApiResponse<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Stress Documents
         /// </summary>
@@ -167,7 +167,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyStress</returns>
-        MultiDocumentResponsePublicDailyStress SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicDailyStress SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Stress Documents
@@ -180,7 +180,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyStress</returns>
-        ApiResponse<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Enhanced Tag Documents
         /// </summary>
@@ -189,7 +189,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponseEnhancedTagModel</returns>
-        MultiDocumentResponseEnhancedTagModel SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponseEnhancedTagModel SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Enhanced Tag Documents
@@ -202,7 +202,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseEnhancedTagModel</returns>
-        ApiResponse<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Heartrate Documents
         /// </summary>
@@ -233,7 +233,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicRestModePeriod</returns>
-        MultiDocumentResponsePublicRestModePeriod SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicRestModePeriod SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Rest Mode Period Documents
@@ -246,7 +246,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicRestModePeriod</returns>
-        ApiResponse<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Ring Battery Level Documents
         /// </summary>
@@ -295,7 +295,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicSession</returns>
-        MultiDocumentResponsePublicSession SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicSession SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Session Documents
@@ -308,7 +308,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicSession</returns>
-        ApiResponse<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Sleep Documents
         /// </summary>
@@ -317,7 +317,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicModifiedSleepModel</returns>
-        MultiDocumentResponsePublicModifiedSleepModel SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicModifiedSleepModel SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Sleep Documents
@@ -330,7 +330,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicModifiedSleepModel</returns>
-        ApiResponse<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Sleep Time Documents
         /// </summary>
@@ -339,7 +339,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicSleepTime</returns>
-        MultiDocumentResponsePublicSleepTime SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicSleepTime SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Sleep Time Documents
@@ -352,7 +352,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicSleepTime</returns>
-        ApiResponse<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Tag Documents
         /// </summary>
@@ -361,7 +361,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponseTagModel</returns>
-        MultiDocumentResponseTagModel SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponseTagModel SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Tag Documents
@@ -374,7 +374,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseTagModel</returns>
-        ApiResponse<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Vo2 Max Documents
         /// </summary>
@@ -383,7 +383,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicVO2Max</returns>
-        MultiDocumentResponsePublicVO2Max SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicVO2Max SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Vo2 Max Documents
@@ -396,7 +396,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicVO2Max</returns>
-        ApiResponse<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Multiple Workout Documents
         /// </summary>
@@ -405,7 +405,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicWorkout</returns>
-        MultiDocumentResponsePublicWorkout SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        MultiDocumentResponsePublicWorkout SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Workout Documents
@@ -418,7 +418,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicWorkout</returns>
-        ApiResponse<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default);
+        ApiResponse<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default);
         /// <summary>
         /// Sandbox - Single Daily Activity Document
         /// </summary>
@@ -728,7 +728,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyActivity</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Activity Documents
@@ -742,7 +742,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyActivity)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyActivity>> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyActivity>> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Cardiovascular Age Documents
         /// </summary>
@@ -755,7 +755,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Cardiovascular Age Documents
@@ -769,7 +769,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyCardiovascularAge)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Readiness Documents
         /// </summary>
@@ -782,7 +782,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyReadiness</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Readiness Documents
@@ -796,7 +796,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyReadiness)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyReadiness>> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyReadiness>> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Resilience Documents
         /// </summary>
@@ -809,7 +809,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseDailyResilienceModel</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Resilience Documents
@@ -823,7 +823,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseDailyResilienceModel)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseDailyResilienceModel>> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseDailyResilienceModel>> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Sleep Documents
         /// </summary>
@@ -836,7 +836,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailySleep</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Sleep Documents
@@ -850,7 +850,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailySleep)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailySleep>> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailySleep>> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Spo2 Documents
         /// </summary>
@@ -863,7 +863,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailySpO2</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Spo2 Documents
@@ -877,7 +877,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailySpO2)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailySpO2>> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailySpO2>> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Daily Stress Documents
         /// </summary>
@@ -890,7 +890,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyStress</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Daily Stress Documents
@@ -904,7 +904,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyStress)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyStress>> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicDailyStress>> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Enhanced Tag Documents
         /// </summary>
@@ -917,7 +917,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseEnhancedTagModel</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Enhanced Tag Documents
@@ -931,7 +931,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseEnhancedTagModel)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseEnhancedTagModel>> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseEnhancedTagModel>> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Heartrate Documents
         /// </summary>
@@ -971,7 +971,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicRestModePeriod</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Rest Mode Period Documents
@@ -985,7 +985,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicRestModePeriod)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicRestModePeriod>> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicRestModePeriod>> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Ring Battery Level Documents
         /// </summary>
@@ -1048,7 +1048,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicSession</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Session Documents
@@ -1062,7 +1062,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicSession)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicSession>> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicSession>> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Sleep Documents
         /// </summary>
@@ -1075,7 +1075,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicModifiedSleepModel</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Sleep Documents
@@ -1089,7 +1089,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicModifiedSleepModel)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicModifiedSleepModel>> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicModifiedSleepModel>> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Sleep Time Documents
         /// </summary>
@@ -1102,7 +1102,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicSleepTime</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Sleep Time Documents
@@ -1116,7 +1116,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicSleepTime)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicSleepTime>> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicSleepTime>> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Tag Documents
         /// </summary>
@@ -1129,7 +1129,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseTagModel</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Tag Documents
@@ -1143,7 +1143,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseTagModel)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseTagModel>> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponseTagModel>> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Vo2 Max Documents
         /// </summary>
@@ -1156,7 +1156,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicVO2Max</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Vo2 Max Documents
@@ -1170,7 +1170,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicVO2Max)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicVO2Max>> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicVO2Max>> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Multiple Workout Documents
         /// </summary>
@@ -1183,7 +1183,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicWorkout</returns>
-        System.Threading.Tasks.Task<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sandbox - Multiple Workout Documents
@@ -1197,7 +1197,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicWorkout)</returns>
-        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicWorkout>> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ApiResponse<MultiDocumentResponsePublicWorkout>> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default);
         /// <summary>
         /// Sandbox - Single Daily Activity Document
         /// </summary>
@@ -1787,7 +1787,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyActivity</returns>
-        public MultiDocumentResponsePublicDailyActivity SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicDailyActivity SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> localVarResponse = SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -1801,7 +1801,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyActivity</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -1860,7 +1860,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyActivity</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyActivity> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity> localVarResponse = await SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -1875,7 +1875,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyActivity)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity>> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyActivity>> SandboxMultipleDailyActivityDocumentsV2SandboxUsercollectionDailyActivityGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -1936,7 +1936,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        public MultiDocumentResponsePublicDailyCardiovascularAge SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicDailyCardiovascularAge SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> localVarResponse = SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -1950,7 +1950,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2009,7 +2009,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyCardiovascularAge</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyCardiovascularAge> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge> localVarResponse = await SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2024,7 +2024,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyCardiovascularAge)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyCardiovascularAge>> SandboxMultipleDailyCardiovascularAgeDocumentsV2SandboxUsercollectionDailyCardiovascularAgeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -2085,7 +2085,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyReadiness</returns>
-        public MultiDocumentResponsePublicDailyReadiness SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicDailyReadiness SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> localVarResponse = SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -2099,7 +2099,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyReadiness</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2158,7 +2158,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyReadiness</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyReadiness> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness> localVarResponse = await SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2173,7 +2173,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyReadiness)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness>> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyReadiness>> SandboxMultipleDailyReadinessDocumentsV2SandboxUsercollectionDailyReadinessGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -2234,7 +2234,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponseDailyResilienceModel</returns>
-        public MultiDocumentResponseDailyResilienceModel SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponseDailyResilienceModel SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> localVarResponse = SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -2248,7 +2248,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseDailyResilienceModel</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2307,7 +2307,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseDailyResilienceModel</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponseDailyResilienceModel> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel> localVarResponse = await SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2322,7 +2322,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseDailyResilienceModel)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel>> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseDailyResilienceModel>> SandboxMultipleDailyResilienceDocumentsV2SandboxUsercollectionDailyResilienceGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -2383,7 +2383,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailySleep</returns>
-        public MultiDocumentResponsePublicDailySleep SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicDailySleep SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySleep> localVarResponse = SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -2397,7 +2397,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailySleep</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2456,7 +2456,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailySleep</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySleep> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySleep> localVarResponse = await SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2471,7 +2471,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailySleep)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySleep>> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySleep>> SandboxMultipleDailySleepDocumentsV2SandboxUsercollectionDailySleepGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -2532,7 +2532,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailySpO2</returns>
-        public MultiDocumentResponsePublicDailySpO2 SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2Get(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicDailySpO2 SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2Get(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySpO2> localVarResponse = SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -2546,7 +2546,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailySpO2</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2605,7 +2605,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailySpO2</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailySpO2> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySpO2> localVarResponse = await SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2620,7 +2620,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailySpO2)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySpO2>> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailySpO2>> SandboxMultipleDailySpo2DocumentsV2SandboxUsercollectionDailySpo2GetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -2681,7 +2681,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicDailyStress</returns>
-        public MultiDocumentResponsePublicDailyStress SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicDailyStress SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyStress> localVarResponse = SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -2695,7 +2695,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicDailyStress</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2754,7 +2754,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicDailyStress</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicDailyStress> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyStress> localVarResponse = await SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2769,7 +2769,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicDailyStress)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyStress>> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicDailyStress>> SandboxMultipleDailyStressDocumentsV2SandboxUsercollectionDailyStressGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -2830,7 +2830,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponseEnhancedTagModel</returns>
-        public MultiDocumentResponseEnhancedTagModel SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponseEnhancedTagModel SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseEnhancedTagModel> localVarResponse = SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -2844,7 +2844,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseEnhancedTagModel</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -2903,7 +2903,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseEnhancedTagModel</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponseEnhancedTagModel> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseEnhancedTagModel> localVarResponse = await SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -2918,7 +2918,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseEnhancedTagModel)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseEnhancedTagModel>> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseEnhancedTagModel>> SandboxMultipleEnhancedTagDocumentsV2SandboxUsercollectionEnhancedTagGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -3128,7 +3128,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicRestModePeriod</returns>
-        public MultiDocumentResponsePublicRestModePeriod SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicRestModePeriod SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicRestModePeriod> localVarResponse = SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -3142,7 +3142,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicRestModePeriod</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -3201,7 +3201,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicRestModePeriod</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicRestModePeriod> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicRestModePeriod> localVarResponse = await SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -3216,7 +3216,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicRestModePeriod)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicRestModePeriod>> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicRestModePeriod>> SandboxMultipleRestModePeriodDocumentsV2SandboxUsercollectionRestModePeriodGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -3551,7 +3551,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicSession</returns>
-        public MultiDocumentResponsePublicSession SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicSession SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSession> localVarResponse = SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -3565,7 +3565,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicSession</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -3624,7 +3624,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicSession</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicSession> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSession> localVarResponse = await SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -3639,7 +3639,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicSession)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSession>> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSession>> SandboxMultipleSessionDocumentsV2SandboxUsercollectionSessionGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -3700,7 +3700,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicModifiedSleepModel</returns>
-        public MultiDocumentResponsePublicModifiedSleepModel SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicModifiedSleepModel SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicModifiedSleepModel> localVarResponse = SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -3714,7 +3714,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicModifiedSleepModel</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -3773,7 +3773,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicModifiedSleepModel</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicModifiedSleepModel> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicModifiedSleepModel> localVarResponse = await SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -3788,7 +3788,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicModifiedSleepModel)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicModifiedSleepModel>> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicModifiedSleepModel>> SandboxMultipleSleepDocumentsV2SandboxUsercollectionSleepGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -3849,7 +3849,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicSleepTime</returns>
-        public MultiDocumentResponsePublicSleepTime SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicSleepTime SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> localVarResponse = SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -3863,7 +3863,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicSleepTime</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -3922,7 +3922,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicSleepTime</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicSleepTime> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime> localVarResponse = await SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -3937,7 +3937,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicSleepTime)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime>> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicSleepTime>> SandboxMultipleSleepTimeDocumentsV2SandboxUsercollectionSleepTimeGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -3998,7 +3998,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponseTagModel</returns>
-        public MultiDocumentResponseTagModel SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponseTagModel SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> localVarResponse = SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -4012,7 +4012,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponseTagModel</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -4071,7 +4071,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponseTagModel</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponseTagModel> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel> localVarResponse = await SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -4086,7 +4086,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponseTagModel)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel>> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponseTagModel>> SandboxMultipleTagDocumentsV2SandboxUsercollectionTagGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -4147,7 +4147,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicVO2Max</returns>
-        public MultiDocumentResponsePublicVO2Max SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicVO2Max SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicVO2Max> localVarResponse = SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -4161,7 +4161,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicVO2Max</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -4220,7 +4220,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicVO2Max</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicVO2Max> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicVO2Max> localVarResponse = await SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -4235,7 +4235,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicVO2Max)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicVO2Max>> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicVO2Max>> SandboxMultipleVO2MaxDocumentsV2SandboxUsercollectionVO2MaxGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
@@ -4296,7 +4296,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>MultiDocumentResponsePublicWorkout</returns>
-        public MultiDocumentResponsePublicWorkout SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGet(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public MultiDocumentResponsePublicWorkout SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGet(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicWorkout> localVarResponse = SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo(startDate, endDate, nextToken);
             return localVarResponse.Data;
@@ -4310,7 +4310,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="endDate"> (optional)</param>
         /// <param name="nextToken"> (optional)</param>
         /// <returns>ApiResponse of MultiDocumentResponsePublicWorkout</returns>
-        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default)
+        public OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfo(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default)
         {
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();
 
@@ -4369,7 +4369,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of MultiDocumentResponsePublicWorkout</returns>
-        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<MultiDocumentResponsePublicWorkout> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
             OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicWorkout> localVarResponse = await SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfoAsync(startDate, endDate, nextToken, cancellationToken).ConfigureAwait(false);
             return localVarResponse.Data;
@@ -4384,7 +4384,7 @@ namespace OuraToolkit.Api.Api
         /// <param name="nextToken"> (optional)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns>Task of ApiResponse (MultiDocumentResponsePublicWorkout)</returns>
-        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicWorkout>> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfoAsync(DateOnly? startDate = default, DateOnly? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task<OuraToolkit.Api.Client.ApiResponse<MultiDocumentResponsePublicWorkout>> SandboxMultipleWorkoutDocumentsV2SandboxUsercollectionWorkoutGetWithHttpInfoAsync(DateTime? startDate = default, DateTime? endDate = default, string? nextToken = default, System.Threading.CancellationToken cancellationToken = default)
         {
 
             OuraToolkit.Api.Client.RequestOptions localVarRequestOptions = new OuraToolkit.Api.Client.RequestOptions();

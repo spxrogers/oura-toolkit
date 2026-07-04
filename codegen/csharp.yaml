@@ -6,5 +6,10 @@ generatorName: csharp
 library: httpclient
 additionalProperties:
   packageName: OuraToolkit.Api
-  targetFramework: net8.0
+  # netstandard2.0 for the BROADEST NuGet reach (.NET Framework / old Core / Unity / Mono).
+  # openapi-generator emits Newtonsoft.Json-based code for netstandard2.0 (not System.Text.Json);
+  # `just gen-csharp` then post-patches the single <TargetFramework> to the multi-target set so
+  # modern consumers get net8.0/net10.0 assemblies too (owner-directed 2026-07-04). The generator
+  # itself REJECTS net10.0 (max net9.0), which is why the multi-target is a post-gen patch.
+  targetFramework: netstandard2.0
   nullableReferenceTypes: true

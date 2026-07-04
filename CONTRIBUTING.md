@@ -54,6 +54,11 @@ just test-sandbox-sdks  # opt-in live sandbox smokes for the breadth clients (ne
 Codegen touches **only** generated clients — never the hand-written auth companions,
 `sdks/go/go.mod`, or `sdks/python`'s distribution metadata.
 
+The C# recipes (`just sdk-check-csharp` / `just sdk-test-csharp` / `just gen-csharp`)
+need a **.NET 10 SDK**: the C# client and auth companion multi-target
+`netstandard2.0;net8.0;net10.0`, and an 8.x/9.x SDK cannot build the net10.0 leg.
+`just setup` warns if it is missing.
+
 ## Testing bar (the release gate)
 
 This repo treats green CI as the release decision, which puts real weight on test
@@ -86,7 +91,7 @@ spec/                      vendored Oura OpenAPI spec (just spec-fetch)
 codegen/                   overlays, generator configs + sandbox smoke scripts
 sdks/rust/oura-toolkit-api   GENERATED Rust client — do not hand-edit
 sdks/rust/oura-toolkit-auth  hand-written auth companion (token store, refresh)
-sdks/{typescript,python,go,java,csharp}  GENERATED breadth clients (+ future companions)
+sdks/{typescript,python,go,java,csharp}  GENERATED breadth clients + hand-written auth companions
 cli/oura-toolkit-cli         the app: binary `oura` (CLI + MCP server)
 plugins/oura-toolkit/        the Claude plugin (MCP entry + skills)
 docs/cli-contract.md         the scripting contract (exit codes, streams, formats)
