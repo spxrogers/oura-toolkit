@@ -24,23 +24,32 @@ use crate::output::{render_record, RenderOptions};
 /// How long `auth login` waits for the browser callback before giving up.
 const CALLBACK_TIMEOUT_SECS: u64 = 300;
 
-/// `oura auth setup` — register an app (terminal prompts), then log in.
-pub async fn setup(port: u16) -> Result<()> {
+/// `oura auth setup` — register an app (terminal prompts), then log in. `no_browser` runs
+/// the paste-back login (#20) instead of the loopback flow, for SSH/containers.
+pub async fn setup(port: u16, no_browser: bool) -> Result<()> {
     let redirect_uri = redirect_uri(port);
     let scopes = metadata::default_scopes();
     let scope_str = scopes.join(" ");
 
     guide("== Register your Oura OAuth application ==\n");
-    guide("Opening https://cloud.ouraring.com/oauth/applications in your browser…");
-    let _ = open::that("https://cloud.ouraring.com/oauth/applications");
+    if no_browser {
+        guide("Register an application at:\n  https://cloud.ouraring.com/oauth/applications\n");
+    } else {
+        guide("Opening https://cloud.ouraring.com/oauth/applications in your browser…");
+        let _ = open::that("https://cloud.ouraring.com/oauth/applications");
+    }
     guide("Create an application with these EXACT values:\n");
     guide("  • Application name : oura-toolkit   (or any name you like)");
     guide(&format!("  • Redirect URI     : {redirect_uri}"));
     guide(&format!("  • Scopes           : {scope_str}\n"));
 
-    // Bind the callback listener up front so a port conflict fails fast, before the user
-    // has typed anything.
-    let listener = bind(port).await?;
+    // Browser mode binds the callback listener up front so a port conflict fails fast, before
+    // the user has typed anything. --no-browser has no listener (the callback lands elsewhere).
+    let listener = if no_browser {
+        None
+    } else {
+        Some(bind(port).await?)
+    };
 
     // Terminal prompts, no local HTTP surface: the client_id is echoed (it is not a secret);
     // the secret is read with echo disabled.
@@ -52,7 +61,10 @@ pub async fn setup(port: u16) -> Result<()> {
 
     let store = TokenStore::new()?;
     persist_credentials_then_authorize(&store, credentials, |creds| async move {
-        run_authorization(&listener, port, &creds).await
+        match listener {
+            Some(listener) => run_authorization(&listener, port, &creds).await,
+            None => authorize_no_browser(port, &creds).await,
+        }
     })
     .await
 }
@@ -82,15 +94,21 @@ where
 }
 
 /// `oura auth login` — Authorization Code flow using the stored client credentials.
-pub async fn login(port: u16) -> Result<()> {
+/// `no_browser` prints the authorize URL and reads the pasted redirect back (#20), for hosts
+/// where the loopback callback can't be reached (SSH, containers).
+pub async fn login(port: u16, no_browser: bool) -> Result<()> {
     let store = TokenStore::new()?;
     // Typed error (not a bail! string) so the contract classifier can map it to exit 4
     // with the `oura auth setup` hint (#21).
     let credentials = store
         .load_credentials()?
         .ok_or(oura_toolkit_auth::AuthError::MissingClientCredentials)?;
-    let listener = bind(port).await?;
-    let tokens = run_authorization(&listener, port, &credentials).await?;
+    let tokens = if no_browser {
+        authorize_no_browser(port, &credentials).await?
+    } else {
+        let listener = bind(port).await?;
+        run_authorization(&listener, port, &credentials).await?
+    };
     persist(&store, &tokens)
 }
 
@@ -431,11 +449,24 @@ async fn run_authorization(
     let authorize_url =
         metadata::authorize_url(&credentials.client_id, &redirect_uri, &scopes, &state);
 
+    // On a remote/headless session the loopback callback lands on the machine that opened the
+    // browser, not necessarily this one — suggest the paste-back flow up front (#20).
+    if looks_headless(|k| std::env::var(k).ok()) {
+        guide(
+            "Note: this looks like an SSH/remote session — the loopback callback may not reach \
+             this host. If login hangs, re-run with `oura auth login --no-browser`.",
+        );
+    }
     guide("Opening your browser to authorize with Oura…");
     guide(&format!(
         "If it doesn't open automatically, visit:\n  {authorize_url}\n"
     ));
-    let _ = open::that(&authorize_url);
+    if open::that(&authorize_url).is_err() {
+        guide(
+            "(Couldn't open a browser automatically — open the URL above, or re-run with \
+             `--no-browser` to paste the redirect back.)",
+        );
+    }
 
     let code = tokio::time::timeout(
         std::time::Duration::from_secs(CALLBACK_TIMEOUT_SECS),
@@ -456,6 +487,86 @@ async fn run_authorization(
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
         .context("token exchange with the Oura token endpoint failed")
+}
+
+/// The `--no-browser` half of the Authorization Code flow (#20): print the authorize URL for
+/// the user to open on ANY machine, then read the pasted redirect URL back and exchange the
+/// code. No loopback listener — the OAuth callback may land on a different host entirely, so
+/// the `code`/`state` come back through the terminal instead of an HTTP request.
+async fn authorize_no_browser(port: u16, credentials: &ClientCredentials) -> Result<Tokens> {
+    let redirect_uri = redirect_uri(port);
+    let state = uuid::Uuid::new_v4().to_string();
+    let scopes = metadata::default_scopes();
+    let authorize_url =
+        metadata::authorize_url(&credentials.client_id, &redirect_uri, &scopes, &state);
+
+    guide("Open this URL in a browser on ANY machine and approve access:\n");
+    guide(&format!("  {authorize_url}\n"));
+    guide(&format!(
+        "After you approve, the browser is redirected to a {redirect_uri}?code=…&state=… URL. \
+         On a remote or headless host that page will fail to load — that is expected. Copy the \
+         FULL address from the browser's address bar and paste it here.\n"
+    ));
+    let pasted = prompt_required("Paste the full redirect URL: ")?;
+    let code = extract_code_from_paste(&pasted, &state)?;
+
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("building the HTTP client")?;
+    exchange_code(&http, credentials, &code, &redirect_uri)
+        .await
+        .context("token exchange with the Oura token endpoint failed")
+}
+
+/// Parse the `code` out of a pasted OAuth redirect (a full URL or a bare `code=…&state=…`
+/// query), enforcing the SAME `state` CSRF check as the loopback flow: the paste MUST carry a
+/// `state` and it MUST equal the one we generated. An `error=` param aborts. A bare code with
+/// no state is rejected — the state binding is the CSRF defense, not optional.
+fn extract_code_from_paste(pasted: &str, expected_state: &str) -> Result<String> {
+    let pasted = pasted.trim();
+    if pasted.is_empty() {
+        bail!("nothing pasted — copy the full redirect URL from your browser and try again");
+    }
+    let query: std::collections::HashMap<String, String> = if let Ok(url) = url::Url::parse(pasted)
+    {
+        url.query_pairs().into_owned().collect()
+    } else if pasted.contains('=') {
+        // A bare query string (`code=…&state=…`), possibly with a leading `?`.
+        url::form_urlencoded::parse(pasted.trim_start_matches(['?', '/']).as_bytes())
+            .into_owned()
+            .collect()
+    } else {
+        bail!(
+            "that doesn't look like the redirect — paste the full \
+             http://localhost:…/callback?code=…&state=… address, not just the code"
+        );
+    };
+
+    if let Some(err) = query.get("error") {
+        bail!("authorization was denied or failed: {err}");
+    }
+    let state = query.get("state").filter(|s| !s.is_empty()).context(
+        "the pasted URL has no `state` — paste the FULL redirect URL, not just the code",
+    )?;
+    if state.as_str() != expected_state {
+        bail!(
+            "state mismatch — the pasted URL is from a different login attempt (possible CSRF); \
+             re-run `oura auth login --no-browser`"
+        );
+    }
+    query
+        .get("code")
+        .filter(|c| !c.is_empty())
+        .cloned()
+        .context("the pasted URL has no `code` parameter — copy the full redirect address")
+}
+
+/// True when the environment looks like a remote/headless session where the loopback callback
+/// likely can't reach this host — used only to SUGGEST `--no-browser` (#20). Injected env
+/// lookup so the predicate is unit-tested without touching process env.
+fn looks_headless(env: impl Fn(&str) -> Option<String>) -> bool {
+    env("SSH_CONNECTION").is_some() || env("SSH_TTY").is_some()
 }
 
 /// Accept connections until a valid `/callback` arrives; validates `state` BEFORE rendering
@@ -594,6 +705,77 @@ mod tests {
     fn missing_code_yields_none() {
         let req = req_with_query(&[("state", "xyz")]);
         assert_eq!(extract_code_state(&req), None);
+    }
+
+    // --- --no-browser paste parsing (#20) ------------------------------------------------
+
+    #[test]
+    fn paste_accepts_a_full_url_or_bare_query_with_matching_state() {
+        assert_eq!(
+            extract_code_from_paste(
+                "http://localhost:8788/callback?code=the-code&state=abc",
+                "abc"
+            )
+            .unwrap(),
+            "the-code"
+        );
+        assert_eq!(
+            extract_code_from_paste("code=c1&state=s1", "s1").unwrap(),
+            "c1"
+        );
+        assert_eq!(
+            extract_code_from_paste("?code=c1&state=s1", "s1").unwrap(),
+            "c1"
+        );
+    }
+
+    #[test]
+    fn paste_rejects_a_state_mismatch() {
+        // Same CSRF defense as the loopback flow: a paste from a different attempt is refused.
+        // Break-verify: drop the `state != expected_state` check and this stops failing.
+        let err = extract_code_from_paste(
+            "http://localhost:8788/callback?code=x&state=forged",
+            "expected",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("state mismatch"), "{err}");
+    }
+
+    #[test]
+    fn paste_requires_state_and_code_and_surfaces_errors() {
+        // A code with no state is refused — the state binding is not optional.
+        let err =
+            extract_code_from_paste("http://localhost:8788/callback?code=x", "exp").unwrap_err();
+        assert!(err.to_string().contains("no `state`"), "{err}");
+        // A bare code (no query at all) is refused too.
+        assert!(extract_code_from_paste("just-a-code", "exp")
+            .unwrap_err()
+            .to_string()
+            .contains("doesn't look like"));
+        // Matching state but no code.
+        let err =
+            extract_code_from_paste("http://localhost:8788/callback?state=exp", "exp").unwrap_err();
+        assert!(err.to_string().contains("no `code`"), "{err}");
+        // An OAuth error param aborts.
+        let err =
+            extract_code_from_paste("code=&error=access_denied&state=exp", "exp").unwrap_err();
+        assert!(err.to_string().contains("access_denied"), "{err}");
+        // Nothing pasted.
+        assert!(extract_code_from_paste("   ", "exp")
+            .unwrap_err()
+            .to_string()
+            .contains("nothing pasted"));
+    }
+
+    #[test]
+    fn looks_headless_detects_ssh_env_only() {
+        assert!(looks_headless(
+            |k| (k == "SSH_CONNECTION").then(|| "1.2.3.4 5 6.7.8.9 22".to_string())
+        ));
+        assert!(looks_headless(
+            |k| (k == "SSH_TTY").then(|| "/dev/pts/0".to_string())
+        ));
+        assert!(!looks_headless(|_| None), "a local session is not headless");
     }
 
     #[tokio::test]

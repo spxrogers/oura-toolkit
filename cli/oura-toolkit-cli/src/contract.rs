@@ -80,6 +80,16 @@ pub fn classify(err: &anyhow::Error) -> Failure {
                         hint: Some("run `oura auth setup`"),
                     }
                 }
+                // A caller-supplied OURA_ACCESS_TOKEN was rejected (#20): no interactive
+                // login helps — the fix is to export a fresh token.
+                AuthError::StaticTokenRejected => {
+                    return Failure {
+                        code: EXIT_AUTH,
+                        hint: Some(
+                            "the token in OURA_ACCESS_TOKEN was rejected — export a fresh one",
+                        ),
+                    }
+                }
                 // A refresh rejected by the token endpoint means stored credentials no
                 // longer work — re-login is the fix, so it is an auth failure too.
                 AuthError::TokenEndpoint { status: 400, .. } => {

@@ -45,6 +45,13 @@ pub enum AuthError {
     #[error("no client credentials stored")]
     MissingClientCredentials,
 
+    /// A caller-supplied access token (built via [`crate::TokenManager::from_access_token`],
+    /// e.g. the CLI's `OURA_ACCESS_TOKEN` override) was rejected by the API and cannot be
+    /// refreshed — there is no refresh token or credentials behind it. The caller owns the
+    /// remediation hint (the CLI: "export a fresh token").
+    #[error("the supplied access token was rejected and cannot be refreshed")]
+    StaticTokenRejected,
+
     /// Filesystem error reading/writing the token store.
     #[error("token store i/o error: {0}")]
     Io(#[from] std::io::Error),

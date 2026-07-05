@@ -1,6 +1,10 @@
 //! Helpers shared by the wiremock-backed integration suites (`data_commands.rs`,
-//! `mcp_server.rs`) — one definition so canned fixtures can't drift between the CLI and
-//! MCP views of the same data plane.
+//! `mcp_server.rs`, `headless_auth.rs`) — one definition so canned fixtures can't drift
+//! between the CLI and MCP views of the same data plane.
+//!
+//! Each test binary uses a different subset, so helpers unused in a given binary are
+//! expected — silence the per-binary dead-code warning rather than duplicate fixtures.
+#![allow(dead_code)]
 
 use wiremock::ResponseTemplate;
 

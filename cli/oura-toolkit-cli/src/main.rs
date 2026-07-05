@@ -89,12 +89,20 @@ enum AuthAction {
         /// Loopback port for the redirect URI (must match your registered app).
         #[arg(long, default_value_t = 8788)]
         port: u16,
+        /// Skip the local browser+loopback: print the URL and paste the redirect back
+        /// (for SSH/containers where the callback can't reach this host).
+        #[arg(long)]
+        no_browser: bool,
     },
     /// Authorization Code login using stored client credentials.
     Login {
         /// Loopback port for the redirect URI (must match your registered app).
         #[arg(long, default_value_t = 8788)]
         port: u16,
+        /// Skip the local browser+loopback: print the URL and paste the redirect back
+        /// (for SSH/containers where the callback can't reach this host).
+        #[arg(long)]
+        no_browser: bool,
     },
     /// Show stored auth state: client_id, scopes, token expiry.
     Status,
@@ -126,18 +134,23 @@ async fn run() -> anyhow::Result<()> {
     // Resolved once so every data command inherits the same decision; the auth flows are
     // interactive prose and don't render tables.
     let render = output::RenderOptions::from_flags(cli.json, cli.no_color);
+    // Headless/CI/container overrides (#20): OURA_ACCESS_TOKEN (a raw OAuth token, store- and
+    // refresh-bypassing) and OURA_API_BASE_URL (alternate host/proxy/mock). Honored by data
+    // commands and `oura mcp`; NOT by the `auth` account commands, which act on the store.
+    let env = |k: &str| std::env::var(k).ok();
+    let base_url = api::base_url_from_env(env);
     let data_ctx = || -> anyhow::Result<commands::Ctx> {
         Ok(commands::Ctx {
-            manager: oura_toolkit_auth::TokenManager::load()?,
-            base_url: api::API_BASE.to_string(),
+            manager: api::manager_from_env(env)?,
+            base_url: base_url.clone(),
             render,
         })
     };
 
     match cli.command {
         Some(Command::Auth { action }) => match action {
-            AuthAction::Setup { port } => auth::setup(port).await,
-            AuthAction::Login { port } => auth::login(port).await,
+            AuthAction::Setup { port, no_browser } => auth::setup(port, no_browser).await,
+            AuthAction::Login { port, no_browser } => auth::login(port, no_browser).await,
             AuthAction::Status => {
                 let report = auth::status(&oura_toolkit_auth::TokenStore::new()?, render)?;
                 // The report always reaches stdout (it IS the result — including the
@@ -204,7 +217,9 @@ async fn run() -> anyhow::Result<()> {
             // STDIO MCP server (#10): stdout is the JSON-RPC transport from here on.
             // Absent tokens are NOT an error at startup — initialize must succeed and
             // the first tool call reports the structured auth error (CLAUDE.md → MCP).
-            oura_toolkit_cli::mcp::serve(oura_toolkit_auth::TokenManager::load()?).await
+            // Honors the same OURA_ACCESS_TOKEN / OURA_API_BASE_URL overrides so the server
+            // runs in a container with an injected token (#20).
+            oura_toolkit_cli::mcp::serve(api::manager_from_env(env)?, base_url).await
         }
         // Pure code generators: no auth, no network. The script/man page IS the result, so it
         // goes to stdout through the same broken-pipe-tolerant path as every other result
