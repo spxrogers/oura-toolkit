@@ -312,9 +312,20 @@ scope mapping in the spec — that lives in prose).
   **Local, not Roaming**: roaming profiles sync `%APPDATA%` to file servers/backups, which
   would copy plaintext secrets off the machine). Perms **0600** + atomic writes on Unix; on
   Windows protection comes from `%LOCALAPPDATA%`'s user-private ACLs (the chmods are no-ops
-  there); DPAPI/keyring is #26. Empty or relative env values are ignored (a relative base
+  there). Empty or relative env values are ignored (a relative base
   would make secret placement cwd-dependent). MUST be identical whether invoked via `npx`,
   `bunx`, or a brew binary.
+- **Keyring evaluated & deferred (#26, decided 2026-07-05):** migrating to the `keyring`
+  crate (macOS Keychain / Windows Credential Manager / Linux Secret Service) was rejected —
+  the **file store stays canonical**. Two load-bearing reasons: (1) the Linux Secret Service
+  backend needs a live D-Bus session + unlocked keyring daemon, which headless servers /
+  containers / SSH / WSL lack — and `oura mcp` runs exactly there, so a keyring backend would
+  break the primary server deployment; (2) `keyring` has no `File::lock` equivalent, so it
+  can't provide the #22 cross-process rotation lock that Oura's rotate-and-invalidate refresh
+  requires (two processes would race and burn each other's refresh tokens). The file is the
+  only backend that is simultaneously invocation-independent, cross-process-lockable, and
+  dependency-free on headless hosts. Incremental at-rest hardening that KEEPS the file
+  (Windows DPAPI on the bytes; macOS Keychain as an opt-in layer) is tracked in **#78**.
 - **Two records** (split 2026-07-02, #23): `credentials.json` (`client_id`/`client_secret` —
   exists from `auth setup` onward; refresh is a confidential-client call needing the secret)
   and `tokens.json` (`access_token`, `refresh_token`, `expiry`, scope). A failed login never

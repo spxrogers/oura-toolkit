@@ -14,7 +14,11 @@ use crate::metadata::TOKEN_URL;
 use crate::store::{ClientCredentials, Tokens};
 
 /// Raw token-endpoint response (Oura returns a rotated `refresh_token` on every call).
-#[derive(Debug, Deserialize)]
+///
+/// `Debug` is implemented manually and REDACTS the token fields — this struct holds the same
+/// secret material as [`Tokens`], so a stray `{:?}`/`dbg!`/`tracing::debug!(?resp)` while
+/// debugging the token endpoint must not leak it into logs (the "no secrets in logs" rule).
+#[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
     refresh_token: Option<String>,
@@ -23,6 +27,23 @@ struct TokenResponse {
     token_type: Option<String>,
     #[serde(default)]
     scope: Option<String>,
+}
+
+impl std::fmt::Debug for TokenResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenResponse")
+            .field("access_token", &"[REDACTED]")
+            // Redact whether a token was even present, not just its value: a bare
+            // `Some("[REDACTED]")` vs `None` still discloses rotation behavior.
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("expires_in", &self.expires_in)
+            .field("token_type", &self.token_type)
+            .field("scope", &self.scope)
+            .finish()
+    }
 }
 
 /// Exchange an authorization `code` for tokens (confidential client: sends id + secret).
@@ -242,5 +263,50 @@ mod tests {
             }
             other => panic!("expected TokenEndpoint, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn token_response_debug_redacts_secrets() {
+        // TokenResponse holds the same secret material as `Tokens`; its `Debug` must never
+        // leak it (the "no secrets in logs" rule). Break-verify: swap either `[REDACTED]` for
+        // the real field in the manual impl and this fails naming the leaked token.
+        let resp = TokenResponse {
+            access_token: "SECRET-AT-123".into(),
+            refresh_token: Some("SECRET-RT-456".into()),
+            expires_in: 3600,
+            token_type: Some("Bearer".into()),
+            scope: Some("daily".into()),
+        };
+        let dbg = format!("{resp:?}");
+        assert!(!dbg.contains("SECRET-AT-123"), "access token leaked: {dbg}");
+        assert!(
+            !dbg.contains("SECRET-RT-456"),
+            "refresh token leaked: {dbg}"
+        );
+        assert!(
+            dbg.contains("[REDACTED]"),
+            "expected redaction marker: {dbg}"
+        );
+        // Non-secret fields stay visible so `Debug` remains useful for endpoint debugging.
+        assert!(
+            dbg.contains("3600"),
+            "expires_in should remain visible: {dbg}"
+        );
+        assert!(
+            dbg.contains("Bearer"),
+            "token_type should remain visible: {dbg}"
+        );
+
+        // A `None` refresh token must render as `None`, not `Some("[REDACTED]")` — the latter
+        // would still disclose that the server rotated a token on this call.
+        let no_refresh = TokenResponse {
+            refresh_token: None,
+            ..resp
+        };
+        let dbg = format!("{no_refresh:?}");
+        assert!(
+            dbg.contains("refresh_token: None"),
+            "absent refresh token should render as None: {dbg}"
+        );
     }
 }
