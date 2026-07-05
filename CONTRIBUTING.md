@@ -59,6 +59,13 @@ need a **.NET 10 SDK**: the C# client and auth companion multi-target
 `netstandard2.0;net8.0;net10.0`, and an 8.x/9.x SDK cannot build the net10.0 leg.
 `just setup` warns if it is missing.
 
+`just sdk-test-csharp` runs the auth suite on net8.0 + net10.0 only — a modern .NET host
+cannot load the `netstandard2.0` asset, so its `#if NETSTANDARD2_0` branches never execute
+there. `just sdk-test-csharp-netstandard` closes that gap: it builds the same suite for
+net472 (which resolves the `netstandard2.0` asset) and runs it under **Mono** (`apt:
+mono-devel`; `just setup` warns if missing). CI runs it as its own `csharp-netstandard`
+job.
+
 ## Testing bar (the release gate)
 
 This repo treats green CI as the release decision, which puts real weight on test

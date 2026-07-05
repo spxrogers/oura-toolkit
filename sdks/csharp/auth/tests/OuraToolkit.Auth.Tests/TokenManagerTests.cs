@@ -362,7 +362,8 @@ public class TokenManagerTests
             ctx.Response.ContentType = "application/json";
             var bytes = Encoding.UTF8.GetBytes(
                 "{\"access_token\":\"leaked-access\",\"refresh_token\":\"r2\",\"expires_in\":3600}");
-            await ctx.Response.OutputStream.WriteAsync(bytes);
+            // 3-arg WriteAsync is available on every TFM (the ReadOnlyMemory overload is not on net472).
+            await ctx.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
         });
         using var redirector = new LoopbackHttpServer(ctx =>
         {

@@ -5,25 +5,67 @@
        no network, no real credentials, no global state. Test-only dependencies (xunit)
        are allowed; the shipped library stays BCL-only. -->
   <PropertyGroup>
-    <!-- Run the shared behavior suite AND the always-compiled libc-helper test on both
-         modern runtimes. The library's netstandard2.0 asset cannot be loaded by a modern test
-         host (by design) — the security-critical netstandard2.0 create path is covered instead
-         by the direct PosixInterop tests, which run here on net8.0 + net10.0. -->
+    <!-- Default: run the shared behavior suite on both modern runtimes via `dotnet test`
+         (vstest). A modern .NET test host CANNOT load the library's netstandard2.0 asset, so
+         the `#if NETSTANDARD2_0` store/transport branches and Polyfills never execute here —
+         only the always-compiled PosixInterop helper is exercised directly.
+
+         Opting net472 in with `-p:NetFxTest=true` adds a .NET Framework TFM whose project
+         reference resolves the library's netstandard2.0 asset (net472 ⊇ netstandard2.0). Built
+         on Linux via Microsoft.NETFramework.ReferenceAssemblies and RUN under Mono via the
+         xunit console runner (`just sdk-test-csharp-netstandard`) — that leg is the one place
+         the netstandard2.0 code actually executes on a runtime that loads it (issue #61).
+         Default stays net8.0;net10.0 so `dotnet test` / `just sdk-test-csharp` are unchanged. -->
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(NetFxTest)' == 'true'">net472;net8.0;net10.0</TargetFrameworks>
+    <!-- Pin the language version like the library does: net472 defaults to C# 7.3, which
+         rejects `<Nullable>enable</Nullable>` and the record/`with` features these tests use.
+         A fixed version (>= what net472 needs) is also drift-safe across SDK bumps. -->
+    <LangVersion>13.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!-- xunit core/assertions: every TFM (net472 runs it under the console runner below). -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
+  </ItemGroup>
+
+  <!-- vstest host for `dotnet test` on the modern runtimes only. Microsoft.NET.Test.Sdk
+       injects a test-host entry point the net472/xunit.console leg neither needs nor can use. -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net472'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!-- net472 (Mono) leg: reference assemblies so the Framework target builds on Linux, plus
+       the console runner. The runner + its support DLLs are copied next to the test assembly
+       (CopyXunitConsoleRunner) so `just sdk-test-csharp-netstandard` has a deterministic path
+       independent of the NuGet cache location. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="xunit.runner.console" Version="2.9.2" PrivateAssets="all" GeneratePathProperty="true" />
+    <!-- System.Net.Http is a standalone Framework assembly on net4x (in-box on netstandard2.0
+         and the modern shared frameworks); the mock HttpMessageHandler in TestSupport needs it.
+         The modern implicit-usings set also `global using`s the namespace — the .NET Framework
+         set does not, so add it here to match. -->
+    <Reference Include="System.Net.Http" />
+    <Using Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/OuraToolkit.Auth/OuraToolkit.Auth.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyXunitConsoleRunner" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net472'">
+    <ItemGroup>
+      <_XunitRunnerFiles Include="$(Pkgxunit_runner_console)\tools\net472\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_XunitRunnerFiles)"
+          DestinationFiles="@(_XunitRunnerFiles-&gt;'$(OutDir)xunit-runner\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

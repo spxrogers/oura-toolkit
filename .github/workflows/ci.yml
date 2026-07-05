@@ -104,6 +104,26 @@ jobs:
       - run: just sdk-test-java
       - run: just sdk-test-csharp
 
+  # Issue #61: the C# netstandard2.0 asset carries `#if NETSTANDARD2_0` code (Polyfills, the
+  # libc open(2)+write(2)+fsync(2) store path, the HttpClientHandler transport) that the
+  # sdk-compile job's modern test host (net8.0/net10.0) compiles but can never LOAD, let alone
+  # run. This leg runs the same xunit suite for net472 under Mono — which resolves and executes
+  # that very asset — closing the "compiles != runs on its platform" gap (CLAUDE.md → TESTING
+  # rule 6). Only the raw toolchain install (mono, the #13 carve-out) lives here; the leg is a
+  # just recipe. Its own job so the sdk-compile matrix stays exactly the modern recipes.
+  csharp-netstandard:
+    name: C# netstandard2.0 leg (Mono)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - name: Install Mono
+        # Toolchain install only (the #13 carve-out); dotnet is preinstalled on ubuntu-latest.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-devel
+      - run: just sdk-test-csharp-netstandard
+
   # Validates the dist release config (a broken dist-workspace.toml must fail PRs, not
   # the release tag), proves the publishable crates build from their PACKAGED form —
   # the crates.io context with no repo root (the #11 publish-blocker guard), guards the

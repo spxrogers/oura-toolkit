@@ -5,10 +5,12 @@ namespace OuraToolkit.Auth.Tests;
 
 /// <summary>
 /// A real loopback HTTP endpoint on 127.0.0.1 (a genuine socket, NOT a mock
-/// <see cref="HttpMessageHandler"/>) so tests can exercise the production
-/// <c>SocketsHttpHandler</c> transport — the ONLY place redirect-following and connect/read
-/// timeouts actually happen. Every received request is counted (<see cref="Hits"/>); the
-/// handler decides the response.
+/// <see cref="HttpMessageHandler"/>) so tests can exercise the production default transport —
+/// the ONLY place redirect-following and connect/read timeouts actually happen. That transport
+/// is <c>SocketsHttpHandler</c> on the modern legs and <c>HttpClientHandler</c> on the
+/// netstandard2.0/net472 (Mono) leg; both refuse redirects, and this server lets the redirect
+/// tests prove it on whichever one the runtime selected. Every received request is counted
+/// (<see cref="Hits"/>); the handler decides the response.
 /// </summary>
 public sealed class LoopbackHttpServer : IDisposable
 {
@@ -88,7 +90,7 @@ public sealed class TempStore : IDisposable
 {
     public TempStore()
     {
-        Dir = System.IO.Directory.CreateTempSubdirectory("oura-auth-test-").FullName;
+        Dir = TestHost.CreateTempDir("oura-auth-test-");
         Store = new TokenStore(Dir);
     }
 
@@ -122,7 +124,12 @@ public sealed class MockTokenEndpoint : HttpMessageHandler
         Interlocked.Increment(ref _calls);
         var body = request.Content is null
             ? ""
+#if NET472
+            // The CancellationToken overload is net5+; net472 has only the parameterless read.
+            : await request.Content.ReadAsStringAsync();
+#else
             : await request.Content.ReadAsStringAsync(cancellationToken);
+#endif
         lock (Bodies)
         {
             Bodies.Add(body);

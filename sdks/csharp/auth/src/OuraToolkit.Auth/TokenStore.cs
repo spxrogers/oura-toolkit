@@ -240,13 +240,7 @@ public sealed class TokenStore
         var temp = Path.Combine(dir, $".tmp-{Guid.NewGuid():N}");
         try
         {
-            using (var stream = CreateExclusiveOwnerOnly(temp))
-            {
-                // Write(byte[], int, int) — not the Write(ReadOnlySpan<byte>) overload, which
-                // is absent on netstandard2.0; this form is identical on every TFM.
-                stream.Write(data, 0, data.Length);
-                stream.Flush(flushToDisk: true);
-            }
+            WriteNewSecureFile(temp, data);
             ReplaceAtomically(temp, path);
         }
         catch
@@ -264,21 +258,24 @@ public sealed class TokenStore
     }
 
     /// <summary>
-    /// Create a brand-new temp file for writing, owner-only (0600) on Unix, failing if it
-    /// somehow already exists. net7+: <c>FileStreamOptions.UnixCreateMode</c> pins the mode at
-    /// creation. netstandard2.0: <see cref="PosixInterop.CreateExclusive0600"/> does the same
-    /// via <c>open(O_CREAT|O_EXCL, 0600)</c> — NO wider window than the modern leg. On
-    /// Windows/.NET Framework, <c>FileMode.CreateNew</c> and the user-private ACLs of
+    /// Create a brand-new temp file owner-only (0600) on Unix, failing if it somehow already
+    /// exists, write <paramref name="data"/>, and flush it to disk. net7+:
+    /// <c>FileStreamOptions.UnixCreateMode</c> pins the mode at creation. netstandard2.0 on
+    /// Unix: <see cref="PosixInterop.WriteNewExclusive0600"/> does the same via
+    /// <c>open(O_CREAT|O_EXCL, 0600)</c> + <c>write(2)</c> + <c>fsync(2)</c> — NO wider window
+    /// than the modern leg, and (unlike a <c>FileStream</c>-from-fd) it works on Mono/Xamarin.
+    /// On Windows/.NET Framework, <c>FileMode.CreateNew</c> and the user-private ACLs of
     /// <c>%LOCALAPPDATA%</c> provide the protection.
     /// </summary>
-    private static FileStream CreateExclusiveOwnerOnly(string temp)
+    private static void WriteNewSecureFile(string temp, byte[] data)
     {
 #if NETSTANDARD2_0
         if (IsPosix)
         {
-            return PosixInterop.CreateExclusive0600(temp);
+            PosixInterop.WriteNewExclusive0600(temp, data);
+            return;
         }
-        return new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        using var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
 #else
         var options = new FileStreamOptions
         {
@@ -290,8 +287,12 @@ public sealed class TokenStore
         {
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
-        return new FileStream(temp, options);
+        using var stream = new FileStream(temp, options);
 #endif
+        // Write(byte[], int, int) — not the Write(ReadOnlySpan<byte>) overload, which is absent
+        // on netstandard2.0; this form is identical on every TFM.
+        stream.Write(data, 0, data.Length);
+        stream.Flush(flushToDisk: true);
     }
 
     /// <summary>
