@@ -54,6 +54,11 @@ pub struct TokenManager {
     skew_secs: i64,
     /// The spec-derived token endpoint; overridden only by tests (mock server).
     token_url: String,
+    /// True when the manager wraps a caller-supplied access token
+    /// ([`Self::from_access_token`]): it never touches the store and cannot refresh, so a
+    /// 401 surfaces as [`AuthError::StaticTokenRejected`] rather than a store/credentials
+    /// error the env-token user can't act on.
+    env_token: bool,
 }
 
 impl TokenManager {
@@ -70,9 +75,11 @@ impl TokenManager {
     ///
     /// Both records are independently optional because both partial states are legitimate:
     /// credentials-without-tokens is `auth setup` completed but no login yet (refresh-able
-    /// once tokens arrive), and tokens-without-credentials is a caller-supplied token (e.g.
-    /// a future `OURA_ACCESS_TOKEN` override, #20) that can be used until expiry but not
-    /// refreshed ([`AuthError::MissingClientCredentials`]).
+    /// once tokens arrive), and tokens-without-credentials is a caller-supplied token that can
+    /// be used until expiry but not refreshed ([`AuthError::MissingClientCredentials`]). (The
+    /// `OURA_ACCESS_TOKEN` override, #20, does NOT use this path — it goes through the
+    /// dedicated [`Self::from_access_token`], which reports [`AuthError::StaticTokenRejected`]
+    /// on a 401 rather than `MissingClientCredentials`.)
     ///
     /// Refresh additionally requires the token record to still EXIST on disk: the store is
     /// the cross-process source of truth, so in-memory tokens whose record was deleted (a
@@ -96,7 +103,35 @@ impl TokenManager {
                 .expect("default reqwest client"),
             skew_secs: REFRESH_SKEW_SECS,
             token_url: TOKEN_URL.to_string(),
+            env_token: false,
         }
+    }
+
+    /// A manager backed by a **caller-supplied access token** (the CLI's `OURA_ACCESS_TOKEN`
+    /// override, #20): [`Self::access_token`] returns it verbatim, the store is never read or
+    /// written, and it cannot refresh. A 401 (the token is expired or invalid) surfaces as
+    /// [`AuthError::StaticTokenRejected`] so the caller can tell the user to supply a fresh
+    /// token instead of pointing at an interactive login it wouldn't help.
+    ///
+    /// The token is marked non-expiring (`expires_at = i64::MAX`) precisely so the proactive
+    /// path never fires — the only way to leave "valid" is a real 401 from the API, which is
+    /// the case where refresh is genuinely impossible. The store handle is a throwaway
+    /// (`temp_dir`) that is never touched.
+    pub fn from_access_token(token: String) -> Self {
+        let tokens = Tokens {
+            access_token: token,
+            refresh_token: String::new(),
+            expires_at: i64::MAX,
+            scope: None,
+            token_type: None,
+        };
+        let mut manager = Self::from_parts(
+            TokenStore::with_dir(std::env::temp_dir()),
+            None,
+            Some(tokens),
+        );
+        manager.env_token = true;
+        manager
     }
 
     /// Point token-endpoint calls at a mock server (hermetic downstream tests only).
@@ -146,6 +181,12 @@ impl TokenManager {
     /// memory just 401'd, so a *different* fresh token is the fix and an *identical* one
     /// means we must rotate.)
     async fn refresh_critical_section(&self, guard: &mut Option<Tokens>) -> Result<(), AuthError> {
+        // A caller-supplied token (OURA_ACCESS_TOKEN) has no refresh path; a 401 here means
+        // it is expired/invalid. Report that BEFORE the store/credentials machinery so the
+        // env-token user gets an actionable error, not "no client credentials stored".
+        if self.env_token {
+            return Err(AuthError::StaticTokenRejected);
+        }
         let credentials = self
             .credentials
             .as_ref()
@@ -294,6 +335,33 @@ mod tests {
             manager.access_token().await,
             Err(AuthError::NotAuthenticated)
         ));
+    }
+
+    #[tokio::test]
+    async fn static_token_manager_returns_the_token_and_never_expires() {
+        // OURA_ACCESS_TOKEN path (#20): the token is returned verbatim, and repeated reads
+        // never trip the proactive-refresh window (expires_at = i64::MAX), so the store is
+        // never touched — no MockServer is mounted, so any endpoint call would fail the test.
+        let m = TokenManager::from_access_token("env-abc".into());
+        assert!(m.is_authenticated().await);
+        assert_eq!(m.access_token().await.unwrap(), "env-abc");
+        assert_eq!(
+            m.access_token().await.unwrap(),
+            "env-abc",
+            "a static token must not expire into a refresh"
+        );
+    }
+
+    #[tokio::test]
+    async fn static_token_manager_rejects_on_forced_refresh() {
+        // A 401 drives force_refresh; a caller-supplied token has no refresh path, so it must
+        // surface StaticTokenRejected — NOT MissingClientCredentials, which would send the
+        // env-token user to `oura auth setup` that can't help. Break-verify: drop the
+        // `env_token` short-circuit in refresh_critical_section and this reports
+        // MissingClientCredentials instead.
+        let m = TokenManager::from_access_token("env-abc".into());
+        let err = m.force_refresh().await.unwrap_err();
+        assert!(matches!(err, AuthError::StaticTokenRejected), "{err:?}");
     }
 
     #[tokio::test]

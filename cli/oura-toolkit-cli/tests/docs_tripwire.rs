@@ -490,3 +490,62 @@ fn documented_completion_shells_match_the_binary() {
         }
     }
 }
+
+/// The #20 headless env overrides (`OURA_ACCESS_TOKEN`, `OURA_API_BASE_URL`) must be
+/// documented wherever they are read. Enumerated from the source (every `OURA_*` name in
+/// `api.rs`) so a new override that ships undocumented — or a rename that orphans the docs —
+/// fails CI, not review.
+#[test]
+fn documented_env_overrides_match_the_source() {
+    let root = repo_root();
+    let src = read(&root.join("cli/oura-toolkit-cli/src/api.rs"));
+    // Pull every `OURA_<NAME>` token out of the source (string literals + the doc comments
+    // beside them). A token is the run of word chars following `OURA_`.
+    let names: BTreeSet<String> = src
+        .match_indices("OURA_")
+        .map(|(i, _)| {
+            let rest = &src[i..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            rest[..end].to_string()
+        })
+        .collect();
+    assert!(
+        names.contains("OURA_ACCESS_TOKEN") && names.contains("OURA_API_BASE_URL"),
+        "expected the #20 env overrides among api.rs's OURA_* names: {names:?}"
+    );
+    let readme = read(&root.join("README.md"));
+    let contract = read(&root.join("docs/cli-contract.md"));
+    for name in &names {
+        assert!(
+            readme.contains(name.as_str()),
+            "README.md does not document the env override {name} read in api.rs \
+             (DOCS STAY TRUE TO THE CODE)"
+        );
+        assert!(
+            contract.contains(name.as_str()),
+            "docs/cli-contract.md does not document the env override {name} read in api.rs"
+        );
+    }
+}
+
+/// `--no-browser` is offered on `oura auth setup` and `oura auth login` (#20); the README and
+/// cli-contract reference it. A flag rename or a docs drop fails here.
+#[test]
+fn no_browser_flag_is_documented_where_it_is_offered() {
+    for sub in ["setup", "login"] {
+        let help = oura_stdout(&["auth", sub, "--help"]);
+        assert!(
+            help.contains("--no-browser"),
+            "`oura auth {sub} --help` no longer lists --no-browser:\n{help}"
+        );
+    }
+    let root = repo_root();
+    for doc in ["README.md", "docs/cli-contract.md"] {
+        assert!(
+            read(&root.join(doc)).contains("--no-browser"),
+            "{doc} does not mention the --no-browser flag (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+}

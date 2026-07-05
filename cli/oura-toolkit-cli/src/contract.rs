@@ -7,7 +7,7 @@
 //! | 0    | success |
 //! | 1    | runtime error (API failure, I/O, unexpected state) |
 //! | 2    | usage error (clap: unknown flag/command, missing args, bare `oura`) |
-//! | 4    | authentication required (no/expired credentials — an auth flow will fix it) |
+//! | 4    | authentication required (no/expired/rejected credentials — usually an auth flow fixes it; a rejected `OURA_ACCESS_TOKEN` needs a fresh token) |
 //!
 //! Stream discipline: results go to **stdout**; prose, progress, errors, and hints go to
 //! **stderr** (`oura mcp` is stricter still — stdout is the JSON-RPC transport). Error
@@ -78,6 +78,16 @@ pub fn classify(err: &anyhow::Error) -> Failure {
                     return Failure {
                         code: EXIT_AUTH,
                         hint: Some("run `oura auth setup`"),
+                    }
+                }
+                // A caller-supplied OURA_ACCESS_TOKEN was rejected (#20): no interactive
+                // login helps — the fix is to export a fresh token.
+                AuthError::StaticTokenRejected => {
+                    return Failure {
+                        code: EXIT_AUTH,
+                        hint: Some(
+                            "the token in OURA_ACCESS_TOKEN was rejected — export a fresh one",
+                        ),
                     }
                 }
                 // A refresh rejected by the token endpoint means stored credentials no

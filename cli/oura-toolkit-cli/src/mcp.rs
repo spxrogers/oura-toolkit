@@ -21,7 +21,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
 
-use oura_toolkit_auth::TokenManager;
+use oura_toolkit_auth::{AuthError, TokenManager};
 
 use crate::api::{self, DateRange};
 use crate::commands;
@@ -110,7 +110,21 @@ fn tool_result<T: serde::Serialize>(
         Err(err) => {
             let failure = contract::classify(&err);
             let mut message = contract::render_error(&err);
-            if failure.code == EXIT_AUTH {
+            let static_token_rejected = err.chain().any(|c| {
+                matches!(
+                    c.downcast_ref::<AuthError>(),
+                    Some(AuthError::StaticTokenRejected)
+                )
+            });
+            if static_token_rejected {
+                // A server started with OURA_ACCESS_TOKEN (#20): no interactive login exists
+                // in that deployment (a container), so pointing at `oura auth login` would
+                // misdirect — the fix is a fresh token + restart.
+                message.push_str(
+                    "\nThe OURA_ACCESS_TOKEN this server was started with was rejected \
+                     (expired or invalid). Restart `oura mcp` with a fresh token.",
+                );
+            } else if failure.code == EXIT_AUTH {
                 // The structured auth error CLAUDE.md mandates: no prompt, no browser —
                 // tell the user (via the model) exactly what to run, out of band.
                 message.push_str(
@@ -243,8 +257,11 @@ impl ServerHandler for OuraMcp {
 
 /// Serve over stdio until the client disconnects. stdout is the JSON-RPC transport;
 /// nothing else may write to it (enforced at the binary level in tests/mcp_stdio.rs).
-pub async fn serve(manager: TokenManager) -> anyhow::Result<()> {
-    let server = OuraMcp::new(manager, api::API_BASE.to_string());
+///
+/// `base_url` is the resolved data-plane host (default [`api::API_BASE`], or `OURA_API_BASE_URL`
+/// — #20), so a containerized server can point at a proxy/mock just like the CLI.
+pub async fn serve(manager: TokenManager, base_url: String) -> anyhow::Result<()> {
+    let server = OuraMcp::new(manager, base_url);
     let running = match server.serve(rmcp::transport::stdio()).await {
         Ok(running) => running,
         // stdin closing before/during the handshake is "no client connected", not a

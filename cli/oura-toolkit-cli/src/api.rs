@@ -24,6 +24,51 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 /// base URL; the constant is only bound in `main`.
 pub const API_BASE: &str = "https://api.ouraring.com";
 
+// Environment overrides for headless/CI/container use (#20). The lookup is injected so the
+// precedence logic is unit-tested without touching process env (CLAUDE.md TESTING rule 2).
+
+/// The data-plane base URL, honoring `OURA_API_BASE_URL` (point at a proxy, an alternate
+/// Oura host, or a mock) over the built-in [`API_BASE`]. A trailing slash is trimmed so the
+/// generated client's `/v2/...` paths never double up. Empty/whitespace is ignored.
+pub fn base_url_from_env(env: impl Fn(&str) -> Option<String>) -> String {
+    match env("OURA_API_BASE_URL") {
+        Some(v) => {
+            // Trim whitespace AND trailing slashes; a degenerate `/` or `//` collapses to
+            // empty, which must fall back rather than send requests to a bare `/v2/...`.
+            let trimmed = v.trim().trim_end_matches('/');
+            if trimmed.is_empty() {
+                API_BASE.to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+        None => API_BASE.to_string(),
+    }
+}
+
+/// The auth source for data commands and the MCP server, honoring `OURA_ACCESS_TOKEN` (a
+/// raw OAuth access token — Oura deprecated personal access tokens in 2025) over the stored
+/// tokens. The env token bypasses the store and never refreshes: when it is rejected the
+/// manager reports [`AuthError::StaticTokenRejected`] (see [`crate::contract::classify`]).
+/// Precedence: a non-empty `OURA_ACCESS_TOKEN` wins over any stored login. Empty/whitespace
+/// is ignored (falls back to the store). NOT honored by the `oura auth` account commands,
+/// which operate on the store itself.
+pub fn manager_from_env(env: impl Fn(&str) -> Option<String>) -> Result<TokenManager, AuthError> {
+    match access_token_override(env) {
+        Some(token) => Ok(TokenManager::from_access_token(token)),
+        None => TokenManager::load(),
+    }
+}
+
+/// The trimmed `OURA_ACCESS_TOKEN` override, or `None` to fall back to the store. Split from
+/// [`manager_from_env`] so the precedence rule (a non-empty value wins; whitespace-only is
+/// ignored) is unit-tested without constructing a manager or touching the real store.
+pub fn access_token_override(env: impl Fn(&str) -> Option<String>) -> Option<String> {
+    env("OURA_ACCESS_TOKEN")
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
 /// Build a generated-API client whose every request carries a fresh Bearer token.
 ///
 /// The token is resolved NOW (refreshing if expired, #22 semantics); the client is cheap
@@ -435,6 +480,63 @@ mod tests {
 
     fn day(s: &str) -> NaiveDate {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+
+    // --- headless env overrides (#20) ---------------------------------------------------
+
+    fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    #[test]
+    fn base_url_override_wins_and_trims_a_trailing_slash() {
+        assert_eq!(
+            base_url_from_env(env_of(&[("OURA_API_BASE_URL", "http://127.0.0.1:9/")])),
+            "http://127.0.0.1:9",
+            "trailing slash trimmed so /v2 paths don't double up"
+        );
+        // Empty / whitespace / slash-only / absent all fall back to the built-in host.
+        assert_eq!(
+            base_url_from_env(env_of(&[("OURA_API_BASE_URL", "  ")])),
+            API_BASE
+        );
+        assert_eq!(
+            base_url_from_env(env_of(&[("OURA_API_BASE_URL", "//")])),
+            API_BASE,
+            "a slash-only value must not collapse to an empty base_url"
+        );
+        assert_eq!(base_url_from_env(env_of(&[])), API_BASE);
+    }
+
+    #[test]
+    fn access_token_override_takes_a_nonempty_value_and_ignores_blanks() {
+        assert_eq!(
+            access_token_override(env_of(&[("OURA_ACCESS_TOKEN", "  tok-123  ")])),
+            Some("tok-123".to_string()),
+            "surrounding whitespace (e.g. a stray newline from `export`) is trimmed"
+        );
+        assert_eq!(
+            access_token_override(env_of(&[("OURA_ACCESS_TOKEN", "   ")])),
+            None
+        );
+        assert_eq!(
+            access_token_override(env_of(&[])),
+            None,
+            "absent ⇒ fall back to the store"
+        );
+    }
+
+    #[tokio::test]
+    async fn manager_from_env_uses_the_env_token_verbatim_without_a_store() {
+        // The whole point of OURA_ACCESS_TOKEN: no store, no login — the injected token is
+        // what every request carries.
+        let manager = manager_from_env(env_of(&[("OURA_ACCESS_TOKEN", "env-tok")])).unwrap();
+        assert_eq!(manager.access_token().await.unwrap(), "env-tok");
     }
 
     #[test]

@@ -70,8 +70,8 @@ which does the following, interactively:
    local listener on port 8788 catches the callback, and tokens are stored.
 
 Already registered? Just run `oura auth login`. If port 8788 is taken, use
-`--port <n>` — and register the matching redirect URI. No browser on the machine (or it
-doesn't open)? Both flows print the URL to visit manually.
+`--port <n>` — and register the matching redirect URI. On a remote or headless host where
+the loopback callback can't reach you (SSH, containers), add `--no-browser` (see below).
 
 Tokens and credentials live in `~/.config/oura-toolkit/` (owner-only file modes; on
 Windows, `%LOCALAPPDATA%\oura-toolkit\` under your profile's private ACLs) and refresh
@@ -85,6 +85,23 @@ oura auth token      # print a fresh access token — for curl and scripts
 oura auth refresh    # force a token refresh now (persists the rotated refresh token)
 oura auth logout     # remove tokens; --all also removes the app credentials
 ```
+
+### Headless, CI, and containers
+
+No local browser, or a remote box the OAuth callback can't reach?
+
+- **`oura auth login --no-browser`** (also `oura auth setup --no-browser`) — the CLI prints
+  the authorize URL, you approve it in a browser on any machine, then paste the full
+  redirect URL back into the terminal. The same `state` CSRF check applies. An SSH session
+  is auto-detected and `--no-browser` is suggested for you.
+- **`OURA_ACCESS_TOKEN`** — a raw OAuth access token that the data commands and `oura mcp`
+  use directly, bypassing the store (no login, no refresh). It takes precedence over any
+  stored login; when it expires the command says so and you export a fresh one. (Oura
+  deprecated personal access tokens in 2025, so this is a short-lived OAuth token — meant
+  for CI and one-shot agents. The `oura auth …` account commands still act on the store,
+  not this variable.)
+- **`OURA_API_BASE_URL`** — point the client at an alternate Oura host, a proxy, or a mock;
+  defaults to `https://api.ouraring.com`.
 
 ## CLI
 
@@ -138,7 +155,9 @@ runs a STDIO MCP server exposing eight curated, described tools (`get_daily_slee
 that's the point — while credentials stay local. The server reuses the same stored
 tokens and refreshes them silently;
 if you haven't logged in, tool calls return a structured error telling you to run
-`oura auth login` — the server never prompts or opens a browser itself.
+`oura auth login` — the server never prompts or opens a browser itself. In a container
+with no stored login, start it with an injected token instead:
+`OURA_ACCESS_TOKEN=<token> oura mcp` (see [Headless, CI, and containers](#headless-ci-and-containers)).
 
 For Claude Code:
 
