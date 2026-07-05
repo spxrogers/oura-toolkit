@@ -33,11 +33,16 @@ struct RangeArgs {
     /// End date: today, yesterday, or YYYY-MM-DD (default: today).
     #[arg(long)]
     end: Option<String>,
+    /// A single day (today, yesterday, or YYYY-MM-DD) — shorthand for --start X --end X.
+    /// Mutually exclusive with --start/--end.
+    #[arg(long)]
+    date: Option<String>,
 }
 
 impl RangeArgs {
     fn resolve(&self) -> anyhow::Result<api::DateRange> {
-        api::DateRange::resolve(
+        api::DateRange::resolve_with_date(
+            self.date.as_deref(),
             self.start.as_deref(),
             self.end.as_deref(),
             api::local_today(),

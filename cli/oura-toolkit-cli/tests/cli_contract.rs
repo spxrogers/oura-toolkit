@@ -107,6 +107,18 @@ fn data_command_rejects_an_inverted_date_range() {
 }
 
 #[test]
+fn data_command_rejects_date_combined_with_a_range() {
+    // #39: --date is a single-day shorthand, mutually exclusive with --start/--end. Combining
+    // them is a usage error (exit 2) caught before any network/auth work.
+    let (mut cmd, _dir) = oura();
+    cmd.args(["sleep", "--date", "today", "--start", "yesterday"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("cannot be combined"));
+}
+
+#[test]
 fn data_command_rejects_a_malformed_date() {
     // The other UsageError path docs/cli-contract.md names explicitly: a value clap
     // can't validate is still exit 2, with the accepted forms spelled out.

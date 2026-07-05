@@ -404,6 +404,36 @@ impl DateRange {
         })
     }
 
+    /// Resolve from an optional single-day `date` OR the `start`/`end` pair (#39).
+    ///
+    /// `date` is a convenience for the common single-day question ("what was my sleep score
+    /// yesterday?"): it sets `start = end = date`. It is mutually exclusive with `start`/`end`
+    /// — supplying both is a usage error ([`UsageError`], exit 2 on the CLI /
+    /// `invalid_params` for MCP), because the two would silently contradict each other.
+    /// The message is surface-neutral (`date` / `start` / `end`) so it reads correctly whether
+    /// the caller used CLI flags or MCP fields.
+    pub fn resolve_with_date(
+        date: Option<&str>,
+        start: Option<&str>,
+        end: Option<&str>,
+        today: chrono::NaiveDate,
+    ) -> Result<Self> {
+        match date {
+            Some(day) => {
+                if start.is_some() || end.is_some() {
+                    return Err(UsageError(
+                        "a single `date` cannot be combined with a `start`/`end` range — \
+                         pass one or the other"
+                            .to_string(),
+                    )
+                    .into());
+                }
+                Self::resolve(Some(day), Some(day), today)
+            }
+            None => Self::resolve(start, end, today),
+        }
+    }
+
     /// Start of the start day / end of the end day, as UTC instants (for the
     /// datetime-parameterized endpoints like heartrate), interpreted in local time.
     pub fn as_utc_bounds(&self) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
@@ -568,6 +598,45 @@ mod tests {
         let err =
             DateRange::resolve(Some("today"), Some("yesterday"), day("2026-07-02")).unwrap_err();
         assert!(err.to_string().contains("after"), "{err}");
+    }
+
+    #[test]
+    fn resolve_with_date_sets_a_single_day_window() {
+        let r =
+            DateRange::resolve_with_date(Some("yesterday"), None, None, day("2026-07-02")).unwrap();
+        assert_eq!(r.start, day("2026-07-01"));
+        assert_eq!(
+            r.end,
+            day("2026-07-01"),
+            "a single `date` sets start == end"
+        );
+    }
+
+    #[test]
+    fn resolve_with_date_rejects_combining_date_with_a_range() {
+        // Break-verify: drop the start/end guard in resolve_with_date and this stops failing.
+        for (d, s, e) in [
+            (Some("today"), Some("yesterday"), None),
+            (Some("today"), None, Some("today")),
+        ] {
+            let err = DateRange::resolve_with_date(d, s, e, day("2026-07-02")).unwrap_err();
+            assert!(
+                err.downcast_ref::<crate::contract::UsageError>().is_some(),
+                "combining date with a range must be a usage error: {err:#}"
+            );
+            assert!(err.to_string().contains("cannot be combined"), "{err}");
+        }
+    }
+
+    #[test]
+    fn resolve_with_date_falls_back_to_the_range_when_absent() {
+        let today = day("2026-07-02");
+        assert_eq!(
+            DateRange::resolve_with_date(None, Some("2026-06-26"), Some("2026-07-02"), today)
+                .unwrap(),
+            DateRange::resolve(Some("2026-06-26"), Some("2026-07-02"), today).unwrap(),
+            "no date ⇒ identical to the plain range resolution"
+        );
     }
 
     #[tokio::test]

@@ -66,6 +66,11 @@ pub struct OuraMcp {
 /// use the CLI's local-timezone semantics (docs/cli-contract.md → Dates).
 #[derive(serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct DateRangeParams {
+    /// A single day (`today`, `yesterday`, or `YYYY-MM-DD`, local timezone) — the shorthand
+    /// for the common single-day question. Sets start = end = this day. Mutually exclusive
+    /// with `start`/`end`.
+    #[serde(default)]
+    pub date: Option<String>,
     /// Start date: `today`, `yesterday`, or `YYYY-MM-DD` in the user's local timezone.
     /// Default: 6 days before `end` (a 7-day window).
     #[serde(default)]
@@ -77,10 +82,12 @@ pub struct DateRangeParams {
 }
 
 impl DateRangeParams {
-    /// Malformed dates / inverted ranges are the caller's arguments being wrong →
-    /// protocol `invalid_params`, mirroring the CLI's exit-2 classification.
+    /// Malformed dates / inverted ranges / combining `date` with a range are the caller's
+    /// arguments being wrong → protocol `invalid_params`, mirroring the CLI's exit-2
+    /// classification.
     fn resolve(&self) -> Result<DateRange, ErrorData> {
-        DateRange::resolve(
+        DateRange::resolve_with_date(
+            self.date.as_deref(),
             self.start.as_deref(),
             self.end.as_deref(),
             api::local_today(),
@@ -312,6 +319,35 @@ mod tests {
         assert!(
             checked >= 8,
             "suspiciously few tool references ({checked}) — tokenizer broken?"
+        );
+    }
+
+    /// The single-day `date` convenience param (#39): it collapses to a one-day window, and
+    /// combining it with `start`/`end` is `invalid_params` (the MCP mirror of the CLI's
+    /// exit-2 usage error).
+    #[test]
+    fn date_param_makes_a_single_day_window_and_conflicts_with_a_range() {
+        use super::DateRangeParams;
+        let single = DateRangeParams {
+            date: Some("yesterday".into()),
+            start: None,
+            end: None,
+        }
+        .resolve()
+        .expect("a lone `date` resolves");
+        assert_eq!(single.start, single.end, "`date` sets start == end");
+
+        let err = DateRangeParams {
+            date: Some("today".into()),
+            start: Some("yesterday".into()),
+            end: None,
+        }
+        .resolve()
+        .expect_err("date + start must be rejected");
+        assert!(
+            err.message.contains("cannot be combined"),
+            "invalid_params must name the conflict: {}",
+            err.message
         );
     }
 
