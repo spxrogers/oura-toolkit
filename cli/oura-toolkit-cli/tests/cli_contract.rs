@@ -33,6 +33,27 @@ fn login_without_credentials_exits_4_with_hint_on_stderr() {
 }
 
 #[test]
+fn auth_setup_writes_all_prose_to_stderr_never_stdout() {
+    // #37: interactive auth prose must obey the stream contract (docs/cli-contract.md →
+    // Streams: prose/prompts → stderr, stdout is results-only). It historically went to
+    // stdout via `println!`. `auth setup` prints its walkthrough, then blocks on the
+    // credential prompt; assert_cmd gives the child an empty stdin, so the prompt read hits
+    // EOF and the command exits 1. stdout MUST stay empty; the guidance AND the prompt label
+    // MUST land on stderr. `--port 0` binds an ephemeral loopback port so the listener never
+    // collides with a real 8788. Break-verify: turn any `guide(...)` back into `println!` and
+    // the stdout-empty assertion fails.
+    let (mut cmd, _dir) = oura();
+    cmd.args(["auth", "setup", "--port", "0"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Register your Oura OAuth application",
+        ))
+        .stderr(predicate::str::contains("Client ID:"));
+}
+
+#[test]
 fn data_command_without_tokens_exits_4_with_login_hint() {
     // The everyday failure mode (#9): a data command before `oura auth login`. The typed
     // NotAuthenticated must cross the process boundary as exit 4 + the login hint, with

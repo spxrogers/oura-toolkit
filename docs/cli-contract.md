@@ -70,6 +70,10 @@ fi
 `oura auth setup` and `oura auth login` are interactive; the account commands
 `status` / `logout` / `refresh` / `token` are non-interactive and scriptable:
 
+- **`oura auth setup` / `oura auth login`** — interactive walkthroughs with no scriptable
+  result: every line of guidance, each prompt, and the `✓ Done` confirmation goes to
+  **stderr**, so stdout stays empty — a piped `oura auth token`/`status` is never polluted
+  by a login run.
 - **`oura auth status`** — the state report (store path, `client_id` — never the client
   secret — scopes, access-token expiry) is the command's **result** and goes to stdout;
   `--json` emits a machine-readable model instead. Exit `0` when a data command would

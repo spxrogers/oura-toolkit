@@ -30,13 +30,13 @@ pub async fn setup(port: u16) -> Result<()> {
     let scopes = metadata::default_scopes();
     let scope_str = scopes.join(" ");
 
-    println!("== Register your Oura OAuth application ==\n");
-    println!("Opening https://cloud.ouraring.com/oauth/applications in your browser…");
+    guide("== Register your Oura OAuth application ==\n");
+    guide("Opening https://cloud.ouraring.com/oauth/applications in your browser…");
     let _ = open::that("https://cloud.ouraring.com/oauth/applications");
-    println!("Create an application with these EXACT values:\n");
-    println!("  • Application name : oura-toolkit   (or any name you like)");
-    println!("  • Redirect URI     : {redirect_uri}");
-    println!("  • Scopes           : {scope_str}\n");
+    guide("Create an application with these EXACT values:\n");
+    guide("  • Application name : oura-toolkit   (or any name you like)");
+    guide(&format!("  • Redirect URI     : {redirect_uri}"));
+    guide(&format!("  • Scopes           : {scope_str}\n"));
 
     // Bind the callback listener up front so a port conflict fails fast, before the user
     // has typed anything.
@@ -44,7 +44,7 @@ pub async fn setup(port: u16) -> Result<()> {
 
     // Terminal prompts, no local HTTP surface: the client_id is echoed (it is not a secret);
     // the secret is read with echo disabled.
-    println!("Paste the credentials Oura shows for your new application:");
+    guide("Paste the credentials Oura shows for your new application:");
     let credentials = ClientCredentials {
         client_id: prompt_required("  Client ID: ")?,
         client_secret: prompt_secret_required("  Client Secret (input hidden): ")?,
@@ -71,12 +71,12 @@ where
     Fut: std::future::Future<Output = Result<Tokens>>,
 {
     store.save_credentials(&credentials)?;
-    println!(
+    guide(&format!(
         "✓ Credentials saved to {} — `oura auth login` can reuse them any time.\n",
         store.credentials_path().display()
-    );
+    ));
 
-    println!("Continuing to login…");
+    guide("Continuing to login…");
     let tokens = authorize(credentials).await?;
     persist(store, &tokens)
 }
@@ -378,12 +378,20 @@ async fn bind(port: u16) -> Result<TcpListener> {
         })
 }
 
+/// Interactive guidance prose → **stderr**, per the stream-discipline contract (docs/
+/// cli-contract.md → Streams): stdout carries results only, so the `setup`/`login` walkthrough
+/// never pollutes a piped `oura auth token`/`status`. Newline-terminated wrapper over
+/// [`crate::contract::inform`] (best-effort; a closed stderr never panics).
+fn guide(msg: &str) {
+    crate::contract::inform(&format!("{msg}\n"));
+}
+
 /// Prompt (echoed) until the user enters a non-empty value.
 fn prompt_required(label: &str) -> Result<String> {
-    use std::io::Write as _;
     loop {
-        print!("{label}");
-        std::io::stdout().flush()?;
+        // The prompt label is human-facing → stderr (contract → Streams), keeping stdout
+        // results-only. std stderr is unbuffered, so the label shows before we read the reply.
+        crate::contract::inform(label);
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line)? == 0 {
             bail!("stdin closed before a value was entered");
@@ -423,8 +431,10 @@ async fn run_authorization(
     let authorize_url =
         metadata::authorize_url(&credentials.client_id, &redirect_uri, &scopes, &state);
 
-    println!("Opening your browser to authorize with Oura…");
-    println!("If it doesn't open automatically, visit:\n  {authorize_url}\n");
+    guide("Opening your browser to authorize with Oura…");
+    guide(&format!(
+        "If it doesn't open automatically, visit:\n  {authorize_url}\n"
+    ));
     let _ = open::that(&authorize_url);
 
     let code = tokio::time::timeout(
@@ -535,7 +545,10 @@ fn persist(store: &TokenStore, tokens: &Tokens) -> Result<()> {
         }
     };
     store.save_tokens(tokens)?;
-    println!("✓ Done. Tokens saved to {}", store.tokens_path().display());
+    guide(&format!(
+        "✓ Done. Tokens saved to {}",
+        store.tokens_path().display()
+    ));
     Ok(())
 }
 
