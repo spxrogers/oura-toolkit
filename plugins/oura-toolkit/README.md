@@ -30,7 +30,8 @@ collects your client id/secret with hidden input, and chains into the browser lo
 Tokens are stored at `~/.config/oura-toolkit/` (Windows: `%LOCALAPPDATA%\oura-toolkit\`)
 and refresh automatically.
 
-If a tool call reports "not authenticated", run `npx -y oura-toolkit auth login`.
+If a tool call reports "not authenticated", run `npx -y oura-toolkit auth login` (or
+`auth setup` first if you've never registered an app).
 
 ## Skills
 

@@ -277,10 +277,14 @@ impl ServerHandler for OuraMcp {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
+                // The remediation MUST match the per-tool auth error (tool_result) and the
+                // plugin skills (#43): both name `oura auth setup` first for a user who has
+                // never registered credentials, then `oura auth login`.
                 "Read-only access to the user's Oura Ring data (sleep, readiness, \
                  activity, stress, heart rate, sessions, workouts, profile). \
                  Authentication is out of band: if a tool reports that the user is not \
-                 authenticated, ask them to run `oura auth login` in a terminal, then \
+                 authenticated, ask them to run `oura auth login` in a terminal (or \
+                 `oura auth setup` first if they have never registered credentials), then \
                  retry.",
             )
     }
