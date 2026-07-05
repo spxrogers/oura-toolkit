@@ -123,6 +123,12 @@ https://api.ouraring.com/v2/static/json/openapi-1.35.json
   `curl -fsS <url> -o spec/openapi.json`).
 - The spec drives **EVERYTHING** downstream: the Rust client, the MCP tools, and the
   breadth SDKs. `just spec-fetch` + `just gen` re-fetches and regenerates.
+- **Drift watch (#29):** a SCHEDULED workflow (`.github/workflows/spec-drift.yml`, separate
+  from `just ci`) runs `just spec-drift-check` weekly — it diffs the pinned URL against the
+  committed spec and probes for a newer `openapi-<major>.<minor>`, opening/updating a
+  `spec-drift` issue on change. Watch-only; adopting a change is the documented upgrade
+  procedure (CONTRIBUTING). The detector's decision logic is guarded hermetically by
+  `just spec-drift-selftest` in CI's gen-drift job.
 - API base is `https://api.ouraring.com/v2`.
 - **Pagination** is cursor-based via a `next_token` query param.
 - **Sandbox** routes exist under `/v2/sandbox/usercollection/*` returning canned data —

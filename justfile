@@ -124,6 +124,54 @@ spec-overlay:
     jq -f codegen/overlay.jq {{spec_file}} > {{overlaid_spec}}
     @echo "Overlaid spec -> {{overlaid_spec}}"
 
+# Detect upstream Oura OpenAPI drift (#29): the pinned export re-published with changes, or a
+# newer openapi-<major>.<minor> exists. WATCH-ONLY — never edits the spec. Hits the network, so
+# it is NOT in `just ci`; the scheduled spec-drift workflow runs it and opens/updates an issue.
+# Exit 0 = no drift, 1 = drift (markdown report on stdout), 2 = error.
+[group('spec')]
+spec-drift-check:
+    codegen/spec-drift.sh {{spec_version}} {{spec_url}} {{spec_file}}
+
+# Hermetic self-test of the drift detector's decision logic (#29) — no network (the upstream
+# content and the "existing versions" are injected), so it runs in CI (the gen-drift job).
+# Break-verify: neuter a branch in codegen/spec-drift.sh and a case below fails.
+[group('spec')]
+spec-drift-selftest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sv="{{spec_version}}"; su="{{spec_url}}"; sf="{{spec_file}}"
+    pd="$(mktemp -d)"; mod="$(mktemp)"; trap 'rm -rf "$pd" "$mod"' EXIT
+    # spec_version is openapi-1.35, so 1.36 / 1.40 / 2.0 are candidates the probe loop reaches.
+    export OURA_SPEC_DRIFT_PROBE_COUNT=6
+    run() { OURA_SPEC_DRIFT_UPSTREAM_FILE="$1" OURA_SPEC_DRIFT_PROBE_DIR="$pd" codegen/spec-drift.sh "$sv" "$su" "$sf"; }
+    # 1) no drift: upstream == committed, empty probe dir -> exit 0.
+    run "$sf" >/dev/null || { echo "spec-drift-selftest: the clean case must exit 0"; exit 1; }
+    # 2) content drift: a byte-changed upstream -> exit 1 and a Content-drift report.
+    cp "$sf" "$mod"; printf '\n' >> "$mod"
+    out="$(run "$mod")" && { echo "spec-drift-selftest: content drift must exit 1"; exit 1; }
+    grep -q 'Content drift' <<<"$out" || { echo "spec-drift-selftest: content report missing"; exit 1; }
+    # 3) minor version drift: a REAL export appears as a newer minor -> reported.
+    cp "$sf" "$pd/openapi-1.36.json"
+    out="$(run "$sf")" && { echo "spec-drift-selftest: minor version drift must exit 1"; exit 1; }
+    grep -q 'newer export' <<<"$out" && grep -q '1.36' <<<"$out" \
+      || { echo "spec-drift-selftest: minor version report missing"; exit 1; }
+    # 4) soft-404: a 200 that ISN'T an OpenAPI doc must be IGNORED (no spam). The run still exits
+    #    1 (the valid 1.36 above is real drift), so `|| true` just lets us inspect the report.
+    printf '<html>not found</html>' > "$pd/openapi-1.40.json"
+    out="$(run "$sf" || true)"
+    grep -q '1.40' <<<"$out" && { echo "spec-drift-selftest: soft-404 must not be reported"; exit 1; }
+    grep -q '1.36' <<<"$out" || { echo "spec-drift-selftest: valid version lost in the soft-404 case"; exit 1; }
+    # 5) MAJOR bump: the next major's .0 export must be caught (content drift never would).
+    cp "$sf" "$pd/openapi-2.0.json"
+    out="$(run "$sf")" && { echo "spec-drift-selftest: major bump must exit 1"; exit 1; }
+    grep -q '2.0' <<<"$out" || { echo "spec-drift-selftest: major-bump report missing"; exit 1; }
+    # 6) hard error: an unparseable version must exit 2 (the workflow branches on it). Capture
+    #    with `|| c=$?` so `set -e` doesn't abort on the expected non-zero exit.
+    c=0
+    OURA_SPEC_DRIFT_UPSTREAM_FILE="$sf" codegen/spec-drift.sh "openapi-BAD" "$su" "$sf" >/dev/null 2>&1 || c=$?
+    [[ $c -eq 2 ]] || { echo "spec-drift-selftest: a bad version must exit 2 (got $c)"; exit 1; }
+    echo "spec-drift-selftest: all cases pass"
+
 # ---------------------------------------------------------------------------------------------
 # Codegen (generated SDK clients only — NEVER touches the *-auth companions)
 # ---------------------------------------------------------------------------------------------
