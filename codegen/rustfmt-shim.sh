@@ -18,4 +18,6 @@ for a in "$@"; do
   esac
 done
 
-exec "$(rustup which --toolchain nightly rustfmt)" --edition 2021 "${args[@]}"
+# Which nightly to format through — `just gen-rust` pins this to the dated `nightly_rustfmt`
+# toolchain (single source in the justfile); default to plain `nightly` for a manual invocation.
+exec "$(rustup which --toolchain "${RUSTFMT_TOOLCHAIN:-nightly}" rustfmt)" --edition 2021 "${args[@]}"

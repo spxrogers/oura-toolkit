@@ -211,9 +211,13 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
 - **progenitor formats with unstable rustfmt opts** (`wrap_comments`,
   `normalize_doc_attributes`) → needs **nightly rustfmt**, and those opts corrupted a doc
   comment into invalid Rust. `just gen-rust` runs progenitor through `codegen/rustfmt-shim.sh`
-  (plain nightly rustfmt), then re-formats with stable `cargo fmt` so CI's `fmt --check`
-  passes. The committed generated crate builds on **stable**; only *regeneration* needs
-  nightly + progenitor (installed by `just setup`).
+  on a **pinned dated nightly** (the `nightly_rustfmt` justfile variable — single source for
+  `setup`, `just install-nightly-rustfmt`, `gen-rust`, and CI's gen-drift job; #50), then
+  re-formats with stable `cargo fmt` so CI's `fmt --check` passes. Pinning keeps codegen
+  deterministic — a floating `nightly` shifting rustfmt behavior could otherwise flake an
+  unrelated PR's `just gen-check` (bump procedure is documented at the variable). The committed
+  generated crate builds on **stable**; only *regeneration* needs nightly + progenitor
+  (installed by `just setup`).
 - **The generated client takes a plain `reqwest::Client`** (`Client::new_with_client`);
   progenitor 0.14 does **not** accept a `reqwest_middleware::ClientWithMiddleware`. So the
   data-plane auth wiring (issues #9/#10) hands the generated client a `reqwest::Client`
