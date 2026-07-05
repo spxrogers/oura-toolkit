@@ -16,8 +16,9 @@
 #
 # Test hooks (UNSET in production — the selftest sets them to avoid the network):
 #   OURA_SPEC_DRIFT_UPSTREAM_FILE   use this local file as "upstream content" instead of curl
-#   OURA_SPEC_DRIFT_KNOWN_MINORS    space-separated minor numbers to treat as the "existing"
-#                                   upstream exports instead of probing (empty = none exist)
+#   OURA_SPEC_DRIFT_PROBE_DIR       probe local fixture files (openapi-<maj>.<min>.json) in this
+#                                   dir instead of the network — runs the real probe loop + the
+#                                   soft-404 gate hermetically
 #   OURA_SPEC_DRIFT_PROBE_COUNT     how many minors past the pinned one to probe (default 20)
 #
 # Exit codes: 0 = no drift; 1 = drift detected (markdown report on stdout); 2 = hard error.
@@ -35,15 +36,16 @@ if [[ ! "$spec_version" =~ ^openapi-([0-9]+)\.([0-9]+)$ ]]; then
 fi
 major="${BASH_REMATCH[1]}"
 minor="${BASH_REMATCH[2]}"
-# ".../json/openapi-1.35.json" -> ".../json/openapi-1." so we can probe "<base><n>.json".
-url_prefix="${spec_url%"${minor}.json"}"
+# ".../json/openapi-1.35.json" -> ".../json/openapi-" so we can probe "<root><maj>.<min>.json".
+url_root="${spec_url%"${major}.${minor}.json"}"
 
 report=""
 drift=0
 
 # --- 1. content drift ------------------------------------------------------------------------
 tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+tmp2="$(mktemp)"
+trap 'rm -f "$tmp" "$tmp2"' EXIT
 if [[ -n "${OURA_SPEC_DRIFT_UPSTREAM_FILE:-}" ]]; then
   cp "$OURA_SPEC_DRIFT_UPSTREAM_FILE" "$tmp"
 elif ! curl -fsS "$spec_url" -o "$tmp"; then
@@ -60,19 +62,49 @@ fi
 
 # --- 2. version drift ------------------------------------------------------------------------
 newer=()
-if [[ -n "${OURA_SPEC_DRIFT_KNOWN_MINORS+x}" ]]; then
-  for m in ${OURA_SPEC_DRIFT_KNOWN_MINORS}; do
-    ((m > minor)) && newer+=("$major.$m")
-  done
-else
-  probe_count="${OURA_SPEC_DRIFT_PROBE_COUNT:-20}"
-  for ((m = minor + 1; m <= minor + probe_count; m++)); do
-    # No -f: a 404 must yield its status code quietly, not an error. `000` marks a hard
-    # network failure (connection refused/DNS) — treated as "not present", never a false 200.
-    code=$(curl -s -o /dev/null -w '%{http_code}' "${url_prefix}${m}.json" || echo 000)
-    [[ "$code" == "200" ]] && newer+=("$major.$m")
-  done
-fi
+
+# Is the body in $tmp2 REALLY an OpenAPI export? Guards against a soft-404 (a 200 serving an
+# HTML/error page): without this, a CDN error page would spam the report with bogus versions.
+is_openapi_doc() { jq -e 'has("openapi") and (.info.title | type == "string")' "$1" >/dev/null 2>&1; }
+
+# Probe one candidate "<maj>.<min>"; append to `newer` only if the export really exists.
+probe_version() {
+  local v="$1"
+  local url="${url_root}${v}.json"
+  local code
+  if [[ -n "${OURA_SPEC_DRIFT_PROBE_DIR:-}" ]]; then
+    # Hermetic (selftest): a local fixture stands in for a live export; absent = 404. Runs the
+    # SAME loop + soft-404 gate as production, just without the network.
+    if [[ -f "${OURA_SPEC_DRIFT_PROBE_DIR}/openapi-${v}.json" ]]; then
+      cp "${OURA_SPEC_DRIFT_PROBE_DIR}/openapi-${v}.json" "$tmp2"
+      code=200
+    else
+      code=404
+    fi
+  else
+    # No -f: a 404 must yield its status code quietly. `000` = hard network failure.
+    code=$(curl -s -o "$tmp2" -w '%{http_code}' "$url" || echo 000)
+  fi
+  case "$code" in
+    200)
+      if is_openapi_doc "$tmp2"; then
+        newer+=("$v")
+      else
+        echo "spec-drift: $url returned 200 but is not an OpenAPI doc (soft-404?) — ignoring" >&2
+      fi
+      ;;
+    404 | 000) : ;; # absent / unreachable
+    *) echo "spec-drift: $url returned HTTP $code — treating as absent (transient?)" >&2 ;;
+  esac
+}
+
+# Newer minors of the current major, PLUS the next major's .0 — a major bump keeps the pinned
+# URL serving the old bytes, so content drift alone would never catch it.
+probe_count="${OURA_SPEC_DRIFT_PROBE_COUNT:-20}"
+for ((m = minor + 1; m <= minor + probe_count; m++)); do
+  probe_version "$major.$m"
+done
+probe_version "$((major + 1)).0"
 if ((${#newer[@]} > 0)); then
   drift=1
   report+="## A newer export is available\n\n"

@@ -51,8 +51,13 @@ jobs:
           # already exists, otherwise create it.
           gh label create spec-drift --color FBCA04 --description "Upstream Oura OpenAPI spec drift" 2>/dev/null || true
           existing="$(gh issue list --label spec-drift --state open --json number --jq '.[0].number // empty')"
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body-file spec-drift-report.md
-          else
+          if [ -z "$existing" ]; then
             gh issue create --title "Oura OpenAPI spec drift detected" --label spec-drift --body-file spec-drift-report.md
+          elif [ "$(gh issue view "$existing" --json body --jq .body)" = "$(cat spec-drift-report.md)" ]; then
+            # Same drift as last week — don't spam a duplicate comment; the open issue already tracks it.
+            echo "drift unchanged since open issue #$existing — no comment."
+          else
+            # The drift changed (e.g. a further version appeared): comment and refresh the body.
+            gh issue comment "$existing" --body-file spec-drift-report.md
+            gh issue edit "$existing" --body-file spec-drift-report.md
           fi
