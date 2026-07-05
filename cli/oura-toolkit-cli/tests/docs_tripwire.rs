@@ -450,3 +450,43 @@ fn readme_mcp_tool_names_are_real() {
         "suspiciously few get_* references in the README ({checked}) — tokenizer broken?"
     );
 }
+
+/// The completion shells the docs advertise ⟷ the value-enum the binary actually accepts (#27).
+/// clap derives the accepted set from `clap_complete::Shell`; if it grows or shrinks, the README
+/// and cli-contract must move with it (DOCS STAY TRUE TO THE CODE, rule 4). Parsed from the
+/// binary's own `[possible values: …]` so the docs are pinned to source, not a hand-copied list.
+#[test]
+fn documented_completion_shells_match_the_binary() {
+    let help = oura_stdout(&["completion", "--help"]);
+    let list = help
+        .split("[possible values:")
+        .nth(1)
+        .expect(
+            "`oura completion --help` lost its `[possible values: …]` list — clap format changed?",
+        )
+        .split(']')
+        .next()
+        .unwrap();
+    let shells: BTreeSet<String> = list
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    assert!(
+        shells.len() >= 4,
+        "parsed only {} completion shells from the binary ({shells:?}) — help format changed?",
+        shells.len()
+    );
+
+    let root = repo_root();
+    for doc in ["README.md", "docs/cli-contract.md"] {
+        let text = read(&root.join(doc));
+        for shell in &shells {
+            assert!(
+                text.contains(shell.as_str()),
+                "{doc} does not mention the completion shell {shell:?} that `oura completion` \
+                 accepts — a shell landed undocumented (DOCS STAY TRUE TO THE CODE)"
+            );
+        }
+    }
+}

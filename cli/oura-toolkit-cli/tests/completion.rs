@@ -40,24 +40,28 @@ fn completion_bash_emits_a_loadable_bash_script_to_stdout() {
 
 #[test]
 fn completion_supports_every_advertised_shell() {
-    // The five shells the subcommand's help promises; each must emit a non-empty script.
+    // The five shells the subcommand's help promises; each must emit a non-empty script to
+    // stdout with a clean stderr (they're pure generators — no prose, no warnings).
     for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
         oura()
             .args(["completion", shell])
             .assert()
             .success()
-            .stdout(predicate::str::is_empty().not());
+            .stdout(predicate::str::is_empty().not())
+            .stderr(predicate::str::is_empty());
     }
 }
 
 #[test]
 fn completion_rejects_an_unknown_shell_with_usage_exit_2() {
-    // clap value-enum rejection is a usage error: exit 2, error to stderr, stdout stays clean.
+    // clap value-enum rejection is a usage error: exit 2, the error message on stderr (the
+    // cli-contract promises it), stdout stays clean.
     oura()
         .args(["completion", "tcsh"])
         .assert()
         .code(2)
-        .stdout(predicate::str::is_empty());
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty().not());
 }
 
 #[test]
@@ -66,7 +70,8 @@ fn man_emits_a_roff_man_page_for_oura_section_1() {
         .arg("man")
         .assert()
         .success()
-        // `.TH` is roff's title-header macro; clap_mangen emits `.TH oura 1 …` for the binary.
-        .stdout(predicate::str::contains(".TH").and(predicate::str::contains("oura")))
+        // clap_mangen emits `.TH oura 1 …` — the roff title-header naming the page `oura`
+        // section 1. Pin the adjacency so a stray "oura" elsewhere can't satisfy it.
+        .stdout(predicate::str::contains(".TH oura 1"))
         .stderr(predicate::str::is_empty());
 }

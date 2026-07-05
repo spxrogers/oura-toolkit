@@ -4,7 +4,7 @@
 //! real modules). Exit codes, stream discipline, and error style are a documented
 //! contract — see `docs/cli-contract.md` and the `contract` module (#21).
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use oura_toolkit_cli::{api, auth, commands, contract, output};
 
 /// Oura Ring toolkit — CLI + MCP server for the Oura API v2.
@@ -211,7 +211,6 @@ async fn run() -> anyhow::Result<()> {
         // (contract → Streams). Generate into a buffer first so a closed stdout is a clean
         // exit, not a panic inside clap_complete.
         Some(Command::Completion { shell }) => {
-            use clap::CommandFactory;
             let mut cmd = Cli::command();
             let mut buf = Vec::new();
             clap_complete::generate(shell, &mut cmd, "oura", &mut buf);
@@ -219,7 +218,6 @@ async fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Command::Man) => {
-            use clap::CommandFactory;
             let mut buf = Vec::new();
             clap_mangen::Man::new(Cli::command())
                 .render(&mut buf)
@@ -234,7 +232,6 @@ async fn run() -> anyhow::Result<()> {
             // exit 2 like clap's own usage errors. Best-effort write, like
             // `contract::report`: a closed stderr must not turn a usage error into a
             // panic — the exit code is the machine-readable part.
-            use clap::CommandFactory;
             use std::io::Write as _;
             let _ = writeln!(std::io::stderr(), "{}", Cli::command().render_help());
             std::process::exit(2);
