@@ -117,10 +117,14 @@ fn tool_result<T: serde::Serialize>(
 ) -> Result<CallToolResult, ErrorData> {
     match fetched {
         Ok(data) => {
-            let value = serde_json::to_value(&data).map_err(|e| {
+            // Serialize the TEXT block straight from `data` so it keeps the generated model's
+            // field order (kept byte-for-byte for client compat). `serde_json::Value` is a
+            // BTreeMap without `preserve_order`, so round-tripping through `to_value` would
+            // silently alphabetize keys — use it only for the structured envelope below.
+            let json = serde_json::to_string_pretty(&data).map_err(|e| {
                 ErrorData::internal_error(format!("serializing response data: {e}"), None)
             })?;
-            let json = serde_json::to_string_pretty(&value).map_err(|e| {
+            let value = serde_json::to_value(&data).map_err(|e| {
                 ErrorData::internal_error(format!("serializing response data: {e}"), None)
             })?;
             // MCP's structuredContent MUST be an object; a collection serializes to an array,
