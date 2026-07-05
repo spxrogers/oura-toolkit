@@ -456,7 +456,11 @@ code is a bug of the same severity as the code change that orphaned it.
     as `oura-toolkit-auth`'s OAuth metadata): each tool description = hand-curated LLM lead
     + the operation's spec summary + the response document's field inventory with the
     spec's own field descriptions. A curated operation vanishing from the spec **fails the
-    build**. Tool RESULTS are the progenitor-generated models serialized to JSON.
+    build**. Tool RESULTS are the progenitor-generated models serialized to JSON — as a text
+    block AND (`#40`) a `structured_content` value: the same data typed for clients that read
+    it, with a collection's array enveloped under `data` (MCP requires an object) and an
+    object result passing through. Output schemas are not advertised yet (the progenitor
+    models don't derive `JsonSchema`); the text block stays for client compat.
   - **Deliberately curated input schema** (one shared `DateRangeParams`): the cursor is
     hidden (tools auto-paginate), dates use the CLI's local-timezone semantics. The raw
     spec params are intentionally NOT the tool surface.

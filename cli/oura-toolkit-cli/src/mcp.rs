@@ -104,15 +104,35 @@ impl DateRangeParams {
 /// Map a fetch outcome to the MCP result shape: success → the generated models as JSON;
 /// failure → a TOOL-LEVEL error (the model sees the message). Auth-shaped failures reuse
 /// the CLI contract's classifier so the remediation text is identical everywhere.
+///
+/// Success carries BOTH a text block (the pretty JSON — kept for clients that don't yet read
+/// structured results) AND `structured_content` (#40), the same data as a typed value clients
+/// can consume without re-parsing. MCP types `structuredContent` as a JSON **object**, so a
+/// collection tool's array is enveloped as `{"data":[…]}`; an object result (personal info)
+/// passes through unchanged. Output schemas are deliberately NOT advertised yet — the
+/// progenitor models don't derive `JsonSchema`; untyped structured content is the clean first
+/// step (build-time output-schema generation can follow).
 fn tool_result<T: serde::Serialize>(
     fetched: anyhow::Result<T>,
 ) -> Result<CallToolResult, ErrorData> {
     match fetched {
         Ok(data) => {
-            let json = serde_json::to_string_pretty(&data).map_err(|e| {
+            let value = serde_json::to_value(&data).map_err(|e| {
                 ErrorData::internal_error(format!("serializing response data: {e}"), None)
             })?;
-            Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+            let json = serde_json::to_string_pretty(&value).map_err(|e| {
+                ErrorData::internal_error(format!("serializing response data: {e}"), None)
+            })?;
+            // MCP's structuredContent MUST be an object; a collection serializes to an array,
+            // so envelope it under `data` (matching Oura's own response shape). Objects pass
+            // through as-is.
+            let structured = match value {
+                serde_json::Value::Object(_) => value,
+                other => serde_json::json!({ "data": other }),
+            };
+            let mut result = CallToolResult::success(vec![ContentBlock::text(json)]);
+            result.structured_content = Some(structured);
+            Ok(result)
         }
         Err(err) => {
             let failure = contract::classify(&err);
