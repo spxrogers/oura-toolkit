@@ -66,6 +66,9 @@ setup:
     # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an
     # 8.x/9.x SDK cannot build the net10.0 leg). Only relevant to the C# breadth-SDK recipes.
     @dotnet --list-sdks 2>/dev/null | grep -q '^10\.' || echo "!! install the .NET 10 SDK -- needed by 'just sdk-check-csharp' / 'just sdk-test-csharp' (net10.0 target)"
+    # The netstandard2.0/Mono leg (`just sdk-test-csharp-netstandard`, #61) runs the C# suite
+    # under Mono against the net472-resolved netstandard2.0 asset; only that recipe needs it.
+    @command -v mono >/dev/null || echo "!! install mono (apt: mono-devel) -- needed by 'just sdk-test-csharp-netstandard' (#61 netstandard2.0 leg)"
     # Release tooling (`just dist-check` / `just release`).
     command -v dist >/dev/null || cargo install cargo-dist --locked
 
@@ -283,13 +286,26 @@ sdk-check-csharp:
 
 # HAND-WRITTEN C# auth companion tests (hermetic: mock HttpMessageHandler + temp-dir
 # stores; run by the sdk-compile CI job). The multi-target test project (net8.0;net10.0)
-# means one `dotnet test` runs the whole suite on BOTH modern runtimes — including the direct
-# PosixInterop tests that cover the netstandard2.0-only libc atomic-0600 path (unloadable by a
-# modern host, so exercised via the always-compiled helper). (The csproj's version sync is
-# guarded by `just version-check`.)
+# means one `dotnet test` runs the whole suite on BOTH modern runtimes. A modern host cannot
+# LOAD the library's netstandard2.0 asset, so its `#if NETSTANDARD2_0` branches never execute
+# here — that gap is closed by `just sdk-test-csharp-netstandard` (#61), which runs the SAME
+# suite on Mono. (The csproj's version sync is guarded by `just version-check`.)
 [group('codegen')]
 sdk-test-csharp:
     dotnet test --nologo -v quiet sdks/csharp/auth/tests/OuraToolkit.Auth.Tests
+
+# The C# auth suite on a runtime that ACTUALLY LOADS the netstandard2.0 asset (#61). The modern
+# `just sdk-test-csharp` host only loads net8.0/net10.0, leaving the library's `#if NETSTANDARD2_0`
+# code (Polyfills, the libc open(2)+write(2)+fsync(2) store path selection, the HttpClientHandler
+# transport) compiled but never run. This builds the same xunit suite for net472 — whose project
+# reference resolves the library's netstandard2.0 asset — and runs it under Mono via the xunit
+# console runner. BuildInfoTests fails the leg if it ever loads the wrong asset. Needs `mono`
+# (apt: mono-devel); CI installs it. Opt-in TFM (-p:NetFxTest=true) so sdk-test-csharp is untouched.
+[group('codegen')]
+sdk-test-csharp-netstandard:
+    command -v mono >/dev/null || { echo "!! install mono (apt: mono-devel) -- needed by 'just sdk-test-csharp-netstandard' to run the net472/netstandard2.0 leg"; exit 1; }
+    dotnet build --nologo -v quiet -c Release -f net472 -p:NetFxTest=true sdks/csharp/auth/tests/OuraToolkit.Auth.Tests
+    mono sdks/csharp/auth/tests/OuraToolkit.Auth.Tests/bin/Release/net472/xunit-runner/xunit.console.exe sdks/csharp/auth/tests/OuraToolkit.Auth.Tests/bin/Release/net472/OuraToolkit.Auth.Tests.dll
 
 # ---------------------------------------------------------------------------------------------
 # Build / test / quality

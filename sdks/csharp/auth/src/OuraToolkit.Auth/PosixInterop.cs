@@ -1,17 +1,23 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 
 namespace OuraToolkit.Auth;
 
 /// <summary>
 /// Minimal libc P/Invoke used by the <b>netstandard2.0</b> leg of <see cref="TokenStore"/> to
 /// reproduce the file-hygiene guarantees the netstandard2.0 BCL cannot express: an ATOMIC
-/// owner-only (0600) create with no world-readable TOCTOU window, and an atomic
+/// owner-only (0600) create-and-write with no world-readable TOCTOU window, and an atomic
 /// overwrite-rename. On net7+ the store instead uses in-box
 /// <c>UnixFileMode</c>/<c>FileStreamOptions.UnixCreateMode</c>/<c>File.Move(overwrite)</c> and
 /// never touches this class in production.
+///
+/// The create path writes through the raw <c>open(2)</c> file descriptor via <c>write(2)</c> +
+/// <c>fsync(2)</c> and NEVER constructs a managed <c>FileStream</c> from that fd, nor reopens
+/// the file by path: Mono/Xamarin (a real netstandard2.0 target) cannot wrap a foreign libc fd
+/// in a <c>FileStream</c> (it validates handles against its own IO table and throws), and
+/// reopening by path would introduce a TOCTOU the fd-only design specifically avoids. The fd
+/// stays in this class's hands from create to close.
 ///
 /// DESIGN — this helper is <b>ALWAYS COMPILED on every target framework</b> (no
 /// <c>#if TFM</c> fence): only <see cref="TokenStore"/>'s <c>#if NETSTANDARD2_0</c> SELECTS
@@ -19,8 +25,9 @@ namespace OuraToolkit.Auth;
 /// (net8/net10) test host can never load the netstandard2.0 asset, so a naive
 /// <c>#if NETSTANDARD2_0</c> around this code would hide the security-critical create path
 /// from ALL tests. Because it compiles and runs everywhere, it is unit-tested directly on the
-/// modern Unix legs (created file is exactly 0600, and a second exclusive create fails —
-/// proving O_EXCL).
+/// modern Unix legs (written file is exactly 0600, and a second exclusive create fails —
+/// proving O_EXCL); the netstandard2.0/Mono leg (`just sdk-test-csharp-netstandard`, #61) runs
+/// the SAME tests on a runtime that actually loads this asset.
 /// </summary>
 internal static class PosixInterop
 {
@@ -49,6 +56,13 @@ internal static class PosixInterop
 
     private static int O_EXCL => IsBsd ? 0x800 : 0x80;
 
+    // Interrupted syscall — errno 4 on Linux and the whole BSD/macOS lineage alike. write(2) and
+    // fsync(2) interrupted by a signal BEFORE any progress return -1/EINTR and must be retried
+    // (the in-box FileStream path retries this internally on Unix). close(2) is NOT retried on
+    // EINTR: POSIX leaves the fd state unspecified afterward, and on Linux the fd is already
+    // closed, so a retry could close an unrelated reused descriptor.
+    private const int EINTR = 4;
+
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi, BestFitMapping = false)]
     private static extern int open(string path, int flags, int mode);
 
@@ -61,17 +75,29 @@ internal static class PosixInterop
     [DllImport("libc", SetLastError = true)]
     private static extern int close(int fd);
 
+    // write(2)/fsync(2): the buffer is passed as a pinned pointer so we can advance it across a
+    // partial write. IntPtr count/return so the 64-bit ssize_t/size_t are not truncated.
+    [DllImport("libc", SetLastError = true)]
+    private static extern IntPtr write(int fd, IntPtr buf, IntPtr count);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int fsync(int fd);
+
     /// <summary>
-    /// Atomically create <paramref name="path"/> for writing with mode 0600, failing if it
-    /// already exists. The mode is applied AT creation by <c>open(2)</c> (the umask can only
-    /// clear bits, and 0600 has none to clear), so there is never a window in which the file
-    /// is more permissive than 0600 — the security equivalent of net7's
-    /// <c>FileStreamOptions.UnixCreateMode</c>. <c>O_EXCL</c> guarantees exclusive creation:
-    /// no following a pre-planted symlink, no clobbering a racing writer's uniquely-named
-    /// temp file.
+    /// Atomically create <paramref name="path"/> with mode 0600 (failing if it already exists),
+    /// write <paramref name="data"/> to it, flush it to disk, and close it — all through the raw
+    /// <c>open(2)</c> descriptor. The mode is applied AT creation by <c>open(2)</c> (the umask
+    /// can only clear bits, and 0600 has none to clear), so there is never a window in which the
+    /// file is more permissive than 0600 — the security equivalent of net7's
+    /// <c>FileStreamOptions.UnixCreateMode</c>. <c>O_EXCL</c> guarantees exclusive creation: no
+    /// following a pre-planted symlink, no clobbering a racing writer's uniquely-named temp file.
+    /// The fd is never wrapped in a managed <c>FileStream</c> nor reopened by path (see the class
+    /// remarks), so there is no fd-adoption or reopen-TOCTOU surface.
     /// </summary>
-    /// <exception cref="IOException">The file exists, or <c>open(2)</c> otherwise failed.</exception>
-    public static FileStream CreateExclusive0600(string path)
+    /// <exception cref="IOException">
+    /// The file exists, or <c>open(2)</c>/<c>write(2)</c>/<c>fsync(2)</c> otherwise failed.
+    /// </exception>
+    public static void WriteNewExclusive0600(string path, byte[] data)
     {
         var fd = open(path, O_WRONLY | O_CREAT | O_EXCL, Mode0600);
         if (fd < 0)
@@ -80,29 +106,58 @@ internal static class PosixInterop
             throw new IOException($"exclusive 0600 create of '{path}' failed (errno {errno})");
         }
 
-        // The SafeFileHandle owns the fd and closes it on FileStream disposal. If EITHER ctor
-        // throws after open(2) succeeded (e.g. OOM), the raw fd would leak — a live descriptor
-        // to a freshly created 0600 file that no managed handle owns — so close it by hand.
-        SafeFileHandle handle;
+        // Pin the buffer so write(2) sees a stable address we can advance across partial writes.
+        var pin = GCHandle.Alloc(data, GCHandleType.Pinned);
         try
         {
-            handle = new SafeFileHandle((IntPtr)fd, ownsHandle: true);
-        }
-        catch
-        {
-            close(fd);
-            throw;
-        }
+            var basePtr = pin.AddrOfPinnedObject();
+            var offset = 0;
+            while (offset < data.Length)
+            {
+                // Retry a signal-interrupted write; any other error is fatal (errno captured
+                // immediately after the failing call, before any other P/Invoke can clobber it).
+                long n;
+                int errno;
+                do
+                {
+                    n = (long)write(fd, IntPtr.Add(basePtr, offset), (IntPtr)(data.Length - offset));
+                    errno = n < 0 ? Marshal.GetLastWin32Error() : 0;
+                }
+                while (n < 0 && errno == EINTR);
 
-        try
-        {
-            return new FileStream(handle, FileAccess.Write);
+                if (n < 0)
+                {
+                    throw new IOException($"write to '{path}' failed (errno {errno})");
+                }
+
+                if (n == 0)
+                {
+                    // write(2) returns 0 only for a zero-length request; with bytes remaining it
+                    // means no progress — bail rather than spin.
+                    throw new IOException($"write to '{path}' made no progress");
+                }
+
+                offset += (int)n;
+            }
+
+            // Durability parity with the modern leg's Flush(flushToDisk: true); retry EINTR.
+            int frc, ferrno;
+            do
+            {
+                frc = fsync(fd);
+                ferrno = frc != 0 ? Marshal.GetLastWin32Error() : 0;
+            }
+            while (frc != 0 && ferrno == EINTR);
+
+            if (frc != 0)
+            {
+                throw new IOException($"fsync of '{path}' failed (errno {ferrno})");
+            }
         }
-        catch
+        finally
         {
-            // Disposing the SafeFileHandle closes the underlying fd exactly once.
-            handle.Dispose();
-            throw;
+            pin.Free();
+            close(fd);
         }
     }
 

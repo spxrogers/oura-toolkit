@@ -152,7 +152,7 @@ public class TokenStoreTests
     [Fact]
     public void RecordsAndDirAreOwnerOnlyOnUnix()
     {
-        if (OperatingSystem.IsWindows())
+        if (TestHost.IsWindows)
         {
             return; // chmod is a no-op there by design; see TokenStore docs.
         }
@@ -160,12 +160,12 @@ public class TokenStoreTests
         temp.Store.SaveCredentials(Fixtures.Credentials);
         temp.Store.SaveTokens(Fixtures.SampleTokens);
 
-        const UnixFileMode Rw600 = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        Assert.Equal(Rw600, File.GetUnixFileMode(temp.Store.CredentialsPath));
-        Assert.Equal(Rw600, File.GetUnixFileMode(temp.Store.TokensPath));
-        Assert.Equal(
-            Rw600 | UnixFileMode.UserExecute,
-            File.GetUnixFileMode(temp.Store.Directory));
+        // Independent octal literals, NOT PosixInterop.Mode0600/Mode0700 — asserting against the
+        // same constants the store uses to create these would be a tautology (a Mode0600 = 0644
+        // regression would move both sides together and pass). Break-verify: bump either constant.
+        Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(temp.Store.CredentialsPath));
+        Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(temp.Store.TokensPath));
+        Assert.Equal(Convert.ToInt32("700", 8), TestHost.UnixPermBits(temp.Store.Directory));
     }
 
     [Fact]

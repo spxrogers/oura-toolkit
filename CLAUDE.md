@@ -176,7 +176,12 @@ Overlay files live in `codegen/` (no justfile there — recipes are in the root 
   (`codegen/ts-package-postpatch.jq`) and drops `tsconfig.esm.json` (#57; guarded like
   the C# patches, and `just sdk-check-ts` loads the exports entry via BOTH `require` and
   a self-referencing ESM `import` smoke + asserts a dist-only `npm pack` surface). `just sdk-check` compile-checks all five (own CI job);
-  `just test-sandbox-sdks` runs live sandbox smokes for all five (TS/Py/Go/Java/C#). Speakeasy/Fern remain an option for
+  `just test-sandbox-sdks` runs live sandbox smokes for all five (TS/Py/Go/Java/C#). The C#
+  auth suite additionally runs under **Mono** against the net472-resolved `netstandard2.0`
+  asset (`just sdk-test-csharp-netstandard`, its own `csharp-netstandard` CI job, #61) so the
+  `#if NETSTANDARD2_0` store/transport branches and Polyfills execute on a runtime that loads
+  them — not just compile (TESTING rule 6); a `BuildInfoTests` marker fails the leg if it ever
+  loads the wrong asset. Speakeasy/Fern remain an option for
   companion codegen later.
 - **DO NOT hand-write any transport/HTTP client in any language.** Generate it and depend
   on it.
