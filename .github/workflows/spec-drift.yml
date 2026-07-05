@@ -53,8 +53,9 @@ jobs:
           existing="$(gh issue list --label spec-drift --state open --json number --jq '.[0].number // empty')"
           if [ -z "$existing" ]; then
             gh issue create --title "Oura OpenAPI spec drift detected" --label spec-drift --body-file spec-drift-report.md
-          elif [ "$(gh issue view "$existing" --json body --jq .body)" = "$(cat spec-drift-report.md)" ]; then
-            # Same drift as last week — don't spam a duplicate comment; the open issue already tracks it.
+          elif [ "$(gh issue view "$existing" --json body --jq .body | tr -d '\r')" = "$(tr -d '\r' < spec-drift-report.md)" ]; then
+            # Same drift as last week — don't spam a duplicate comment; the open issue already
+            # tracks it. Strip CR so GitHub's stored CRLF body compares equal to the LF report.
             echo "drift unchanged since open issue #$existing — no comment."
           else
             # The drift changed (e.g. a further version appeared): comment and refresh the body.
