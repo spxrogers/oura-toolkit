@@ -134,6 +134,26 @@ piped (`cut`/`awk`-safe), pretty JSON with `--json`. Exit codes are a documented
 contract (`0` ok, `1` runtime, `2` usage, `4` auth needed) — details in
 [docs/cli-contract.md](docs/cli-contract.md).
 
+### Raw API access
+
+Need an endpoint the curated commands don't cover? `oura api` is an authenticated
+passthrough (like `gh api`): it attaches your stored token and prints the raw JSON
+response to stdout.
+
+```sh
+oura api /v2/usercollection/personal_info          # GET (default)
+oura api /v2/usercollection/daily_sleep --paginate # follow next_token, aggregate {"data":[…]}
+oura api -f start_date=2026-06-01 /v2/usercollection/daily_sleep   # -f → query params on a GET
+oura api -X POST -f event_type=create /v2/webhook/subscription     # -f → JSON body on other methods
+echo '{"event_type":"create"}' | oura api -X POST /v2/webhook/subscription  # raw body on stdin
+```
+
+`-X`/`--method` sets the method (default GET); `-f`/`--field key=value` is repeatable and
+becomes query params for GET/HEAD/DELETE or a JSON body object otherwise; a request body can
+also be piped on stdin. `--paginate` follows `next_token` to the end and emits a single
+`{"data":[…]}`. The response is printed unchanged, so pipe it into `jq`. A non-2xx response
+is a runtime error (exit 1) with the HTTP status and body on stderr.
+
 ### Shell completions and man page
 
 ```sh
