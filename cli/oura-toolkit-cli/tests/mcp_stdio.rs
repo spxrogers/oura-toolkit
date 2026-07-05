@@ -84,12 +84,12 @@ fn stdio_speaks_only_json_rpc_and_shuts_down_on_eof() {
     // calls, never the handshake).
     let init = initialize_response.expect("initialize response");
     assert_eq!(init["result"]["serverInfo"]["name"], "oura-toolkit");
+    // #43: instructions name the FULL out-of-band path (setup first, then login) to match the
+    // per-tool auth error and the plugin skills.
+    let instructions = init["result"]["instructions"].as_str().unwrap_or_default();
     assert!(
-        init["result"]["instructions"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("oura auth login"),
-        "instructions name the out-of-band auth flow"
+        instructions.contains("oura auth login") && instructions.contains("oura auth setup"),
+        "instructions name the full out-of-band auth path (setup + login): {instructions:?}"
     );
 
     let tools = tools_response.expect("tools/list response");

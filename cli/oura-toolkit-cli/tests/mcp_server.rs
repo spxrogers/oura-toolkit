@@ -69,12 +69,13 @@ async fn initialize_succeeds_without_tokens_and_lists_the_8_described_tools() {
 
     let info = client.peer_info().expect("initialize handshake completed");
     assert_eq!(info.server_info.name, "oura-toolkit");
+    // #43: the server instructions must name the SAME remediation as the per-tool auth error
+    // and the plugin skills — `oura auth setup` first (never-registered), then `oura auth
+    // login`. Pinning both catches a future drift back to a login-only instruction.
+    let instructions = info.instructions.as_deref().unwrap_or_default();
     assert!(
-        info.instructions
-            .as_deref()
-            .unwrap_or_default()
-            .contains("oura auth login"),
-        "instructions must name the out-of-band auth flow"
+        instructions.contains("oura auth login") && instructions.contains("oura auth setup"),
+        "instructions must name the full out-of-band auth path (setup + login): {instructions:?}"
     );
 
     let mut tools = client.list_all_tools().await.unwrap();
