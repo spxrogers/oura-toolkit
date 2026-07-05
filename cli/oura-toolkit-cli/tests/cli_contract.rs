@@ -33,6 +33,53 @@ fn login_without_credentials_exits_4_with_hint_on_stderr() {
 }
 
 #[test]
+fn auth_setup_walkthrough_and_prompt_go_to_stderr_not_stdout() {
+    // #37: interactive auth prose must obey the stream contract (docs/cli-contract.md →
+    // Streams: prose/prompts → stderr, stdout is results-only). It historically went to
+    // stdout via `println!`. `auth setup` prints its walkthrough, then blocks on the
+    // credential prompt; assert_cmd gives the child an empty stdin, so the prompt read hits
+    // EOF and the command exits 1. stdout MUST stay empty; the guidance AND the prompt label
+    // MUST land on stderr. `--port 0` binds an ephemeral loopback port so the listener never
+    // collides with a real 8788.
+    //
+    // This reaches only the PRE-credential prose (EOF stops at the Client ID prompt); the
+    // post-credential lines need a full OAuth callback + token exchange, which isn't
+    // hermetic. `auth_module_never_writes_prose_to_stdout` (below) guards every site,
+    // including those, at the source level. Break-verify: turn the header `guide(...)` back
+    // into `println!` and the stdout-empty assertion fails.
+    let (mut cmd, _dir) = oura();
+    cmd.args(["auth", "setup", "--port", "0"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Register your Oura OAuth application",
+        ))
+        .stderr(predicate::str::contains("Client ID:"));
+}
+
+#[test]
+fn auth_module_never_writes_prose_to_stdout() {
+    // #37 guard for the prose sites the binary test above cannot reach without a full OAuth
+    // callback + exchange (the post-credential "✓ Credentials saved" / "Continuing to
+    // login…" / "Opening your browser…" / "✓ Done" lines). The auth module must NEVER write
+    // to stdout: command results are RETURNED and emitted by main.rs via contract::emit;
+    // everything the module prints itself is human-facing → stderr (guide()/contract::inform/
+    // eprintln!). Mechanized like the repo's other tripwires (mcp tool names, README claims).
+    //
+    // Scrub the stderr `eprintln!(`/`eprint!(` macros first — "println!(" is a substring of
+    // "eprintln!(" — then any surviving `println!(`/`print!(` is a real stdout write. Break-
+    // verify: add `println!("x");` to auth.rs → this fails; an `eprintln!` alone does not.
+    let src = include_str!("../src/auth.rs");
+    let scrubbed = src.replace("eprintln!(", "«e»").replace("eprint!(", "«e»");
+    assert!(
+        !scrubbed.contains("println!(") && !scrubbed.contains("print!("),
+        "auth.rs writes prose to stdout — route it through guide()/contract::inform/eprintln! \
+         so stdout stays results-only (docs/cli-contract.md → Streams)"
+    );
+}
+
+#[test]
 fn data_command_without_tokens_exits_4_with_login_hint() {
     // The everyday failure mode (#9): a data command before `oura auth login`. The typed
     // NotAuthenticated must cross the process boundary as exit 4 + the login hint, with
