@@ -4,7 +4,7 @@
 //! real modules). Exit codes, stream discipline, and error style are a documented
 //! contract — see `docs/cli-contract.md` and the `contract` module (#21).
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use oura_toolkit_cli::{api, auth, commands, contract, output};
 
 /// Oura Ring toolkit — CLI + MCP server for the Oura API v2.
@@ -72,6 +72,14 @@ enum Command {
     // A subcommand, not a `--mcp` flag: modes and modifiers don't mix, and clap makes the
     // nonsense states unrepresentable. Decided 2026-07-02 (#21).
     Mcp,
+    /// Print a shell completion script to stdout (bash, zsh, fish, powershell, elvish).
+    Completion {
+        /// Shell to generate the completion script for.
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
+    /// Print the `oura` man page (roff) to stdout.
+    Man,
 }
 
 #[derive(Subcommand)]
@@ -198,6 +206,25 @@ async fn run() -> anyhow::Result<()> {
             // the first tool call reports the structured auth error (CLAUDE.md → MCP).
             oura_toolkit_cli::mcp::serve(oura_toolkit_auth::TokenManager::load()?).await
         }
+        // Pure code generators: no auth, no network. The script/man page IS the result, so it
+        // goes to stdout through the same broken-pipe-tolerant path as every other result
+        // (contract → Streams). Generate into a buffer first so a closed stdout is a clean
+        // exit, not a panic inside clap_complete.
+        Some(Command::Completion { shell }) => {
+            let mut cmd = Cli::command();
+            let mut buf = Vec::new();
+            clap_complete::generate(shell, &mut cmd, "oura", &mut buf);
+            contract::emit(&String::from_utf8(buf).expect("completion scripts are valid UTF-8"))?;
+            Ok(())
+        }
+        Some(Command::Man) => {
+            let mut buf = Vec::new();
+            clap_mangen::Man::new(Cli::command())
+                .render(&mut buf)
+                .expect("rendering a man page to an in-memory buffer cannot fail");
+            contract::emit(&String::from_utf8(buf).expect("man pages are valid UTF-8"))?;
+            Ok(())
+        }
         None => {
             // Reachable: `arg_required_else_help` only fires with ZERO args, so a lone
             // global flag (`oura --json`) parses to no command and lands here. It's a
@@ -205,7 +232,6 @@ async fn run() -> anyhow::Result<()> {
             // exit 2 like clap's own usage errors. Best-effort write, like
             // `contract::report`: a closed stderr must not turn a usage error into a
             // panic — the exit code is the machine-readable part.
-            use clap::CommandFactory;
             use std::io::Write as _;
             let _ = writeln!(std::io::stderr(), "{}", Cli::command().render_help());
             std::process::exit(2);

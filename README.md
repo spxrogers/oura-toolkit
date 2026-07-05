@@ -117,6 +117,16 @@ piped (`cut`/`awk`-safe), pretty JSON with `--json`. Exit codes are a documented
 contract (`0` ok, `1` runtime, `2` usage, `4` auth needed) — details in
 [docs/cli-contract.md](docs/cli-contract.md).
 
+### Shell completions and man page
+
+```sh
+oura completion zsh > ~/.zfunc/_oura    # also: bash, fish, powershell, elvish
+oura man > oura.1                        # roff man page
+```
+
+Both are pure generators (no auth, no network) that write to stdout — redirect them
+wherever your shell or `man` expects. An unknown shell is a usage error (exit 2).
+
 ## MCP server (AI assistants)
 
 ```sh

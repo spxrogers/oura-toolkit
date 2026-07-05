@@ -151,9 +151,12 @@ fn code_snippets(markdown: &str) -> Vec<String> {
 /// be documented. Adding a ninth data command without touching the README fails here.
 #[test]
 fn readme_command_list_matches_the_binary() {
-    let full = help_subcommands(&oura_stdout(&["--help"]), 10);
+    let full = help_subcommands(&oura_stdout(&["--help"]), 12);
     let mut data = full.clone();
-    for meta in ["auth", "mcp", "help"] {
+    // Utility/meta commands (not data over your Oura account) are stripped so only the data
+    // commands are held to the README's data-command list. `completion`/`man` are code
+    // generators (#27), like `mcp` is a mode and `auth` is its own surface.
+    for meta in ["auth", "mcp", "help", "completion", "man"] {
         assert!(
             data.remove(meta),
             "`oura --help` no longer lists the {meta:?} subcommand — parser or CLI broken?"
@@ -446,4 +449,44 @@ fn readme_mcp_tool_names_are_real() {
         checked >= 2,
         "suspiciously few get_* references in the README ({checked}) — tokenizer broken?"
     );
+}
+
+/// The completion shells the docs advertise ⟷ the value-enum the binary actually accepts (#27).
+/// clap derives the accepted set from `clap_complete::Shell`; if it grows or shrinks, the README
+/// and cli-contract must move with it (DOCS STAY TRUE TO THE CODE, rule 4). Parsed from the
+/// binary's own `[possible values: …]` so the docs are pinned to source, not a hand-copied list.
+#[test]
+fn documented_completion_shells_match_the_binary() {
+    let help = oura_stdout(&["completion", "--help"]);
+    let list = help
+        .split("[possible values:")
+        .nth(1)
+        .expect(
+            "`oura completion --help` lost its `[possible values: …]` list — clap format changed?",
+        )
+        .split(']')
+        .next()
+        .unwrap();
+    let shells: BTreeSet<String> = list
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    assert!(
+        shells.len() >= 4,
+        "parsed only {} completion shells from the binary ({shells:?}) — help format changed?",
+        shells.len()
+    );
+
+    let root = repo_root();
+    for doc in ["README.md", "docs/cli-contract.md"] {
+        let text = read(&root.join(doc));
+        for shell in &shells {
+            assert!(
+                text.contains(shell.as_str()),
+                "{doc} does not mention the completion shell {shell:?} that `oura completion` \
+                 accepts — a shell landed undocumented (DOCS STAY TRUE TO THE CODE)"
+            );
+        }
+    }
 }

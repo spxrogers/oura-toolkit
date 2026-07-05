@@ -38,6 +38,15 @@ fi
   head -1`) is **success** (exit 0, nothing on stderr): the consumer got everything it
   wanted. Never a panic/backtrace.
 
+## Shell completions and man page
+
+- `oura completion <shell>` (`bash`, `zsh`, `fish`, `powershell`, `elvish`) prints a
+  completion script to **stdout**; `oura man` prints the roff man page to **stdout**. Both
+  are the result, so they follow the stream rules above (redirect stdout to a file).
+- Pure generators: no auth, no network, no config read — safe to run anywhere.
+- Success is exit `0`; an unknown shell is a usage error (exit `2`, message on stderr,
+  stdout empty), like any other bad argument value.
+
 ## Output formats (data commands and `auth status`)
 
 - **TTY default:** human-readable aligned table.
