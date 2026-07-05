@@ -68,6 +68,27 @@ enum Command {
     Workouts(RangeArgs),
     /// Your Oura profile (age, height, weight, …).
     PersonalInfo,
+    /// Authenticated passthrough to an arbitrary Oura API endpoint (like `gh api`).
+    ///
+    /// GET by default; the stored auth is attached and the raw JSON response is printed to
+    /// stdout. `-f key=value` adds query params (GET/HEAD/DELETE) or JSON body fields (other
+    /// methods); a request body can also be piped on stdin. `--paginate` follows `next_token`.
+    Api {
+        /// Request path, resolved against the API base URL
+        /// (e.g. /v2/usercollection/personal_info). A leading `/` is optional.
+        path: String,
+        /// HTTP method (default GET).
+        #[arg(short = 'X', long, default_value = "GET")]
+        method: String,
+        /// Add a field (key=value). Query param for GET/HEAD/DELETE, else a JSON body field.
+        /// Repeatable.
+        #[arg(short = 'f', long = "field")]
+        field: Vec<String>,
+        /// Follow `next_token` pagination and aggregate every page's `data` array into one
+        /// `{"data":[…]}` object (GET only).
+        #[arg(long)]
+        paginate: bool,
+    },
     /// Run as a STDIO MCP server (8 read-only Oura data tools).
     // A subcommand, not a `--mcp` flag: modes and modifiers don't mix, and clap makes the
     // nonsense states unrepresentable. Decided 2026-07-02 (#21).
@@ -116,6 +137,25 @@ enum AuthAction {
     Refresh,
     /// Print a valid access token (refreshing if needed) to stdout — and nothing else.
     Token,
+}
+
+/// A request body piped on stdin for `oura api`, or `None` when stdin is a TTY or empty.
+///
+/// TTY detection (`IsTerminal`) keeps an interactive invocation from blocking on a read: a
+/// human running `oura api /path` supplies no body, so we must not wait for EOF. A non-TTY
+/// but empty stream (`< /dev/null`) is also `None`, so it never fabricates an empty body.
+fn read_stdin_body() -> anyhow::Result<Option<String>> {
+    use std::io::{IsTerminal as _, Read as _};
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return Ok(None);
+    }
+    let mut buf = String::new();
+    stdin
+        .lock()
+        .read_to_string(&mut buf)
+        .map_err(|e| anyhow::anyhow!(e).context("reading the request body from stdin"))?;
+    Ok((!buf.is_empty()).then_some(buf))
 }
 
 #[tokio::main]
@@ -211,6 +251,24 @@ async fn run() -> anyhow::Result<()> {
         }
         Some(Command::PersonalInfo) => {
             contract::emit(&commands::personal_info(&data_ctx()?).await?)?;
+            Ok(())
+        }
+        Some(Command::Api {
+            path,
+            method,
+            field,
+            paginate,
+        }) => {
+            // The authenticated escape hatch (#19): same auth layer + base URL as the data
+            // commands, but a raw request to an arbitrary path. A request body may be piped
+            // on stdin (used only when stdin is a non-empty non-TTY stream).
+            let stdin_body = read_stdin_body()?;
+            let manager = api::manager_from_env(env)?;
+            let out = oura_toolkit_cli::passthrough::run(
+                &manager, &base_url, &path, &method, &field, stdin_body, paginate,
+            )
+            .await?;
+            contract::emit(&out)?;
             Ok(())
         }
         Some(Command::Mcp) => {

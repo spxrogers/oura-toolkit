@@ -97,6 +97,42 @@ fi
   `curl -H "Authorization: Bearer $(oura auth token)" …` composes cleanly. When
   unauthenticated: exit `4`, stdout stays empty.
 
+## Raw API passthrough (`oura api`)
+
+`oura api <path>` issues an authenticated request to an arbitrary Oura endpoint (like
+`gh api`) and prints the raw JSON response — the escape hatch for endpoints the curated
+data commands don't cover.
+
+- **Path** — positional and required, resolved against the data-plane base URL
+  (`OURA_API_BASE_URL`, default `https://api.ouraring.com`): the full URL is
+  `{base_url}{path}`, with a leading `/` prepended when omitted. So
+  `oura api /v2/usercollection/personal_info` hits
+  `https://api.ouraring.com/v2/usercollection/personal_info`.
+- **`-X` / `--method`** — the HTTP method (default `GET`; uppercased).
+- **`-f` / `--field key=value`** — repeatable. For `GET`/`HEAD`/`DELETE` the fields are
+  **query params**; for other methods they build a `{"key":"value"}` **JSON body**. A field
+  without `=` is a usage error (exit `2`).
+- **stdin body** — when stdin is not a TTY and has bytes, it is sent as the raw request body
+  with `Content-Type: application/json`. Supplying BOTH a stdin body AND `-f` body fields (on
+  a body method) is a usage error (exit `2`).
+- **`--paginate`** — follows Oura's `next_token` cursor to completion, aggregating every
+  page's `data` array into a single `{"data":[…]}` object (pretty-printed). **GET only** — a
+  non-GET `--paginate` is a usage error (exit `2`); a first response with no `next_token`
+  degrades to that one page.
+- **Auth** — attaches only your **Bearer** token (the stored token, or `OURA_ACCESS_TOKEN`):
+  `Authorization: Bearer …`, a `401` triggers one silent refresh-and-retry, and a second `401`
+  exits `4` with the login hint (a rejected `OURA_ACCESS_TOKEN` exits `4` with the
+  export-a-fresh-one hint). So `oura api` reaches the endpoints that authenticate with a
+  Bearer — the read (GET) API. Oura's write endpoints (webhook subscriptions) use a separate
+  `x-client-id`/`x-client-secret` scheme that `oura api` does not send; the `-X`/`-f`-body/
+  stdin support exists for `gh api` parity and any future Bearer-authed write endpoint.
+- **Output** — the raw JSON response body goes to **stdout** unchanged (machine-consumable,
+  not sanitized), so it pipes cleanly into `jq`. A non-2xx response (other than the
+  `401`-retry) is a runtime error (exit `1`): the error line names the path and HTTP status,
+  and the response body is echoed to **stderr** (sanitized — server-controlled text bound for
+  a terminal). A `429` is surfaced as-is; unlike the typed data commands, `oura api` does not
+  do the bounded rate-limit wait.
+
 ## Environment
 
 Overrides for headless/CI/container use. Read once at startup; empty or whitespace-only

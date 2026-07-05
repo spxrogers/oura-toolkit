@@ -155,8 +155,9 @@ fn readme_command_list_matches_the_binary() {
     let mut data = full.clone();
     // Utility/meta commands (not data over your Oura account) are stripped so only the data
     // commands are held to the README's data-command list. `completion`/`man` are code
-    // generators (#27), like `mcp` is a mode and `auth` is its own surface.
-    for meta in ["auth", "mcp", "help", "completion", "man"] {
+    // generators (#27), like `mcp` is a mode and `auth` is its own surface; `api` (#19) is
+    // the raw authenticated escape hatch, not a curated data command.
+    for meta in ["auth", "mcp", "help", "completion", "man", "api"] {
         assert!(
             data.remove(meta),
             "`oura --help` no longer lists the {meta:?} subcommand — parser or CLI broken?"
