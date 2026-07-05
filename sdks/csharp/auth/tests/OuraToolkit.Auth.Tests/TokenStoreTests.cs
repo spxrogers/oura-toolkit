@@ -170,13 +170,15 @@ public class TokenStoreTests
 
     // The store must work under a NON-ASCII directory (#72): a store dir whose on-disk name is
     // non-ASCII exercises PosixInterop's libc path marshalling (open/rename/chmod) against the
-    // .NET BCL's own path APIs (Directory.CreateDirectory, File.ReadAllBytes). The libc DllImports
-    // use CharSet.Ansi, which marshals with the platform-narrow encoding — the SAME one the BCL
-    // uses — so the two agree and the record rename(2) writes is exactly the one LoadTokens reads
-    // back. (Verified to hold on CoreCLR, Mono, AND Mono under MONO_EXTERNAL_ENCODINGS=ISO-8859-1;
-    // forcing UTF-8 in the interop would instead RISK diverging from Mono's own BCL path encoding.)
-    // Break-verify: make PosixInterop encode a different path than the BCL (e.g. append a byte in
-    // its path helper) and the round-trip below fails — LoadTokens returns null / the wrong record.
+    // .NET BCL's own path APIs (Directory.CreateDirectory, File.ReadAllBytes) — the store always
+    // creates AND reads its own directory in ONE process, so what matters is that the two agree.
+    // They do: CharSet.Ansi marshals with the platform-narrow encoding the BCL also uses, so
+    // rename(2)'s output is exactly what LoadTokens reads. This runs on the net472/Mono leg (where
+    // the libc path actually executes) as well as the modern legs. See PosixInterop's DllImport
+    // remarks for why forcing UTF-8 in the interop would be a REGRESSION, not a fix.
+    // Break-verify (performed): flip the `open` DllImport to CharSet.Unicode so the interop encodes
+    // the path differently than the BCL — SaveTokens then can't find the dir and the round-trip
+    // below fails; restore and it passes.
     [Fact]
     public void StoreRoundTripsUnderANonAsciiDirectory()
     {
@@ -188,22 +190,34 @@ public class TokenStoreTests
         var dir = TestHost.CreateTempDir("oura-café-日本-");
         try
         {
+            // Guard the test's own premise: the leaf must be genuinely multibyte (more UTF-8 bytes
+            // than chars), or a locale change that ASCII-collapsed the name would make everything
+            // below pass while exercising nothing.
+            var leaf = Path.GetFileName(dir);
+            Assert.True(
+                System.Text.Encoding.UTF8.GetByteCount(leaf) > leaf.Length,
+                $"test directory leaf '{leaf}' is not multibyte — it no longer exercises #72");
+
             var store = new TokenStore(dir);
             store.SaveCredentials(Fixtures.Credentials);
             store.SaveTokens(Fixtures.SampleTokens);
 
+            // Load returned the SAME distinctive records Save wrote — so the libc write
+            // (open/rename) and the BCL read (File.ReadAllBytes) resolved the identical non-ASCII
+            // path. A default-filled record can't satisfy these (the fields are `required`), and a
+            // mis-resolved path makes LoadTokens return null → the asserts fail.
             var creds = store.LoadCredentials();
             var tokens = store.LoadTokens();
-            Assert.NotNull(creds);
-            Assert.NotNull(tokens);
-            // Load returned the SAME record Save wrote — so the libc write and the BCL read
-            // resolved the identical non-ASCII path.
             Assert.Equal(Fixtures.Credentials.ClientId, creds!.ClientId);
             Assert.Equal(Fixtures.SampleTokens.AccessToken, tokens!.AccessToken);
             Assert.Equal(Fixtures.SampleTokens.RefreshToken, tokens.RefreshToken);
-            // The record really lives under the non-ASCII directory and is still exactly 0600.
-            Assert.StartsWith(dir, store.TokensPath);
+
+            // Perms still land exactly under the non-ASCII path: the file via open(2)'s create
+            // mode, and the directory via EnsureDirectory's chmod(2) — the dir is the one place a
+            // silently mis-resolved path would NOT throw (TryChmod ignores its result), so assert
+            // it explicitly.
             Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(store.TokensPath));
+            Assert.Equal(Convert.ToInt32("700", 8), TestHost.UnixPermBits(store.Directory));
         }
         finally
         {

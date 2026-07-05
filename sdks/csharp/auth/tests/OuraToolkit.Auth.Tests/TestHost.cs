@@ -39,8 +39,9 @@ internal static class TestHost
     {
 #if NET472
         // Read the mode via `stat`. GNU coreutils (Linux) prints octal permission bits with
-        // `-c %a`; BSD/macOS stat uses `-f %Lp` (#71). The net472/Mono leg runs only on Linux CI
-        // today (`just sdk-test-csharp-netstandard`), so the Linux branch is the exercised one;
+        // `-c %a`; BSD/macOS stat uses `-f %OLp` (`O`=octal, `L`=low/permission bits) (#71).
+        // The net472/Mono leg runs only on Linux CI today (`just sdk-test-csharp-netstandard`),
+        // so the Linux branch is the exercised one;
         // the BSD branch is provided for correctness-of-intent but is UNTESTED here (no non-Linux
         // Mono runner exists). Detect the BSD family the same way PosixInterop does.
         var isBsd =
@@ -48,7 +49,7 @@ internal static class TestHost
             || RuntimeInformation.IsOSPlatform(OSPlatform.Create("FREEBSD"))
             || RuntimeInformation.IsOSPlatform(OSPlatform.Create("NETBSD"))
             || RuntimeInformation.IsOSPlatform(OSPlatform.Create("OPENBSD"));
-        var statArgs = isBsd ? $"-f %Lp \"{path}\"" : $"-c %a \"{path}\"";
+        var statArgs = isBsd ? $"-f %OLp \"{path}\"" : $"-c %a \"{path}\"";
         var psi = new ProcessStartInfo("stat")
         {
             Arguments = statArgs,
