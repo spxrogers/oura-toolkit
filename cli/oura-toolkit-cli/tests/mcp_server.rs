@@ -241,6 +241,25 @@ async fn tool_calls_auto_paginate_and_return_generated_model_json() {
         "generated-model fields survive to JSON"
     );
 
+    // #40: the same three aggregated pages are available as structured_content, enveloped
+    // under `data` (MCP requires an object) — same items, same order as the text block.
+    let structured = result
+        .structured_content
+        .as_ref()
+        .expect("structured_content present on a successful tool call");
+    let sdays: Vec<&str> = structured["data"]
+        .as_array()
+        .expect("structured `data` array")
+        .iter()
+        .map(|d| d["day"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        sdays,
+        ["2026-06-26", "2026-06-27", "2026-06-28"],
+        "structured_content mirrors the aggregated pages in order"
+    );
+    assert_eq!(structured["data"][0]["score"], 80);
+
     client.cancel().await.unwrap();
 }
 
@@ -386,6 +405,29 @@ async fn concurrent_tool_calls_share_the_manager_safely() {
     let info_result = info_result.unwrap();
     assert_eq!(info_result.is_error, Some(false));
     assert!(text_of(&info_result).contains("user@example.com"));
+
+    // #40: structured_content covers BOTH result shapes. A collection is enveloped under
+    // `data` (MCP requires an object); a single object (personal info) passes through as-is.
+    let sleep_struct = sleep_result
+        .structured_content
+        .as_ref()
+        .expect("collection carries structured_content");
+    assert_eq!(
+        sleep_struct["data"][0]["day"], "2026-07-01",
+        "a collection is enveloped under `data`: {sleep_struct}"
+    );
+    let info_struct = info_result
+        .structured_content
+        .as_ref()
+        .expect("personal_info carries structured_content");
+    assert_eq!(
+        info_struct["email"], "user@example.com",
+        "an object result is NOT double-wrapped — its fields are top-level: {info_struct}"
+    );
+    assert!(
+        info_struct.get("data").is_none(),
+        "object results must not be enveloped under `data`: {info_struct}"
+    );
 
     client.cancel().await.unwrap();
 }
