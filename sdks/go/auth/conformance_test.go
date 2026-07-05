@@ -95,13 +95,15 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 			var calls atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
-				w.WriteHeader(http.StatusOK)
 				if tc.RawBody != nil {
-					// raw_body is replayed VERBATIM (deliberately not JSON).
+					// raw_body is replayed VERBATIM (deliberately not JSON, so no
+					// content-type claim either).
+					w.WriteHeader(http.StatusOK)
 					_, _ = w.Write([]byte(*tc.RawBody))
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write(tc.Body)
 			}))
 			defer srv.Close()
