@@ -35,6 +35,13 @@ version := `sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n1`
 # `cargo fmt` is stable, so a bump should never churn the committed client); commit the bump alone.
 nightly_rustfmt := "nightly-2026-06-15"
 
+# Pinned cargo-progenitor — the Rust code GENERATOR (#50). Pinned alongside nightly_rustfmt so a
+# floating `latest` can't change generated output and fail `just gen-check` for a reason the
+# rustfmt pin can't prevent (matches the CLAUDE.md bootstrap version matrix). SINGLE SOURCE:
+# `setup`, `install-progenitor`, and CI's gen-drift job read this. Bump: change here, re-run
+# `just install-progenitor && just gen-check` (byte-identical), and bump the workflow cache key.
+progenitor_version := "0.14.0"
+
 # openapi-generator, doubly pinned: the npm wrapper by version here, the generator jar by
 # codegen/openapitools.json (7.14.0). Breadth-SDK codegen only; Rust stays on progenitor.
 oag := "npx -y @openapitools/openapi-generator-cli@2.39.1 --openapitools codegen/openapitools.json"
@@ -64,10 +71,8 @@ default:
 
 # Install/verify toolchains + codegen deps.
 [group('setup')]
-setup: install-nightly-rustfmt
+setup: install-nightly-rustfmt install-progenitor
     rustup component add rustfmt clippy llvm-tools-preview
-    # Rust codegen: progenitor CLI (the nightly rustfmt it formats through is the dep above).
-    cargo install cargo-progenitor --locked
     # Coverage floor enforcement (`just coverage`).
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
@@ -87,6 +92,13 @@ setup: install-nightly-rustfmt
 [group('setup')]
 install-nightly-rustfmt:
     rustup toolchain install {{nightly_rustfmt}} --profile minimal --component rustfmt
+
+# Install the pinned progenitor CLI (`progenitor_version`). Its own recipe so CI's gen-drift job
+# installs the SAME version without duplicating it in YAML (#50). `--force` so a bump re-pins even
+# when an older progenitor is already on PATH (CI guards this call with `command -v` for caching).
+[group('setup')]
+install-progenitor:
+    cargo install cargo-progenitor --version {{progenitor_version}} --locked --force
 
 # ---------------------------------------------------------------------------------------------
 # Spec (source of truth)

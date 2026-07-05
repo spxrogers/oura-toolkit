@@ -1,9 +1,10 @@
 # CI for oura-toolkit (#13).
 #
 # The test job invokes `just ci` and NOTHING else — every build/test/lint step lives in the
-# root justfile, never duplicated in this YAML (see CLAUDE.md → TASK RUNNER). The drift job
-# likewise only runs just recipes; the only raw commands in this file install toolchains,
-# which issue #13 explicitly carves out.
+# root justfile, never duplicated in this YAML (see CLAUDE.md → TASK RUNNER). The other jobs
+# likewise only run just recipes; the only raw commands in this file install toolchains, which
+# issue #13 explicitly carves out (and the pinned codegen toolchains route even those through
+# `just install-nightly-rustfmt` / `just install-progenitor` so their versions stay single-sourced).
 #
 # Matrix covers ubuntu/macos/windows per the #13 addendum: the CLI ships installers for all
 # three OSes (#11), so all three must compile and pass tests — including the cfg(not(unix))
@@ -86,7 +87,7 @@ jobs:
         # cargo-progenitor binary from being rebuilt on every run; bump the cache key to force it.
         run: |
           just install-nightly-rustfmt
-          command -v cargo-progenitor >/dev/null || cargo install cargo-progenitor --locked
+          command -v cargo-progenitor >/dev/null || just install-progenitor
       - run: just gen-check
 
   # The generated breadth clients must actually COMPILE (release gate: a client that
