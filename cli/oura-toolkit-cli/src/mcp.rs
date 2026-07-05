@@ -327,7 +327,7 @@ mod tests {
     /// exit-2 usage error).
     #[test]
     fn date_param_makes_a_single_day_window_and_conflicts_with_a_range() {
-        use super::DateRangeParams;
+        use super::{DateRangeParams, ErrorData};
         let single = DateRangeParams {
             date: Some("yesterday".into()),
             start: None,
@@ -348,6 +348,13 @@ mod tests {
             err.message.contains("cannot be combined"),
             "invalid_params must name the conflict: {}",
             err.message
+        );
+        // The CODE, not just the message: a wrong impl returning internal_error with the same
+        // text must not pass — the conflict is the caller's fault (invalid_params).
+        assert_eq!(
+            err.code,
+            ErrorData::invalid_params("x", None).code,
+            "a date/range conflict must classify as invalid_params"
         );
     }
 
