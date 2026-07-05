@@ -191,8 +191,8 @@ public class TokenStoreTests
         try
         {
             // Guard the test's own premise: the leaf must be genuinely multibyte (more UTF-8 bytes
-            // than chars), or a locale change that ASCII-collapsed the name would make everything
-            // below pass while exercising nothing.
+            // than chars). A tripwire — if the CreateTempDir prefix were ever edited to ASCII the
+            // round-trip would still pass while exercising none of #72; this fails loudly instead.
             var leaf = Path.GetFileName(dir);
             Assert.True(
                 System.Text.Encoding.UTF8.GetByteCount(leaf) > leaf.Length,
