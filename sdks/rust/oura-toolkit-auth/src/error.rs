@@ -32,6 +32,13 @@ pub enum AuthError {
     #[error("token endpoint returned no refresh_token on the initial exchange")]
     MissingRefreshToken,
 
+    /// The token endpoint answered 2xx but the payload is unusable (empty `access_token`,
+    /// non-positive `expires_in`) — the hostile-but-2xx family (#58). Persisting it would
+    /// install a blank/expired Bearer AND burn the still-valid rotated refresh token, so it
+    /// is rejected up front and the store stays untouched.
+    #[error("token endpoint returned an unusable success response: {0}")]
+    InvalidTokenResponse(&'static str),
+
     /// Tokens exist but the client credentials record is missing, so a refresh is impossible
     /// (confidential client: the token endpoint requires `client_id` + `client_secret`).
     /// Callers own the remediation hint (the CLI maps this to "run `oura auth setup`").
