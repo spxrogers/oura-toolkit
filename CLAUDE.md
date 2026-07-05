@@ -320,11 +320,12 @@ scope mapping in the spec — that lives in prose).
   the **file store stays canonical**. Two load-bearing reasons: (1) the Linux Secret Service
   backend needs a live D-Bus session + unlocked keyring daemon, which headless servers /
   containers / SSH / WSL lack — and `oura mcp` runs exactly there, so a keyring backend would
-  break the primary server deployment; (2) `keyring` has no `File::lock` equivalent, so it
-  can't provide the #22 cross-process rotation lock that Oura's rotate-and-invalidate refresh
-  requires (two processes would race and burn each other's refresh tokens). The file is the
-  only backend that is simultaneously invocation-independent, cross-process-lockable, and
-  dependency-free on headless hosts. Incremental at-rest hardening that KEEPS the file
+  break the primary server deployment; (2) it wouldn't even retire the filesystem dependency —
+  the #22 cross-process rotation lock (advisory `.lock`) and the atomic write-temp+rename that
+  makes a refresh crash-safe still need the store dir, and a `keyring` set isn't atomic across
+  the `credentials.json`+`tokens.json` pair, so keyring would add a SECOND secret store beside
+  the file rather than replace it. The file is the only backend that is simultaneously
+  invocation-independent, cross-process-lockable, and dependency-free on headless hosts. Incremental at-rest hardening that KEEPS the file
   (Windows DPAPI on the bytes; macOS Keychain as an opt-in layer) is tracked in **#78**.
 - **Two records** (split 2026-07-02, #23): `credentials.json` (`client_id`/`client_secret` —
   exists from `auth setup` onward; refresh is a confidential-client call needing the secret)
