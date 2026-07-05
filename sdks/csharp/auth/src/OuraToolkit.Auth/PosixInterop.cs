@@ -56,6 +56,13 @@ internal static class PosixInterop
 
     private static int O_EXCL => IsBsd ? 0x800 : 0x80;
 
+    // Interrupted syscall — errno 4 on Linux and the whole BSD/macOS lineage alike. write(2) and
+    // fsync(2) interrupted by a signal BEFORE any progress return -1/EINTR and must be retried
+    // (the in-box FileStream path retries this internally on Unix). close(2) is NOT retried on
+    // EINTR: POSIX leaves the fd state unspecified afterward, and on Linux the fd is already
+    // closed, so a retry could close an unrelated reused descriptor.
+    private const int EINTR = 4;
+
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi, BestFitMapping = false)]
     private static extern int open(string path, int flags, int mode);
 
@@ -107,10 +114,19 @@ internal static class PosixInterop
             var offset = 0;
             while (offset < data.Length)
             {
-                var n = (long)write(fd, IntPtr.Add(basePtr, offset), (IntPtr)(data.Length - offset));
+                // Retry a signal-interrupted write; any other error is fatal (errno captured
+                // immediately after the failing call, before any other P/Invoke can clobber it).
+                long n;
+                int errno;
+                do
+                {
+                    n = (long)write(fd, IntPtr.Add(basePtr, offset), (IntPtr)(data.Length - offset));
+                    errno = n < 0 ? Marshal.GetLastWin32Error() : 0;
+                }
+                while (n < 0 && errno == EINTR);
+
                 if (n < 0)
                 {
-                    var errno = Marshal.GetLastWin32Error();
                     throw new IOException($"write to '{path}' failed (errno {errno})");
                 }
 
@@ -124,11 +140,18 @@ internal static class PosixInterop
                 offset += (int)n;
             }
 
-            // Durability parity with the modern leg's Flush(flushToDisk: true).
-            if (fsync(fd) != 0)
+            // Durability parity with the modern leg's Flush(flushToDisk: true); retry EINTR.
+            int frc, ferrno;
+            do
             {
-                var errno = Marshal.GetLastWin32Error();
-                throw new IOException($"fsync of '{path}' failed (errno {errno})");
+                frc = fsync(fd);
+                ferrno = frc != 0 ? Marshal.GetLastWin32Error() : 0;
+            }
+            while (frc != 0 && ferrno == EINTR);
+
+            if (frc != 0)
+            {
+                throw new IOException($"fsync of '{path}' failed (errno {ferrno})");
             }
         }
         finally

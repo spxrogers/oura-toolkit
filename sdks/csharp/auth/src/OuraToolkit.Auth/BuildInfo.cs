@@ -8,6 +8,10 @@ namespace OuraToolkit.Auth;
 /// store/transport branches and Polyfills). A misconfigured leg that silently resolved the
 /// wrong asset would defeat its own purpose; <c>BuildInfoTests</c> pins this so it cannot.
 /// Internal — never part of the public surface (exposed to tests via InternalsVisibleTo).
+///
+/// An explicit per-TFM const, not reflection over the assembly's <c>TargetFrameworkAttribute</c>:
+/// the const is unambiguous, needs no runtime reflection, and reads the compile-time TFM the test
+/// wants to assert directly — so resist a "just reflect the TFM" refactor.
 /// </summary>
 internal static class BuildInfo
 {

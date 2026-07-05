@@ -38,6 +38,8 @@ internal static class TestHost
     public static int UnixPermBits(string path)
     {
 #if NET472
+        // `stat -c %a` is GNU-coreutils syntax (BSD/macOS stat would need `-f %Lp`). Fine because
+        // this leg runs only under Mono on Linux CI — see the recipe's mono requirement (#61).
         var psi = new ProcessStartInfo("stat")
         {
             Arguments = $"-c %a \"{path}\"",

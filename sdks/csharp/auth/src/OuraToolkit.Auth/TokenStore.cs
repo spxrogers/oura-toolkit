@@ -272,6 +272,8 @@ public sealed class TokenStore
 #if NETSTANDARD2_0
         if (IsPosix)
         {
+            // WriteNewExclusive0600 already created, wrote, AND fsync'd via the raw fd — the
+            // shared Write/Flush tail below is for the FileStream paths only; do not fall through.
             PosixInterop.WriteNewExclusive0600(temp, data);
             return;
         }
