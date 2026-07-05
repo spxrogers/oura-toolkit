@@ -23,6 +23,9 @@ import java.util.function.Function;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.type.LogicalType;
 
 /**
  * Persistent credential store at the fixed, invocation-independent per-platform path:
@@ -83,14 +86,27 @@ public final class TokenStore {
     private static final ConcurrentHashMap<String, Semaphore> JVM_LOCKS =
             new ConcurrentHashMap<>();
 
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            // Match serde's default: unknown fields are ignored, not fatal — a newer
-            // writer adding a field must not brick older readers of the shared store.
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-            // A JSON `null` for a primitive field (e.g. "expires_at": null) must be a typed
-            // store-format error, NOT silently coerced to 0L (which would masquerade as an
-            // already-expired token). serde rejects this; match it.
-            .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
+    private static final ObjectMapper MAPPER = storeMapper();
+
+    private static ObjectMapper storeMapper() {
+        ObjectMapper mapper = new ObjectMapper()
+                // Match serde's default: unknown fields are ignored, not fatal — a newer
+                // writer adding a field must not brick older readers of the shared store.
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                // A JSON `null` for a primitive field (e.g. "expires_at": null) must be a typed
+                // store-format error, NOT silently coerced to 0L (which would masquerade as an
+                // already-expired token). serde rejects this; match it.
+                .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
+        // A JSON number/boolean where a string field is expected (e.g. "client_id": 7)
+        // must be a typed store-format error, NOT silently coerced to "7" — serde rejects
+        // wrong-typed fields, and the shared store's wire format is serde's (conformance
+        // fixture #58, hostile_store_files/credentials_wrong_type_client_id).
+        mapper.coercionConfigFor(LogicalType.Textual)
+                .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail);
+        return mapper;
+    }
 
     private final Path dir;
 
