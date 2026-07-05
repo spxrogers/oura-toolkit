@@ -32,8 +32,17 @@ pub const API_BASE: &str = "https://api.ouraring.com";
 /// generated client's `/v2/...` paths never double up. Empty/whitespace is ignored.
 pub fn base_url_from_env(env: impl Fn(&str) -> Option<String>) -> String {
     match env("OURA_API_BASE_URL") {
-        Some(v) if !v.trim().is_empty() => v.trim().trim_end_matches('/').to_string(),
-        _ => API_BASE.to_string(),
+        Some(v) => {
+            // Trim whitespace AND trailing slashes; a degenerate `/` or `//` collapses to
+            // empty, which must fall back rather than send requests to a bare `/v2/...`.
+            let trimmed = v.trim().trim_end_matches('/');
+            if trimmed.is_empty() {
+                API_BASE.to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+        None => API_BASE.to_string(),
     }
 }
 
@@ -491,10 +500,15 @@ mod tests {
             "http://127.0.0.1:9",
             "trailing slash trimmed so /v2 paths don't double up"
         );
-        // Empty / whitespace / absent all fall back to the built-in host.
+        // Empty / whitespace / slash-only / absent all fall back to the built-in host.
         assert_eq!(
             base_url_from_env(env_of(&[("OURA_API_BASE_URL", "  ")])),
             API_BASE
+        );
+        assert_eq!(
+            base_url_from_env(env_of(&[("OURA_API_BASE_URL", "//")])),
+            API_BASE,
+            "a slash-only value must not collapse to an empty base_url"
         );
         assert_eq!(base_url_from_env(env_of(&[])), API_BASE);
     }

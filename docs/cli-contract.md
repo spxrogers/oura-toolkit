@@ -10,7 +10,7 @@ changes for users' scripts and require a deliberate decision.
 | `0` | success | data returned, auth flow completed |
 | `1` | runtime error | Oura API 5xx, network failure, I/O error, rate limited (429) after the bounded retry |
 | `2` | usage error | unknown flag/command, missing argument, bare `oura`, invalid flag values (malformed `--start`/`--end` date, inverted range) |
-| `4` | authentication required | no stored tokens/credentials, or a refresh rejected as invalid by the token endpoint (HTTP 400, e.g. `invalid_grant`) — an auth flow will fix it |
+| `4` | authentication required | no stored tokens/credentials, a refresh rejected by the token endpoint (HTTP 400, e.g. `invalid_grant`), or a rejected `OURA_ACCESS_TOKEN` — usually an auth flow fixes it; a rejected env token needs a fresh one |
 
 Scripting example (`oura auth login` is interactive, so an unattended script reports
 rather than retries; note `$?` is captured immediately — an `if !` wrapper would clobber
@@ -109,7 +109,9 @@ values are ignored (treated as unset).
   with a fresh token. NOT honored by the `oura auth` account commands (`status`/`token`/
   `refresh`/`logout`), which operate on the store itself.
 - **`OURA_API_BASE_URL`** — the data-plane base URL (default `https://api.ouraring.com`).
-  Point it at a proxy, an alternate Oura host, or a mock. A trailing slash is trimmed.
+  Point it at a proxy, an alternate Oura host, or a mock. A trailing slash is trimmed. Over
+  plain `http://` the Bearer token is sent in cleartext — use that only for a trusted local
+  proxy or mock, never a real network path.
 - **`NO_COLOR`** — disables ANSI color (same as `--no-color`).
 
 ## Error style

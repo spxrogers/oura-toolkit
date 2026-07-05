@@ -7,7 +7,7 @@
 //! | 0    | success |
 //! | 1    | runtime error (API failure, I/O, unexpected state) |
 //! | 2    | usage error (clap: unknown flag/command, missing args, bare `oura`) |
-//! | 4    | authentication required (no/expired credentials — an auth flow will fix it) |
+//! | 4    | authentication required (no/expired/rejected credentials — usually an auth flow fixes it; a rejected `OURA_ACCESS_TOKEN` needs a fresh token) |
 //!
 //! Stream discipline: results go to **stdout**; prose, progress, errors, and hints go to
 //! **stderr** (`oura mcp` is stricter still — stdout is the JSON-RPC transport). Error

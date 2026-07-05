@@ -75,9 +75,11 @@ impl TokenManager {
     ///
     /// Both records are independently optional because both partial states are legitimate:
     /// credentials-without-tokens is `auth setup` completed but no login yet (refresh-able
-    /// once tokens arrive), and tokens-without-credentials is a caller-supplied token (e.g.
-    /// a future `OURA_ACCESS_TOKEN` override, #20) that can be used until expiry but not
-    /// refreshed ([`AuthError::MissingClientCredentials`]).
+    /// once tokens arrive), and tokens-without-credentials is a caller-supplied token that can
+    /// be used until expiry but not refreshed ([`AuthError::MissingClientCredentials`]). (The
+    /// `OURA_ACCESS_TOKEN` override, #20, does NOT use this path — it goes through the
+    /// dedicated [`Self::from_access_token`], which reports [`AuthError::StaticTokenRejected`]
+    /// on a 401 rather than `MissingClientCredentials`.)
     ///
     /// Refresh additionally requires the token record to still EXIST on disk: the store is
     /// the cross-process source of truth, so in-memory tokens whose record was deleted (a

@@ -98,7 +98,7 @@ fn env_token_authorizes_a_data_command_with_no_store() {
 }
 
 #[test]
-fn wrong_env_token_is_rejected_and_never_touches_the_store() {
+fn wrong_env_token_is_rejected_without_creating_a_store() {
     // The negative half: a Bearer the mock doesn't recognise gets no 200 (wiremock 404s an
     // unmatched request), so the command fails — confirming the header matcher above is
     // load-bearing (a green test with ANY token would be self-masking).
@@ -131,6 +131,11 @@ fn wrong_env_token_is_rejected_and_never_touches_the_store() {
     assert!(
         !out.status.success(),
         "a wrong env token must not yield a successful data pull"
+    );
+    // The env-token path bypasses the store entirely: it must not even create the config dir.
+    assert!(
+        !dir.path().join("oura-toolkit").exists(),
+        "OURA_ACCESS_TOKEN must not touch/create the token store"
     );
 }
 
@@ -264,10 +269,65 @@ fn no_browser_login_rejects_a_state_mismatch_without_network() {
         .env("NO_COLOR", "1")
         .args(["auth", "login", "--no-browser"])
         .write_stdin("http://localhost:8788/callback?code=abc&state=FORGED\n");
+    // Exit 1 specifically (docs/cli-contract.md → --no-browser: "a mismatch aborts, exit 1"),
+    // not the exit-4 auth path — a drift to 4 would pass a bare `.failure()`.
     cmd.assert()
-        .failure()
+        .code(1)
         .stdout(predicates::prelude::predicate::str::is_empty())
         .stderr(predicates::prelude::predicate::str::contains(
             "state mismatch",
         ));
+}
+
+#[test]
+fn browser_login_over_ssh_suggests_no_browser() {
+    // The documented auto-suggest (README "Headless"): browser-mode login on an SSH session
+    // prints a `--no-browser` hint up front. The predicate (`looks_headless`) is unit-tested;
+    // this pins the actual EMISSION at the process boundary. The callback never comes
+    // (`--port 0`, no browser), so we read stderr for the hint with a deadline, then kill —
+    // never waiting out the 5-minute callback timeout.
+    let dir = tempfile::tempdir().unwrap();
+    let store = TokenStore::with_dir(dir.path().join("oura-toolkit"));
+    store
+        .save_credentials(&ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: "sec".into(),
+        })
+        .unwrap();
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
+    base_env(&mut cmd, dir.path());
+    let mut child = cmd
+        .args(["auth", "login", "--port", "0"])
+        .env("SSH_CONNECTION", "1.2.3.4 5 6.7.8.9 22")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn oura auth login");
+    let stderr = BufReader::new(child.stderr.take().unwrap());
+
+    let reader = std::thread::spawn(move || {
+        for line in stderr.lines() {
+            let Ok(line) = line else { break };
+            if line.contains("SSH") && line.contains("--no-browser") {
+                return true;
+            }
+        }
+        false
+    });
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !reader.is_finished() {
+        if Instant::now() > deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Kill regardless: found → we're done; not found → unblock the reader off the pipe EOF.
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(
+        reader.join().unwrap_or(false),
+        "browser-mode login on an SSH session must suggest `--no-browser` on stderr"
+    );
 }
