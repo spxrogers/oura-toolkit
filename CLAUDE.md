@@ -548,7 +548,10 @@ code is a bug of the same severity as the code change that orphaned it.
 - Do **NOT** invoke or document any build/test/lint/fmt/clean/codegen/run/release/publish
   command outside `just`. Raw cargo/npm/dist/jq live only inside recipes.
 - Do **NOT** hand-write a transport/HTTP client in any language. Generate it and depend on
-  it.
+  it. (Sole sanctioned exception: `oura api`, the arbitrary-path passthrough (#19), issues
+  ONE raw `reqwest` request — a user-supplied path has no generated operation to call. It is
+  a *caller* of the transport, still reusing the generated data plane's auth + 401-retry
+  contract; it is NOT a second typed SDK. Do not generalize this to the typed commands.)
 - Do **NOT** let codegen touch hand-written auth companions. `just gen` regenerates only
   the generated SDK clients (e.g. `sdks/rust/oura-toolkit-api`); it MUST NOT modify `sdks/*/…-auth`.
 - Do **NOT** regenerate a second Rust SDK copy; `sdks/rust/oura-toolkit-api` is the one Rust SDK.

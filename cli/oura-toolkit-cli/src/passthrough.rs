@@ -127,6 +127,16 @@ pub async fn run(
     paginate: bool,
 ) -> Result<String> {
     let plan = RequestPlan::build(base_url, path, method, fields, stdin_body)?;
+    // `--paginate` follows Oura's `next_token` cursor, which only the GET collection
+    // endpoints return; appending it to a POST/PUT/… would be nonsense. Enforce the
+    // documented "GET only" claim rather than silently misbehave.
+    if paginate && plan.method != Method::GET {
+        return Err(UsageError(format!(
+            "--paginate only works with GET requests (got {})",
+            plan.method
+        ))
+        .into());
+    }
     // Same 30s per-request timeout as `api::authorized_client`; a fresh Bearer is injected
     // per attempt inside `send`, so this client carries no default auth header.
     let http = reqwest::Client::builder()
@@ -194,7 +204,8 @@ async fn send_and_read(
 /// reqwest request: attach a fresh Bearer, and on a 401 force a refresh (adopting a peer's
 /// rotation if one exists) and retry EXACTLY once — a second 401 is a dead session, surfaced
 /// as the typed [`AuthError::NotAuthenticated`] (exit 4 + login hint). The request is rebuilt
-/// per attempt via a closure because a `reqwest` body is not cloneable.
+/// per attempt via a closure because reqwest's `RequestBuilder` is not `Clone` — and the retry
+/// must carry the freshly refreshed Bearer anyway, not a stale one.
 async fn send(
     http: &reqwest::Client,
     manager: &TokenManager,

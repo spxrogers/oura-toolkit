@@ -12,7 +12,7 @@
 use std::process::Stdio;
 
 use oura_toolkit_auth::{ClientCredentials, TokenManager, TokenStore, Tokens};
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{body_string, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 mod common;
@@ -230,6 +230,100 @@ fn api_missing_field_equals_is_a_usage_error_exit_2() {
         out.status.code(),
         Some(2),
         "a field without `=` is a usage error (exit 2); stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.stdout.is_empty(), "stdout empty on a usage error");
+}
+
+#[test]
+fn api_error_body_is_sanitized_before_it_reaches_the_terminal() {
+    // Attack test (CLAUDE.md TESTING rule 5): a non-2xx body is server-controlled text bound
+    // for stderr, so it must be sanitized — terminal escapes stripped, no forged extra lines.
+    // Break-verify: drop the `sanitize()` call in passthrough.rs::send_and_read and the
+    // escape-byte assertion fails.
+    let hostile = "denied\u{1b}[2Jinjected\noura: forged: line";
+    let oura = mock_oura(move |server| {
+        Box::pin(async move {
+            Mock::given(method("GET"))
+                .and(path("/v2/x"))
+                .respond_with(ResponseTemplate::new(403).set_body_string(hostile))
+                .mount(server)
+                .await;
+        })
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let out = oura_cmd(&oura, dir.path())
+        .args(["api", "/v2/x"])
+        .output()
+        .expect("run oura api");
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains('\u{1b}'),
+        "the escape byte must be stripped from the echoed error body: {stderr:?}"
+    );
+    // The text still conveys the message, just without the control byte.
+    assert!(
+        stderr.contains("denied") && stderr.contains("injected"),
+        "the sanitized body is still shown: {stderr:?}"
+    );
+}
+
+#[test]
+fn api_pipes_a_stdin_body_with_json_content_type() {
+    // The stdin raw-body path end-to-end: `read_stdin_body()` reads the piped bytes and they
+    // reach the wire as the request body with `Content-Type: application/json`. The mock only
+    // answers 200 when BOTH the exact body and the content-type match, so `.success()` proves
+    // the body crossed the process boundary (a regression 404s → exit 1 → the assert fails).
+    let oura = mock_oura(|server| {
+        Box::pin(async move {
+            Mock::given(method("POST"))
+                .and(path("/v2/x"))
+                .and(header("content-type", "application/json"))
+                .and(body_string(r#"{"raw":"from-stdin"}"#))
+                .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
+                .expect(1)
+                .mount(server)
+                .await;
+        })
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let mut cmd = assert_cmd::Command::cargo_bin("oura").unwrap();
+    cmd.env("XDG_CONFIG_HOME", dir.path())
+        .env("HOME", dir.path())
+        .env("LOCALAPPDATA", dir.path())
+        .env("NO_COLOR", "1")
+        .env("OURA_ACCESS_TOKEN", "env-tok-xyz")
+        .env("OURA_API_BASE_URL", oura.server.uri())
+        .args(["api", "-X", "POST", "/v2/x"])
+        .write_stdin(r#"{"raw":"from-stdin"}"#)
+        .assert()
+        .success()
+        .stdout(predicates::prelude::predicate::str::contains("ok"));
+}
+
+#[test]
+fn api_paginate_with_a_non_get_method_is_a_usage_error_exit_2() {
+    // "GET only" (main.rs help + cli-contract) is now enforced, not just documented: the
+    // usage error fires before any request (expect(0)).
+    let oura = mock_oura(|server| {
+        Box::pin(async move {
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(0)
+                .mount(server)
+                .await;
+        })
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let out = oura_cmd(&oura, dir.path())
+        .args(["api", "-X", "POST", "--paginate", "/v2/x"])
+        .output()
+        .expect("run oura api");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "--paginate with a non-GET method must be a usage error (exit 2); stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(out.stdout.is_empty(), "stdout empty on a usage error");

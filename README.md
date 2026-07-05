@@ -144,15 +144,19 @@ response to stdout.
 oura api /v2/usercollection/personal_info          # GET (default)
 oura api /v2/usercollection/daily_sleep --paginate # follow next_token, aggregate {"data":[…]}
 oura api -f start_date=2026-06-01 /v2/usercollection/daily_sleep   # -f → query params on a GET
-oura api -X POST -f event_type=create /v2/webhook/subscription     # -f → JSON body on other methods
-echo '{"event_type":"create"}' | oura api -X POST /v2/webhook/subscription  # raw body on stdin
 ```
 
 `-X`/`--method` sets the method (default GET); `-f`/`--field key=value` is repeatable and
 becomes query params for GET/HEAD/DELETE or a JSON body object otherwise; a request body can
-also be piped on stdin. `--paginate` follows `next_token` to the end and emits a single
-`{"data":[…]}`. The response is printed unchanged, so pipe it into `jq`. A non-2xx response
-is a runtime error (exit 1) with the HTTP status and body on stderr.
+also be piped on stdin. `--paginate` (GET only) follows `next_token` to the end and emits a
+single `{"data":[…]}`. The response is printed unchanged, so pipe it into `jq`. A non-2xx
+response is a runtime error (exit 1) with the HTTP status and body on stderr — a 429 included
+(unlike the typed commands, `oura api` doesn't wait out rate limits).
+
+`oura api` attaches only your **Bearer** token, so it reaches any endpoint that authenticates
+with it — i.e. the read (GET) API. Oura's write endpoints (webhook subscriptions) use a
+separate client-id/secret scheme `oura api` does not send, so the `-X` / `-f`-body / stdin
+support is here for `gh api` parity and any future Bearer-authed write endpoint.
 
 ### Shell completions and man page
 
