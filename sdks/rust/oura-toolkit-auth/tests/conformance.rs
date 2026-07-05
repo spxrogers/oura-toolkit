@@ -97,7 +97,10 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
             .expect_err(&format!("case {name}: a hostile 2xx must not succeed"));
         // Typed: the decode/validation family — never a panic (the test reaching this
         // line proves that), and never a mis-filed auth-flow error that would trigger
-        // remediation hints for a server-side fault.
+        // remediation hints for a server-side fault. Deliberately a SET of variants where
+        // other legs pin one wrapper type: Rust's taxonomy surfaces decode failures as
+        // Serde/Http rather than folding them into the endpoint error; the load-bearing
+        // properties (typed + store untouched + expect(1)) are identical.
         assert!(
             matches!(
                 err,
