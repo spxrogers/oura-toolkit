@@ -1,0 +1,58 @@
+# Spec drift watch (#29). Scheduled, SEPARATE from `just ci` (which stays untouched and
+# hermetic): probes upstream for a newer Oura OpenAPI export and diffs the pinned URL against
+# the committed spec, opening/updating a tracking issue when either drifts. Watch-only — it
+# never edits the vendored spec; adopting a change is the documented upgrade procedure
+# (CONTRIBUTING → "Upgrading the vendored spec"). The detection lives in `just spec-drift-check`
+# (the single-justfile rule); only the raw toolchain install + `gh` issue glue live here.
+name: spec-drift
+
+on:
+  schedule:
+    # Weekly, Monday 06:27 UTC (off the :00/:30 rush). Oura publishes exports irregularly,
+    # so weekly is ample; the issue is created once and updated, not spammed.
+    - cron: "27 6 * * 1"
+  workflow_dispatch: {} # manual trigger (also how the "simulated change" acceptance is exercised)
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spec-drift
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: watch upstream OpenAPI export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - name: Check for spec drift
+        id: check
+        run: |
+          set +e
+          report="$(just spec-drift-check)"
+          code=$?
+          set -e
+          printf '%s\n' "$report"
+          case "$code" in
+            0) echo "drift=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "drift=true"  >> "$GITHUB_OUTPUT"
+               printf '%s\n' "$report" > spec-drift-report.md ;;
+            *) echo "::error::spec-drift-check failed (exit $code)"; exit "$code" ;;
+          esac
+      - name: Open or update the drift issue
+        if: steps.check.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Idempotent label, then dedup: one open issue per drift episode — comment if it
+          # already exists, otherwise create it.
+          gh label create spec-drift --color FBCA04 --description "Upstream Oura OpenAPI spec drift" 2>/dev/null || true
+          existing="$(gh issue list --label spec-drift --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file spec-drift-report.md
+          else
+            gh issue create --title "Oura OpenAPI spec drift detected" --label spec-drift --body-file spec-drift-report.md
+          fi

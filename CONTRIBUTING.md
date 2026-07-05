@@ -54,6 +54,24 @@ just test-sandbox-sdks  # opt-in live sandbox smokes for the breadth clients (ne
 Codegen touches **only** generated clients — never the hand-written auth companions,
 `sdks/go/go.mod`, or `sdks/python`'s distribution metadata.
 
+### Upgrading the vendored spec
+
+The spec is pinned to a specific export (`spec_version` in the justfile). A scheduled
+workflow (`.github/workflows/spec-drift.yml`, `just spec-drift-check`) watches upstream and
+opens a `spec-drift` issue when the pinned export re-publishes or a newer
+`openapi-<major>.<minor>` appears. To adopt a change:
+
+```sh
+just spec-drift-check   # what drifted (also runs weekly; needs network, not in `just ci`)
+# bump `spec_version` in the justfile first if a newer export exists, then:
+just spec-fetch         # re-vendor to spec/openapi.json (+ crate-local bundles)
+just spec-overlay
+just gen                # regenerate every client; run twice for the zero-diff check
+```
+
+Review the generated diff (the overlays + down-convert absorb most upstream churn) and land
+it through the usual review loop. `just spec-drift-selftest` (hermetic) guards the detector.
+
 The C# recipes (`just sdk-check-csharp` / `just sdk-test-csharp` / `just gen-csharp`)
 need a **.NET 10 SDK**: the C# client and auth companion multi-target
 `netstandard2.0;net8.0;net10.0`, and an 8.x/9.x SDK cannot build the net10.0 leg.

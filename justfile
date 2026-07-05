@@ -124,6 +124,40 @@ spec-overlay:
     jq -f codegen/overlay.jq {{spec_file}} > {{overlaid_spec}}
     @echo "Overlaid spec -> {{overlaid_spec}}"
 
+# Detect upstream Oura OpenAPI drift (#29): the pinned export re-published with changes, or a
+# newer openapi-<major>.<minor> exists. WATCH-ONLY — never edits the spec. Hits the network, so
+# it is NOT in `just ci`; the scheduled spec-drift workflow runs it and opens/updates an issue.
+# Exit 0 = no drift, 1 = drift (markdown report on stdout), 2 = error.
+[group('spec')]
+spec-drift-check:
+    codegen/spec-drift.sh {{spec_version}} {{spec_url}} {{spec_file}}
+
+# Hermetic self-test of the drift detector's decision logic (#29) — no network (the upstream
+# content and the "existing versions" are injected), so it runs in CI (the gen-drift job).
+# Break-verify: neuter a branch in codegen/spec-drift.sh and a case below fails.
+[group('spec')]
+spec-drift-selftest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sv="{{spec_version}}"; su="{{spec_url}}"; sf="{{spec_file}}"
+    # 1) no drift: injected upstream == committed, no newer minors -> exit 0.
+    OURA_SPEC_DRIFT_UPSTREAM_FILE="$sf" OURA_SPEC_DRIFT_KNOWN_MINORS="" \
+      codegen/spec-drift.sh "$sv" "$su" "$sf" >/dev/null \
+      || { echo "spec-drift-selftest: the clean case must exit 0"; exit 1; }
+    # 2) content drift: a byte-changed upstream -> exit 1 and a Content-drift report.
+    mod="$(mktemp)"; trap 'rm -f "$mod"' EXIT; cp "$sf" "$mod"; printf '\n' >> "$mod"
+    out="$(OURA_SPEC_DRIFT_UPSTREAM_FILE="$mod" OURA_SPEC_DRIFT_KNOWN_MINORS="" \
+      codegen/spec-drift.sh "$sv" "$su" "$sf")" \
+      && { echo "spec-drift-selftest: content drift must exit 1"; exit 1; }
+    grep -q 'Content drift' <<<"$out" || { echo "spec-drift-selftest: content report missing"; exit 1; }
+    # 3) version drift: a simulated newer minor -> exit 1 and a report naming it.
+    out="$(OURA_SPEC_DRIFT_UPSTREAM_FILE="$sf" OURA_SPEC_DRIFT_KNOWN_MINORS="999" \
+      codegen/spec-drift.sh "$sv" "$su" "$sf")" \
+      && { echo "spec-drift-selftest: version drift must exit 1"; exit 1; }
+    grep -q 'newer export' <<<"$out" && grep -q '999' <<<"$out" \
+      || { echo "spec-drift-selftest: version report missing"; exit 1; }
+    echo "spec-drift-selftest: all cases pass"
+
 # ---------------------------------------------------------------------------------------------
 # Codegen (generated SDK clients only — NEVER touches the *-auth companions)
 # ---------------------------------------------------------------------------------------------

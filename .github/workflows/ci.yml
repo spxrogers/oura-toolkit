@@ -89,6 +89,9 @@ jobs:
           just install-nightly-rustfmt
           command -v cargo-progenitor >/dev/null || just install-progenitor
       - run: just gen-check
+      # Hermetic (injected upstream + versions, no network) — guards the spec-drift detector's
+      # decision logic (#29); the networked `just spec-drift-check` itself runs on schedule.
+      - run: just spec-drift-selftest
 
   # The generated breadth clients must actually COMPILE (release gate: a client that
   # doesn't build is drift CI didn't see). The five toolchains are PINNED via setup actions
