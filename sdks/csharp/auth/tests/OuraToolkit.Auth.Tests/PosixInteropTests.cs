@@ -28,8 +28,10 @@ public class PosixInteropTests
             PosixInterop.WriteNewExclusive0600(path, payload);
 
             // Exactly 0600 — no world/group bits ever visible, because open(2) set the mode AT
-            // creation. Break-verify: make PosixInterop.Mode0600 = 0644 and this fails.
-            Assert.Equal(PosixInterop.Mode0600, TestHost.UnixPermBits(path));
+            // creation. The expected value is an INDEPENDENT octal literal, NOT
+            // PosixInterop.Mode0600 (asserting against the same constant the create uses would be
+            // a tautology). Break-verify: set PosixInterop.Mode0600 = 0644 and this fails.
+            Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(path));
             // The bytes went through the raw fd (write(2)), not a FileStream.
             Assert.Equal(payload, File.ReadAllBytes(path));
         }

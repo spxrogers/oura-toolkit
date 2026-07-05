@@ -160,9 +160,12 @@ public class TokenStoreTests
         temp.Store.SaveCredentials(Fixtures.Credentials);
         temp.Store.SaveTokens(Fixtures.SampleTokens);
 
-        Assert.Equal(PosixInterop.Mode0600, TestHost.UnixPermBits(temp.Store.CredentialsPath));
-        Assert.Equal(PosixInterop.Mode0600, TestHost.UnixPermBits(temp.Store.TokensPath));
-        Assert.Equal(PosixInterop.Mode0700, TestHost.UnixPermBits(temp.Store.Directory));
+        // Independent octal literals, NOT PosixInterop.Mode0600/Mode0700 — asserting against the
+        // same constants the store uses to create these would be a tautology (a Mode0600 = 0644
+        // regression would move both sides together and pass). Break-verify: bump either constant.
+        Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(temp.Store.CredentialsPath));
+        Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(temp.Store.TokensPath));
+        Assert.Equal(Convert.ToInt32("700", 8), TestHost.UnixPermBits(temp.Store.Directory));
     }
 
     [Fact]
