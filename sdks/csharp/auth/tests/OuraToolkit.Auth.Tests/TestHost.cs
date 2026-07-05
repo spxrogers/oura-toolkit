@@ -38,11 +38,20 @@ internal static class TestHost
     public static int UnixPermBits(string path)
     {
 #if NET472
-        // `stat -c %a` is GNU-coreutils syntax (BSD/macOS stat would need `-f %Lp`). Fine because
-        // this leg runs only under Mono on Linux CI — see the recipe's mono requirement (#61).
+        // Read the mode via `stat`. GNU coreutils (Linux) prints octal permission bits with
+        // `-c %a`; BSD/macOS stat uses `-f %Lp` (#71). The net472/Mono leg runs only on Linux CI
+        // today (`just sdk-test-csharp-netstandard`), so the Linux branch is the exercised one;
+        // the BSD branch is provided for correctness-of-intent but is UNTESTED here (no non-Linux
+        // Mono runner exists). Detect the BSD family the same way PosixInterop does.
+        var isBsd =
+            RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+            || RuntimeInformation.IsOSPlatform(OSPlatform.Create("FREEBSD"))
+            || RuntimeInformation.IsOSPlatform(OSPlatform.Create("NETBSD"))
+            || RuntimeInformation.IsOSPlatform(OSPlatform.Create("OPENBSD"));
+        var statArgs = isBsd ? $"-f %Lp \"{path}\"" : $"-c %a \"{path}\"";
         var psi = new ProcessStartInfo("stat")
         {
-            Arguments = $"-c %a \"{path}\"",
+            Arguments = statArgs,
             RedirectStandardOutput = true,
             UseShellExecute = false,
         };
@@ -52,7 +61,7 @@ internal static class TestHost
         p.WaitForExit();
         if (p.ExitCode != 0 || octal.Length == 0)
         {
-            throw new InvalidOperationException($"`stat -c %a` failed for '{path}' (exit {p.ExitCode})");
+            throw new InvalidOperationException($"`stat {statArgs}` failed for '{path}' (exit {p.ExitCode})");
         }
 
         return Convert.ToInt32(octal, 8);

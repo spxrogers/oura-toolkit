@@ -168,6 +168,49 @@ public class TokenStoreTests
         Assert.Equal(Convert.ToInt32("700", 8), TestHost.UnixPermBits(temp.Store.Directory));
     }
 
+    // The store must work under a NON-ASCII directory (#72): a store dir whose on-disk name is
+    // non-ASCII exercises PosixInterop's libc path marshalling (open/rename/chmod) against the
+    // .NET BCL's own path APIs (Directory.CreateDirectory, File.ReadAllBytes). The libc DllImports
+    // use CharSet.Ansi, which marshals with the platform-narrow encoding — the SAME one the BCL
+    // uses — so the two agree and the record rename(2) writes is exactly the one LoadTokens reads
+    // back. (Verified to hold on CoreCLR, Mono, AND Mono under MONO_EXTERNAL_ENCODINGS=ISO-8859-1;
+    // forcing UTF-8 in the interop would instead RISK diverging from Mono's own BCL path encoding.)
+    // Break-verify: make PosixInterop encode a different path than the BCL (e.g. append a byte in
+    // its path helper) and the round-trip below fails — LoadTokens returns null / the wrong record.
+    [Fact]
+    public void StoreRoundTripsUnderANonAsciiDirectory()
+    {
+        if (TestHost.IsWindows)
+        {
+            return; // The concern is Unix libc path marshalling; Windows uses the BCL throughout.
+        }
+
+        var dir = TestHost.CreateTempDir("oura-café-日本-");
+        try
+        {
+            var store = new TokenStore(dir);
+            store.SaveCredentials(Fixtures.Credentials);
+            store.SaveTokens(Fixtures.SampleTokens);
+
+            var creds = store.LoadCredentials();
+            var tokens = store.LoadTokens();
+            Assert.NotNull(creds);
+            Assert.NotNull(tokens);
+            // Load returned the SAME record Save wrote — so the libc write and the BCL read
+            // resolved the identical non-ASCII path.
+            Assert.Equal(Fixtures.Credentials.ClientId, creds!.ClientId);
+            Assert.Equal(Fixtures.SampleTokens.AccessToken, tokens!.AccessToken);
+            Assert.Equal(Fixtures.SampleTokens.RefreshToken, tokens.RefreshToken);
+            // The record really lives under the non-ASCII directory and is still exactly 0600.
+            Assert.StartsWith(dir, store.TokensPath);
+            Assert.Equal(Convert.ToInt32("600", 8), TestHost.UnixPermBits(store.TokensPath));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public void SaveReplacesAtomicallyViaAUniquelyNamedTempFile()
     {

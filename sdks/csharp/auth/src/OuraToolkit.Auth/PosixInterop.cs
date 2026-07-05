@@ -63,6 +63,16 @@ internal static class PosixInterop
     // closed, so a retry could close an unrelated reused descriptor.
     private const int EINTR = 4;
 
+    // Path marshalling (#72): CharSet.Ansi marshals the managed string with the platform's
+    // NARROW encoding — the SAME one the .NET BCL uses for its own path APIs
+    // (Directory.CreateDirectory, File.ReadAllBytes, File.Move). On CoreCLR/Unix that is always
+    // UTF-8; on Mono it follows the process encoding (default UTF-8, or MONO_EXTERNAL_ENCODINGS).
+    // Because BOTH this interop and the BCL resolve a given managed path string to the same bytes,
+    // a record rename(2) writes here is exactly the one a later File.ReadAllBytes finds — even
+    // under a non-ASCII directory. Do NOT "fix" this to a forced UTF-8 byte[]: on Mono under a
+    // non-UTF-8 process encoding that would make the interop DISAGREE with the BCL that created
+    // the path (a real mismatch), trading a non-bug for one. Guarded by
+    // TokenStoreTests.StoreRoundTripsUnderANonAsciiDirectory (runs on the net472/Mono leg too).
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi, BestFitMapping = false)]
     private static extern int open(string path, int flags, int mode);
 
