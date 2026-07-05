@@ -9,7 +9,7 @@ changes for users' scripts and require a deliberate decision.
 |------|---------|---------|
 | `0` | success | data returned, auth flow completed |
 | `1` | runtime error | Oura API 5xx, network failure, I/O error, rate limited (429) after the bounded retry |
-| `2` | usage error | unknown flag/command, missing argument, bare `oura`, invalid flag values (malformed `--start`/`--end` date, inverted range) |
+| `2` | usage error | unknown flag/command, missing argument, bare `oura`, invalid flag values (malformed `--start`/`--end`/`--date`, inverted range, `--date` combined with `--start`/`--end`) |
 | `4` | authentication required | no stored tokens/credentials, a refresh rejected by the token endpoint (HTTP 400, e.g. `invalid_grant`), or a rejected `OURA_ACCESS_TOKEN` — usually an auth flow fixes it; a rejected env token needs a fresh one |
 
 Scripting example (`oura auth login` is interactive, so an unattended script reports
@@ -59,6 +59,9 @@ fi
 
 - `--start` / `--end` accept `today`, `yesterday`, or `YYYY-MM-DD`.
 - Defaults: `--end` is today; `--start` is 6 days before `--end` (a 7-day window).
+- `--date <day>` is a single-day shorthand (equivalent to `--start <day> --end <day>`) for the
+  common "just yesterday" question. It is mutually exclusive with `--start`/`--end` — combining
+  them is a usage error (exit `2`).
 - Dates are interpreted in the **user's local timezone** — Oura's daily summaries are
   user-local days, so `today` means the wearer's today, not UTC's.
 - Daily endpoints send the dates as-is. Time-series endpoints (heartrate) expand the range

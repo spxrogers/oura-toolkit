@@ -119,8 +119,9 @@ oura personal-info    # your profile
 ```
 
 Every windowed command takes `--start` / `--end` (`today`, `yesterday`, or
-`YYYY-MM-DD`, in your local timezone) and defaults to the last 7 days. Cursor pagination
-is followed automatically.
+`YYYY-MM-DD`, in your local timezone) and defaults to the last 7 days — or `--date <day>`
+as a single-day shorthand (`oura sleep --date yesterday`). Cursor pagination is followed
+automatically.
 
 Oura rate-limits the API per access token and per application (rolling windows — the
 429 response headers carry the retry guidance). When a request is rate-limited, the

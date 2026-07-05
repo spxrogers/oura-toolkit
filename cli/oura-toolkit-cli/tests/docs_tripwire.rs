@@ -531,6 +531,25 @@ fn documented_env_overrides_match_the_source() {
     }
 }
 
+/// `--date` is offered on every windowed data command (shared `RangeArgs`, #39); the README
+/// and cli-contract reference it. A flag rename or a docs drop fails here — mechanizing the
+/// enumerable flag claim like the `--no-browser` tripwire.
+#[test]
+fn date_flag_is_documented_where_it_is_offered() {
+    let help = oura_stdout(&["sleep", "--help"]);
+    assert!(
+        help.contains("--date"),
+        "`oura sleep --help` no longer lists --date:\n{help}"
+    );
+    let root = repo_root();
+    for doc in ["README.md", "docs/cli-contract.md"] {
+        assert!(
+            read(&root.join(doc)).contains("--date"),
+            "{doc} does not mention the --date flag (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+}
+
 /// `--no-browser` is offered on `oura auth setup` and `oura auth login` (#20); the README and
 /// cli-contract reference it. A flag rename or a docs drop fails here.
 #[test]
