@@ -7,7 +7,8 @@
 //! ACLs (user-private on a default install). Local, not Roaming, deliberately: roaming
 //! profiles sync `%APPDATA%` to file servers/backups at logoff, which would copy plaintext
 //! secrets off the machine. This is still weaker than DPAPI/Credential Manager; OS-keyring
-//! storage is tracked in #26.
+//! storage was evaluated and deferred (#26 — Secret Service breaks headless MCP hosts and
+//! offers no cross-process rotation lock), with optional at-rest encryption tracked in #78.
 //!
 //! Two records live in the store dir:
 //!
@@ -25,7 +26,7 @@
 //! from the invocation location. Caveat: a crash
 //! between temp-write and rename can orphan a `0600` `.tmp*` file (containing record JSON)
 //! in the store dir; no worse an exposure than the records themselves, but worth knowing
-//! when auditing the directory (broader secret-hygiene work is tracked in #26).
+//! when auditing the directory (optional at-rest encryption is tracked in #78).
 //!
 //! Cross-process coordination: [`TokenStore::lock_exclusive`] takes a blocking advisory lock
 //! on a `.lock` file in the store dir. `TokenManager` holds it across its

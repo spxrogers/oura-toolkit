@@ -42,7 +42,8 @@ func unlockFile(f *os.File) error {
 }
 
 // setFilePrivate is a no-op on Windows: protection comes from %LOCALAPPDATA%'s inherited
-// user-private ACLs (the Unix chmods are meaningless here). DPAPI/keyring is #26.
+// user-private ACLs (the Unix chmods are meaningless here). OS-keyring was evaluated and
+// deferred (#26); optional DPAPI at-rest encryption of the file bytes is tracked in #78.
 func setFilePrivate(string) error { return nil }
 
 // setDirPrivate is a no-op on Windows (see setFilePrivate).
