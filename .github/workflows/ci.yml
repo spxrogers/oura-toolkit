@@ -79,24 +79,46 @@ jobs:
         with:
           path: ~/.cargo/bin/cargo-progenitor
           key: cargo-progenitor-${{ runner.os }}-v1
-      - name: Install codegen toolchain (nightly rustfmt + progenitor)
-        # Toolchain installation only (the #13 carve-out). The command guard keeps the
-        # cached cargo-progenitor binary from being rebuilt on every run; bump the cache
-        # key above to force a rebuild.
+      - name: Install codegen toolchain (pinned nightly rustfmt + progenitor)
+        # Toolchain installation only (the #13 carve-out). `just install-nightly-rustfmt` installs
+        # the DATED nightly pinned in the justfile (single source, #50) — so gen-check can't flake
+        # when the floating `nightly` shifts rustfmt behavior. The command guard keeps the cached
+        # cargo-progenitor binary from being rebuilt on every run; bump the cache key to force it.
         run: |
-          rustup toolchain install nightly --profile minimal --component rustfmt
+          just install-nightly-rustfmt
           command -v cargo-progenitor >/dev/null || cargo install cargo-progenitor --locked
       - run: just gen-check
 
   # The generated breadth clients must actually COMPILE (release gate: a client that
-  # doesn't build is drift CI didn't see). All five toolchains (node, python, go, java,
-  # dotnet) are preinstalled on ubuntu-latest; no network beyond package registries.
+  # doesn't build is drift CI didn't see). The five toolchains are PINNED via setup actions
+  # (#50) rather than relying on ubuntu-latest's floating preinstalled versions, so a runner-image
+  # bump can't silently shift compiler behavior. Versions mirror the manifests: Go from
+  # sdks/go/go.mod (single source), Java 11 target (temurin 17 host), .NET 8+10 (the C# TFMs),
+  # Node 18+ (pin 22), Python 3.9+ (pin 3.12). No network beyond package registries.
   sdk-compile:
     name: breadth-SDK compile check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: extractions/setup-just@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sdks/go/go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
       - run: just sdk-check
       - run: just sdk-test-py
       - run: just sdk-test-go
@@ -117,8 +139,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: extractions/setup-just@v4
+      - uses: actions/setup-dotnet@v4
+        # Pinned to match sdk-compile (#50); the net472 leg needs a modern SDK to build against
+        # the netstandard2.0 asset (reference assemblies come from NuGet).
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
       - name: Install Mono
-        # Toolchain install only (the #13 carve-out); dotnet is preinstalled on ubuntu-latest.
+        # Toolchain install only (the #13 carve-out).
         run: |
           sudo apt-get update
           sudo apt-get install -y mono-devel

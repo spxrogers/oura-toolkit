@@ -25,6 +25,16 @@ progenitor_spec := build_dir / "openapi.progenitor.json"
 # Workspace version, derived from Cargo.toml [workspace.package].version (single source).
 version := `sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n1`
 
+# Pinned nightly rustfmt for `just gen-rust` (#50). progenitor formats through
+# codegen/rustfmt-shim.sh with unstable rustfmt options that need nightly; a dated toolchain
+# keeps codegen deterministic so an unrelated PR's `just gen-check` can't flake when the
+# floating `nightly` shifts rustfmt behavior. SINGLE SOURCE: `setup`, `install-nightly-rustfmt`,
+# `gen-rust`, and CI's gen-drift job all read this.
+# BUMP PROCEDURE: pick a newer date whose nightly ships rustfmt, set it here, run
+# `just install-nightly-rustfmt && just gen-check` — it must stay byte-identical (the final
+# `cargo fmt` is stable, so a bump should never churn the committed client); commit the bump alone.
+nightly_rustfmt := "nightly-2026-06-15"
+
 # openapi-generator, doubly pinned: the npm wrapper by version here, the generator jar by
 # codegen/openapitools.json (7.14.0). Breadth-SDK codegen only; Rust stays on progenitor.
 oag := "npx -y @openapitools/openapi-generator-cli@2.39.1 --openapitools codegen/openapitools.json"
@@ -54,10 +64,9 @@ default:
 
 # Install/verify toolchains + codegen deps.
 [group('setup')]
-setup:
+setup: install-nightly-rustfmt
     rustup component add rustfmt clippy llvm-tools-preview
-    # Rust codegen: progenitor CLI + a nightly rustfmt (progenitor formats with unstable opts).
-    rustup toolchain install nightly --profile minimal --component rustfmt
+    # Rust codegen: progenitor CLI (the nightly rustfmt it formats through is the dep above).
     cargo install cargo-progenitor --locked
     # Coverage floor enforcement (`just coverage`).
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
@@ -71,6 +80,13 @@ setup:
     @command -v mono >/dev/null || echo "!! install mono (apt: mono-devel) -- needed by 'just sdk-test-csharp-netstandard' (#61 netstandard2.0 leg)"
     # Release tooling (`just dist-check` / `just release`).
     command -v dist >/dev/null || cargo install cargo-dist --locked
+
+# Install the pinned nightly rustfmt (`nightly_rustfmt`) that `just gen-rust` formats through.
+# Its own recipe so CI's gen-drift job installs the SAME dated toolchain without duplicating the
+# date in YAML (#50). Idempotent — rustup no-ops if it's already present.
+[group('setup')]
+install-nightly-rustfmt:
+    rustup toolchain install {{nightly_rustfmt}} --profile minimal --component rustfmt
 
 # ---------------------------------------------------------------------------------------------
 # Spec (source of truth)
@@ -113,7 +129,7 @@ gen-rust: spec-overlay
     mkdir -p {{build_dir}}
     jq -f codegen/progenitor-downconvert.jq {{overlaid_spec}} > {{progenitor_spec}}
     rm -rf {{build_dir}}/oura-toolkit-api-gen
-    RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-toolkit-api-gen -n oura-toolkit-api -v {{version}}
+    RUSTFMT_TOOLCHAIN={{nightly_rustfmt}} RUSTFMT="{{justfile_directory()}}/codegen/rustfmt-shim.sh" cargo progenitor -i {{progenitor_spec}} -o {{build_dir}}/oura-toolkit-api-gen -n oura-toolkit-api -v {{version}}
     cat codegen/generated-header.rs {{build_dir}}/oura-toolkit-api-gen/src/lib.rs > sdks/rust/oura-toolkit-api/src/lib.rs
     cargo fmt -p oura-toolkit-api
     @echo "Generated sdks/rust/oura-toolkit-api/src/lib.rs"
