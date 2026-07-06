@@ -1,0 +1,80 @@
+# Cut a release from the GitHub Actions UI (workflow_dispatch) — the server-side equivalent of
+# `just release X.Y.Z`. It runs the SAME gate + version bump + tag choreography through the
+# shared `just release-tag` recipe (never re-implemented in this YAML, per CLAUDE.md → TASK
+# RUNNER); the pushed vX.Y.Z tag then drives .github/workflows/release.yml (installers +
+# npm/homebrew). crates.io stays out of this path — see #91 to move it into CI.
+#
+# WHY A PAT (RELEASE_TOKEN): a tag pushed with the default GITHUB_TOKEN does NOT trigger other
+# workflows (GitHub's recursion guard), so release.yml would never fire. Pushing the tag with a
+# PAT lifts that block. One-time setup: create a fine-grained PAT with Contents: read/write on
+# this repo and add it as the RELEASE_TOKEN repository secret.
+
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.1.0 (a leading v is fine)"
+        required: true
+        type: string
+      dry_run:
+        description: "Run the full gate + bump but push nothing (preview)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Never cancel a release mid-flight, and never run two at once.
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cut-release:
+    name: cut release ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require RELEASE_TOKEN
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::RELEASE_TOKEN secret is not set. Create a fine-grained PAT with Contents: read/write on this repo and add it as the RELEASE_TOKEN secret — it is required so the pushed tag triggers the release build (the default GITHUB_TOKEN cannot)."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          # PAT (not GITHUB_TOKEN) so the tag push in `just release-tag` triggers release.yml.
+          token: ${{ secrets.RELEASE_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: extractions/setup-just@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dist
+        # Pinned to the cargo-dist version in dist-workspace.toml (needed by `just dist-check`).
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh
+      - name: Install claude CLI (plugin/marketplace schema validation)
+        # Pinned like CI's release-config job (needed by `just plugin-check`).
+        run: npm install -g @anthropic-ai/claude-code@2.1.199
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Cut the release
+        # All the logic lives in the shared recipe; this only feeds it the dispatch inputs
+        # (via env, never inlined into the shell, to avoid injection).
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: just release-tag "$VERSION" "$DRY_RUN"

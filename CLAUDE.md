@@ -307,8 +307,17 @@ that orphaned it.
   → commit → tag `vX.Y.Z` → push. `just version-check` is the SINGLE drift guard (and
   round-trips the writer, so a broken rewriter fails the `release-config` CI job).
   `.github/workflows/release.yml` (dist-generated, committed, drift-checked by `just
-  dist-check`) builds artifacts and runs the npm + homebrew publish jobs. `just release` is a
-  LOCAL smoke build; `just publish` covers only crates.io (order: api → auth → cli).
+  dist-check`) builds artifacts and runs the npm + homebrew publish jobs. **`just release
+  X.Y.Z`** wraps that whole flow in one command — local guards (clean tree / on `main` / in
+  sync / crates.io auth), then the shared **`just release-tag`** choreography (full gate →
+  set-version → commit → tag → push; the tag still drives CI, nothing is built on the laptop),
+  then the crates.io leg. The tag (primary) is pushed before the crates.io publish (secondary).
+  The SAME `release-tag` recipe runs server-side in the **Cut-release Action**
+  (`.github/workflows/cut-release.yml`, `workflow_dispatch`) so a release can be cut from the
+  GitHub UI — it pushes the tag with a `RELEASE_TOKEN` PAT (the default `GITHUB_TOKEN` can't
+  trigger `release.yml`) and leaves crates.io to the laptop (#91). `just dist-build` is the
+  LOCAL smoke build (publishes nothing); `just publish` covers only crates.io (order: api →
+  auth → cli) and is also the crates.io leg `just release` calls.
 - **Crates.io publishability:** the spec-reading build scripts read a crate-local
   `openapi.json` bundle (a published package has no repo root to walk to); sync-guarded by
   per-crate bundled-spec tests. `release-config` CI runs `just dist-check` + `just
@@ -318,7 +327,9 @@ that orphaned it.
   checksum-verify the binary it downloads (shell + homebrew do).
 - **One-time prerequisites before the first real release:** `spxrogers/homebrew-tap` +
   `HOMEBREW_TAP_TOKEN`, and `NPM_TOKEN`. Until then tag pushes still build every artifact —
-  only the publish jobs fail. Before the breadth SDKs publish (later): claim the npm
+  only the publish jobs fail. The **Cut-release Action** additionally needs a `RELEASE_TOKEN`
+  PAT (Contents: read/write) so its pushed tag triggers `release.yml`; the laptop `just
+  release` path does not need it. Before the breadth SDKs publish (later): claim the npm
   `@oura-toolkit` scope, verify `com.ouratoolkit` on Maven Central, register the NuGet + PyPI
   names.
 
