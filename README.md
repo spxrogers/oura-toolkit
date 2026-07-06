@@ -169,6 +169,12 @@ oura man > oura.1                        # roff man page
 Both are pure generators (no auth, no network) that write to stdout — redirect them
 wherever your shell or `man` expects. An unknown shell is a usage error (exit 2).
 
+Release archives (the [GitHub release](https://github.com/spxrogers/oura-toolkit/releases)
+tarballs and the Homebrew/shell installers) also **ship** `oura.1` plus `bash`/`zsh`/`fish`
+completions, so you don't have to generate them yourself. (`brew install` currently drops
+them under the formula's share dir rather than auto-loading them — source the file your
+shell expects; automatic Homebrew wiring is tracked as a follow-up.)
+
 ## MCP server (AI assistants)
 
 ```sh

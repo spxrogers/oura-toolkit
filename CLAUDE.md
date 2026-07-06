@@ -487,6 +487,15 @@ code is a bug of the same severity as the code change that orphaned it.
 
 - **cargo-dist** ("dist", pinned **0.32.0** in `dist-workspace.toml` — landed 2026-07-02,
   #11) emits shell + powershell + npm + homebrew installers for the CLI across 5 targets.
+- **Shell completions + man page in every archive (#75):** `dist-workspace.toml` `include`s
+  the committed `cli/oura-toolkit-cli/dist-assets/` (generated from `oura completion`/`oura
+  man`, drift-checked by `just gen-completions-check` in `release-config`). cargo-dist 0.32's
+  `include` copies existing files, so they're committed (a build-time writer can't hit a
+  stable path without breaking the read-only crates.io publish); the man page's `.TH` embeds
+  the version, so `just set-version` needs a follow-up `just gen-completions`. **Known 0.32
+  limit:** its Homebrew template has no completion/manpage wiring (and no config for it) — the
+  files land in the formula's `pkgshare`, not auto-loaded. Archive INCLUSION is done; Homebrew
+  AUTO-wiring is deferred to a cargo-dist upgrade (follow-up).
 - **Releases are TAG-DRIVEN, not laptop-driven:** run `just set-version X.Y.Z` (#59 —
   the SINGLE WRITER: `codegen/version.sh` bumps the root `Cargo.toml` source (incl. the
   two internal-crate `[workspace.dependencies]` pins) plus every hand-written manifest

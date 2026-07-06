@@ -8,8 +8,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 # Integration tests assume the monorepo (bundled-spec sync walks to the repo root);
-# they are meaningless inside a published package.
-exclude = ["tests/"]
+# they are meaningless inside a published package. `dist-assets/` holds the committed
+# shell completions + man page for release archives (#75) — release artifacts, not part of
+# the `cargo install` build, so keep them out of the crates.io package.
+exclude = ["tests/", "dist-assets/"]
 
 # The crate is `oura-toolkit-cli` but installs a binary named `oura` (the command users type).
 [[bin]]

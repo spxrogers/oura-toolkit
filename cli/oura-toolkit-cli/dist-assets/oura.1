@@ -1,0 +1,67 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH oura 1  "oura 0.1.0" 
+.SH NAME
+oura \- CLI and STDIO MCP server for the Oura Ring API v2 (auth setup/login, data commands, mcp).
+.SH SYNOPSIS
+\fBoura\fR [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIsubcommands\fR]
+.SH DESCRIPTION
+CLI and STDIO MCP server for the Oura Ring API v2 (auth setup/login, data commands, mcp).
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Output JSON instead of the default table/plain rendering (data commands and `auth status`)
+.TP
+\fB\-\-no\-color\fR
+Disable colored output (also honored: the NO_COLOR env var)
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+oura\-auth(1)
+Authentication (OAuth) flows
+.TP
+oura\-sleep(1)
+Daily sleep summaries (score + contributors)
+.TP
+oura\-readiness(1)
+Daily readiness summaries
+.TP
+oura\-activity(1)
+Daily activity summaries (score, steps, calories)
+.TP
+oura\-stress(1)
+Daily stress summaries
+.TP
+oura\-heartrate(1)
+Heart\-rate time series (frequent bpm samples)
+.TP
+oura\-sessions(1)
+Moment/session records (meditation, naps, …)
+.TP
+oura\-workouts(1)
+Workout records
+.TP
+oura\-personal\-info(1)
+Your Oura profile (age, height, weight, …)
+.TP
+oura\-api(1)
+Authenticated passthrough to an arbitrary Oura API endpoint (like `gh api`)
+.TP
+oura\-mcp(1)
+Run as a STDIO MCP server (8 read\-only Oura data tools)
+.TP
+oura\-completion(1)
+Print a shell completion script to stdout (bash, zsh, fish, powershell, elvish)
+.TP
+oura\-man(1)
+Print the `oura` man page (roff) to stdout
+.TP
+oura\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.1.0
