@@ -143,8 +143,10 @@ The public docs website ([ouratoolkit.com](https://ouratoolkit.com)) is an
 the rest of the repo, so the docs can't drift from the code:
 
 - **API reference** — generated at build time by `starlight-openapi` from the overlaid spec
-  (`codegen/build/openapi.docs.json`, the overlay output with `x-codeSamples` language labels
-  normalized for highlighting). It *is* the spec, so a spec/overlay problem fails the build.
+  (`just docs-spec` → `codegen/build/openapi.docs.json`; `codegen/docs-spec.jq` applies docs-only
+  transforms: `x-codeSamples` language labels normalized for highlighting, and the spec's
+  101-level "Getting Started" intro trimmed from `info.description`). It *is* the spec, so a
+  spec/overlay problem fails the build.
 - **CLI reference** — generated from the `oura` binary's own `--help` by `just docs-gen-cli`,
   committed at `docs-site/src/content/docs/cli/reference.md` and drift-checked by
   `just docs-gen-cli-check` (same doctrine as the completions/man page).

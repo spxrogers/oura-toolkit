@@ -677,12 +677,13 @@ docs-gen-cli-check: docs-gen-cli
     git diff --exit-code -- {{docs_dir}}/src/content/docs/cli/reference.md
     @test -z "$(git status --porcelain -- {{docs_dir}}/src/content/docs/cli/reference.md)" || { git status --porcelain -- {{docs_dir}}/src/content/docs/cli/reference.md; echo "docs-gen-cli-check: cli/reference.md is stale — run 'just docs-gen-cli' and commit"; exit 1; }
 
-# Build the docs-site API-reference input from the overlaid spec: normalize x-codeSamples
-# language labels to Shiki ids (docs-only presentation fix; see codegen/docs-codesamples.jq).
-# starlight-openapi reads the result (codegen/build/openapi.docs.json).
+# Build the docs-site API-reference input from the overlaid spec (docs-only transforms; see
+# codegen/docs-spec.jq): normalize x-codeSamples language labels to Shiki ids, and trim the
+# spec's 101-level "Getting Started" intro from info.description. starlight-openapi reads the
+# result (codegen/build/openapi.docs.json).
 [group('docs')]
 docs-spec: spec-overlay
-    jq -f codegen/docs-codesamples.jq {{overlaid_spec}} > {{docs_spec}}
+    jq -f codegen/docs-spec.jq {{overlaid_spec}} > {{docs_spec}}
     @echo "Docs API-reference spec -> {{docs_spec}}"
 
 # Local Astro dev server (docs spec + fresh CLI reference generated first). Ctrl-C to stop.

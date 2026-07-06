@@ -350,8 +350,9 @@ that orphaned it.
   docs service. Built-in Pagefind search + dark mode.
 - **Driven by the source of truth** (DOCS STAY TRUE TO THE CODE applies in full):
   - **API reference** — `starlight-openapi` over the **overlaid** spec at build time
-    (`just docs-spec` → `codegen/build/openapi.docs.json`; the docs-only `x-codeSamples`
-    language normalization lives in `codegen/docs-codesamples.jq`, NOT the shared overlay).
+    (`just docs-spec` → `codegen/build/openapi.docs.json`; the docs-only spec transforms —
+    `x-codeSamples` language normalization + trimming the spec's 101-level "Getting Started"
+    intro — live in `codegen/docs-spec.jq`, NOT the shared overlay).
   - **CLI reference** — GENERATED from the `oura` binary by `just docs-gen-cli` into
     `docs-site/src/content/docs/cli/reference.md`; committed, `linguist-generated`, drift-checked
     by `just docs-gen-cli-check`. Do **NOT** hand-edit it. Do **NOT** add an `oura` subcommand to
