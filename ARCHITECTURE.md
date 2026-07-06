@@ -156,7 +156,11 @@ the rest of the repo, so the docs can't drift from the code:
 
 Everything goes through `just docs-*` recipes (a `[group('docs')]`); a PR build gate
 (`just docs-check`) runs in CI. Built-in Pagefind search, dark mode, and versioned nav come
-from Starlight.
+from Starlight. The page footer's "Last updated" line also carries the **deployed commit's
+short SHA**, linked to the exact commit on GitHub — a "what's currently live" breadcrumb. The
+SHA is resolved at build time in `docs-site/astro.config.mjs` (CI's `GITHUB_SHA`, falling back
+to the local `git` HEAD) and rendered by the `LastUpdated` component override in
+`docs-site/src/components/`; if neither resolves the hash is simply omitted.
 
 ## Repo layout
 
