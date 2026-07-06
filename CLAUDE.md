@@ -303,8 +303,14 @@ a bug of the same severity as the code change that orphaned it.
   → commit → tag `vX.Y.Z` → push. `just version-check` is the SINGLE drift guard (and
   round-trips the writer, so a broken rewriter fails the `release-config` CI job).
   `.github/workflows/release.yml` (dist-generated, committed, drift-checked by `just
-  dist-check`) builds artifacts and runs the npm + homebrew publish jobs. `just release` is a
-  LOCAL smoke build; `just publish` covers only crates.io (order: api → auth → cli).
+  dist-check`) builds artifacts and runs the npm + homebrew publish jobs. **`just release
+  X.Y.Z`** wraps that whole flow in one command — it runs the full local gate, then does the
+  set-version → commit → tag → push choreography (the tag still drives CI; nothing is built on
+  the laptop) and finishes with the crates.io leg. It stays tag-driven: guards refuse a dirty
+  tree / non-`main` branch / origin drift / an existing tag / missing crates.io auth, and the
+  tag (primary) is pushed before the crates.io publish (secondary). `just dist-build` is the
+  LOCAL smoke build (publishes nothing); `just publish` covers only crates.io (order: api →
+  auth → cli) and is also the crates.io leg `just release` calls.
 - **Crates.io publishability:** the spec-reading build scripts read a crate-local
   `openapi.json` bundle (a published package has no repo root to walk to); sync-guarded by
   per-crate bundled-spec tests. `release-config` CI runs `just dist-check` + `just
