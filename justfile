@@ -691,13 +691,24 @@ release-tag new_version dry_run="false":
       exit 0
     fi
 
-    echo "==> commit + tag ${tag}"
-    git commit -aqm "Release ${tag}"
+    # The bump is a no-op when the manifests are already at ${ver} (e.g. the FIRST release, or
+    # re-cutting the current version) — `git commit` errors on a clean tree, so commit only when
+    # there's something to commit and tag the current HEAD otherwise. The tag-existence guards
+    # above already ensure we're not re-tagging a released version.
+    committed=0
+    if [ -n "$(git status --porcelain)" ]; then
+      echo "==> commit + tag ${tag}"
+      git commit -aqm "Release ${tag}"
+      committed=1
+    else
+      echo "==> tag ${tag} (manifests already at ${ver} — nothing to commit)"
+    fi
     git tag -a "${tag}" -m "Release ${tag}"
 
-    # Tag push triggers .github/workflows/release.yml (npm + Homebrew + GitHub Release).
-    echo "==> push main + tag ${tag}"
-    git push --quiet origin HEAD:main
+    # Push the bump commit (only if we made one), then the tag — the tag push triggers
+    # .github/workflows/release.yml (npm + Homebrew + GitHub Release).
+    echo "==> push ${tag}"
+    if [ "$committed" = 1 ]; then git push --quiet origin HEAD:main; fi
     git push --quiet origin "${tag}"
     echo "Pushed ${tag}: CI is building installers + publishing npm/Homebrew (watch the Actions tab)."
 
