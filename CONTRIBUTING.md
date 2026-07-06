@@ -47,12 +47,20 @@ just test-sandbox   # opt-in tests against Oura's live sandbox (network, no cred
 just spec-fetch     # re-vendor the pinned Oura OpenAPI export (+ crate-local bundles)
 just gen            # regenerate ALL generated SDK clients (Rust, TS, Python, Go, Java, C#)
 just gen-check      # CI's drift check: committed generated code matches the spec
+just gen-completions # shell completions + man page for the release archives (#75)
 just sdk-check      # CI's compile check: every breadth client actually builds
 just test-sandbox-sdks  # opt-in live sandbox smokes for the breadth clients (network)
 ```
 
 Codegen touches **only** generated clients — never the hand-written auth companions,
 `sdks/go/go.mod`, or `sdks/python`'s distribution metadata.
+
+`just gen-completions` regenerates the committed `cli/oura-toolkit-cli/dist-assets/`
+(shell completions + `oura.1`) that `dist-workspace.toml` `include`s into every release
+archive. It's drift-checked by `just gen-completions-check` (the `release-config` CI job); run it
+after any change to the CLI surface. The man page's `.TH` embeds the version, so
+`just set-version` regenerates it for you (it runs `gen-completions` as part of #59's single
+version writer).
 
 ### Upgrading the vendored spec
 

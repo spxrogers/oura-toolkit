@@ -171,6 +171,9 @@ jobs:
       - uses: extractions/setup-just@v4
       - uses: Swatinem/rust-cache@v2
       - run: just version-check
+      # #75: the completions + man page `include`d in the release archives are committed and
+      # must match the current CLI surface + version (generated from `oura completion`/`man`).
+      - run: just gen-completions-check
       - name: Install dist
         # Prebuilt installer, pinned to the version in dist-workspace.toml.
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh

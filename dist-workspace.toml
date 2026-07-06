@@ -32,3 +32,13 @@ publish-jobs = ["homebrew", "npm"]
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Where to host releases
 hosting = "github"
+# Ship the man page + shell completions in every archive (#75). Pre-generated (committed,
+# drift-checked by `just gen-completions-check`) rather than built at dist time: cargo-dist's
+# `include` copies existing files, and a build-time writer can't target a stable path without
+# breaking the read-only crates.io publish build.
+include = [
+    "cli/oura-toolkit-cli/dist-assets/oura.1",
+    "cli/oura-toolkit-cli/dist-assets/oura.bash",
+    "cli/oura-toolkit-cli/dist-assets/oura.zsh",
+    "cli/oura-toolkit-cli/dist-assets/oura.fish",
+]

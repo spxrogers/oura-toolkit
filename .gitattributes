@@ -10,3 +10,7 @@ sdks/python/oura_toolkit/api/** linguist-generated=true
 sdks/go/api/** linguist-generated=true
 sdks/java/api/** linguist-generated=true
 sdks/csharp/api/** linguist-generated=true
+
+# Shell completions + man page shipped in release archives (#75) — generated from the CLI's
+# own `oura completion`/`oura man` via `just gen-completions`, drift-checked, do not hand-edit.
+cli/oura-toolkit-cli/dist-assets/** linguist-generated=true
