@@ -1,0 +1,64 @@
+---
+title: oura-toolkit
+description: Your Oura Ring data everywhere you work — a fast Rust CLI, a local MCP server, a Claude plugin, and SDKs in six languages, all driven by Oura's OpenAPI spec.
+template: splash
+hero:
+  tagline: Your Oura Ring data, everywhere you work. A fast CLI, a local MCP server for AI assistants, a Claude plugin, and generated SDK clients in six languages — all driven by Oura's own OpenAPI spec.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get started
+      link: /guides/getting-started/
+      icon: right-arrow
+    - text: API reference
+      link: /api/
+      variant: minimal
+    - text: View on GitHub
+      link: https://github.com/spxrogers/oura-toolkit
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why oura-toolkit
+
+<CardGrid stagger>
+  <Card title="Read-only and local-first" icon="approve-check">
+    Your credentials are only ever sent to Oura — never to any third party. The toolkit
+    reads your data; it never writes to your account.
+  </Card>
+  <Card title="Bring your own Oura app" icon="seti:lock">
+    OAuth with *your* client id/secret (Oura deprecated personal access tokens in Dec 2025).
+    Guided registration takes about two minutes, once.
+  </Card>
+  <Card title="Scriptable by design" icon="seti:shell">
+    Stable exit codes, tab-separated output when piped, and `--json` on request — a
+    documented [CLI contract](/guides/cli-usage/) you can build scripts on.
+  </Card>
+  <Card title="Driven by the spec" icon="open-book">
+    The CLI, the MCP tools, and every SDK are generated from Oura's OpenAPI spec. This site's
+    API reference is too — so the docs can't drift from the code. [How it works](/concepts/spec-source-of-truth/).
+  </Card>
+</CardGrid>
+
+## Pick your surface
+
+<CardGrid>
+  <Card title="CLI" icon="seti:powershell">
+    Eight read commands over your data, an authenticated `oura api` passthrough, and shell
+    completions + a man page. [CLI reference →](/cli/reference/)
+  </Card>
+  <Card title="MCP server" icon="puzzle">
+    `oura mcp` runs a local STDIO MCP server exposing eight curated tools to any AI assistant.
+    [MCP guide →](/guides/mcp-server/)
+  </Card>
+  <Card title="Claude plugin" icon="rocket">
+    The batteries-included route: the MCP server plus `/morning-checkin` and `/wellness-report`
+    skills. [Plugin guide →](/guides/claude-plugin/)
+  </Card>
+  <Card title="SDKs" icon="seti:json">
+    The same shape in Rust, TypeScript, Python, Go, Java and C#: a generated data-plane client
+    plus a hand-written auth companion. [SDKs →](/sdks/)
+  </Card>
+</CardGrid>

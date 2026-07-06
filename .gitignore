@@ -15,6 +15,12 @@ node_modules/
 .env
 *.log
 
+# Docs site (docs-site/ — Astro Starlight). Build output + Astro's cache are derived; the
+# committed package-lock.json is deliberately NOT ignored (reproducible `just docs-install`).
+# node_modules/ is already ignored above (any depth).
+docs-site/dist/
+docs-site/.astro/
+
 # OS cruft
 .DS_Store
 

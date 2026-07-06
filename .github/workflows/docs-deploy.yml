@@ -1,0 +1,70 @@
+# Deploy the documentation site (docs-site/) to GitHub Pages at ouratoolkit.com.
+#
+# Build-and-publish on push to main; the PR build gate lives in ci.yml's `docs` job (which runs
+# `just docs-check` — drift + build — but never deploys). Like every other workflow here, the
+# build step is a SINGLE just recipe (`just docs-build`): the API reference is generated from the
+# overlaid spec and the CLI reference from the `oura` binary, so Rust + just + node are all needed
+# (jq for the docs spec is preinstalled on ubuntu-latest).
+#
+# One-time owner setup (cannot be mechanized here): in the repo's Pages settings choose the
+# "GitHub Actions" source and enable "Enforce HTTPS"; point the apex domain's DNS (A/AAAA records
+# to GitHub Pages, plus a `www` CNAME) at Pages. The custom domain itself is pinned by
+# docs-site/public/CNAME (ouratoolkit.com), which the build copies into the published artifact.
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something the site is generated from changes.
+    paths:
+      - "docs-site/**"
+      - "spec/openapi.json"
+      - "codegen/overlay.jq"
+      - "codegen/docs-codesamples.jq"
+      - "cli/oura-toolkit-cli/**"
+      - "justfile"
+      - ".github/workflows/docs-deploy.yml"
+  # Allow a manual redeploy (e.g. after changing Pages settings).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deploy at a time; let a newer push supersede an older run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: extractions/setup-just@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: Swatinem/rust-cache@v2
+      - run: just docs-build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/dist
+
+  deploy:
+    name: deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

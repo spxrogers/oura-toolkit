@@ -23,6 +23,9 @@ $ oura readiness --json | jq '.[0].score'
 - **Scriptable**: stable exit codes, TSV when piped, `--json` — see the
   [CLI contract](docs/cli-contract.md).
 
+📖 **Full documentation: [ouratoolkit.com](https://ouratoolkit.com)** — guides, the complete
+CLI reference, the Oura API v2 reference, and per-language SDK docs, with search.
+
 ## Install
 
 **npx (recommended — nothing to install):**
@@ -235,9 +238,10 @@ One prerequisite: install [`just`](https://github.com/casey/just). Everything el
 recipe:
 
 ```sh
-just setup   # toolchains + codegen/release tooling
-just ci      # what CI runs: fmt-check + lint + tests
-just         # list all recipes
+just setup      # toolchains + codegen/release tooling
+just ci         # what CI runs: fmt-check + lint + tests
+just docs-dev   # run the documentation site (ouratoolkit.com) locally
+just            # list all recipes
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, [CLAUDE.md](CLAUDE.md) for the hard

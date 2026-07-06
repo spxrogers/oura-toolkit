@@ -569,3 +569,379 @@ fn no_browser_flag_is_documented_where_it_is_offered() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Docs site (docs-site/) — the SAME enumerable-claim discipline extended to the published
+// documentation website. The API reference is generated from the spec at build time and the CLI
+// reference is generated from the binary (drift-checked by `just docs-gen-cli-check`), so those
+// can't drift; these tests pin the HAND-WRITTEN guide/SDK pages' enumerable claims to source,
+// exactly as the README tests above do, so a code change that orphans the site fails CI.
+// ---------------------------------------------------------------------------------------------
+
+/// A docs-site content page's repo-relative path.
+fn docs_site_page(rel: &str) -> PathBuf {
+    repo_root().join("docs-site/src/content/docs").join(rel)
+}
+
+/// The hand-written docs-site content pages. `md_only` restricts to `.md` (the `code_snippets`
+/// scanner is Markdown-only; `.mdx` splash/wrapper pages are excluded from fence scans). Always
+/// excluded: Astro-ignored `_`-prefixed fragments, and the GENERATED `cli/reference.md` (it is
+/// drift-checked by `just docs-gen-cli-check`, not tripwired).
+fn docs_site_pages(md_only: bool) -> Vec<PathBuf> {
+    let base = repo_root().join("docs-site/src/content/docs");
+    let mut out = Vec::new();
+    let mut stack = vec![base];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("reading {dir:?}: {e}")) {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with('_') {
+                continue; // Astro-ignored fragment (e.g. _reference.header.md)
+            }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !(ext == "md" || (!md_only && ext == "mdx")) {
+                continue;
+            }
+            if path.ends_with("cli/reference.md") {
+                continue; // generated + drift-checked, not tripwired
+            }
+            out.push(path);
+        }
+    }
+    assert!(
+        out.len() >= 10,
+        "walked only {} docs-site pages — content moved or walker broken?",
+        out.len()
+    );
+    out.sort();
+    out
+}
+
+/// Every `oura <cmd>` shown in a docs-site guide is a real subcommand (one-direction, like the
+/// README tripwire but for the site). Completeness stays README-anchored; this catches a guide
+/// naming a command that doesn't exist.
+#[test]
+fn docs_site_command_references_are_real() {
+    let full = help_subcommands(&oura_stdout(&["--help"]), 12);
+    let mut checked = 0;
+    for page in docs_site_pages(true) {
+        for snippet in code_snippets(&read(&page)) {
+            for line in snippet.lines() {
+                for (idx, _) in line.match_indices("oura ") {
+                    if idx > 0 && line.as_bytes()[idx - 1].is_ascii_alphanumeric() {
+                        continue; // `npx -y oura-toolkit …` etc.
+                    }
+                    let token: String = line[idx + 5..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                        .collect();
+                    if !token.starts_with(|c: char| c.is_ascii_lowercase()) || token == "toolkit" {
+                        continue;
+                    }
+                    assert!(
+                        full.contains(&token),
+                        "{page:?} shows `oura {token}` but the binary has no such subcommand — \
+                         renamed without updating the docs site? (DOCS STAY TRUE TO THE CODE)"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        checked >= 8,
+        "suspiciously few `oura <cmd>` references across docs-site ({checked}) — tokenizer broken?"
+    );
+}
+
+/// Every `oura auth <sub>` shown in a docs-site guide is a real auth subcommand.
+#[test]
+fn docs_site_auth_subcommand_references_are_real() {
+    let mut auth = help_subcommands(&oura_stdout(&["auth", "--help"]), 5);
+    auth.remove("help");
+    let mut checked = 0;
+    for page in docs_site_pages(true) {
+        for snippet in code_snippets(&read(&page)) {
+            for line in snippet.lines() {
+                for (idx, _) in line.match_indices("oura auth ") {
+                    if idx > 0 && line.as_bytes()[idx - 1].is_ascii_alphanumeric() {
+                        continue;
+                    }
+                    let token: String = line[idx + 10..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                        .collect();
+                    if !token.starts_with(|c: char| c.is_ascii_lowercase()) {
+                        continue;
+                    }
+                    assert!(
+                        auth.contains(&token),
+                        "{page:?} shows `oura auth {token}` but the binary has no such auth \
+                         subcommand (DOCS STAY TRUE TO THE CODE)"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        checked >= 4,
+        "suspiciously few `oura auth <sub>` references across docs-site ({checked})"
+    );
+}
+
+/// Any `just <recipe>` a docs-site page mentions exists in the justfile (guards a page that
+/// references a renamed docs recipe). No minimum: guides mostly speak `oura`/`npx`, not `just`.
+#[test]
+fn docs_site_just_recipe_references_all_exist() {
+    let root = repo_root();
+    let mut recipes = BTreeSet::new();
+    for line in read(&root.join("justfile")).lines() {
+        if !line.starts_with(|c: char| c.is_ascii_alphabetic()) || line.contains(":=") {
+            continue;
+        }
+        if line.contains(':') {
+            recipes.insert(
+                line.split(':')
+                    .next()
+                    .unwrap()
+                    .split_whitespace()
+                    .next()
+                    .unwrap()
+                    .to_string(),
+            );
+        }
+    }
+    assert!(recipes.len() >= 15, "justfile recipe parser broken?");
+    for page in docs_site_pages(true) {
+        for snippet in code_snippets(&read(&page)) {
+            for (idx, _) in snippet.match_indices("just ") {
+                if idx > 0 {
+                    let prev = snippet.as_bytes()[idx - 1];
+                    if prev.is_ascii_alphanumeric() || prev == b'-' || prev == b'_' {
+                        continue; // e.g. "adjust "
+                    }
+                }
+                let token: String = snippet[idx + 5..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                    .collect();
+                if token.is_empty() {
+                    continue;
+                }
+                assert!(
+                    recipes.contains(&token),
+                    "{page:?} references `just {token}` but the justfile has no such recipe \
+                     (DOCS STAY TRUE TO THE CODE)"
+                );
+            }
+        }
+    }
+}
+
+/// Every `get_*` token on a docs-site page is a real MCP tool name (the mcp-server guide lists
+/// the eight-tool table). A tool rename that skips the site fails here.
+#[test]
+fn docs_site_mcp_tool_names_are_real() {
+    let known: BTreeSet<&str> = oura_toolkit_cli::mcp::tool_names().collect();
+    let mut checked = 0;
+    for page in docs_site_pages(false) {
+        let text = read(&page);
+        for token in text
+            .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
+            .filter(|t| t.starts_with("get_"))
+        {
+            assert!(
+                known.contains(token),
+                "{page:?} references unknown MCP tool {token:?} (DOCS STAY TRUE TO THE CODE)"
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 8,
+        "expected the eight get_* tools listed on docs-site (found {checked}) — mcp-server page changed?"
+    );
+}
+
+/// The docs-site auth guide's Scopes value ⟷ the spec-derived default scope set.
+#[test]
+fn docs_site_scope_string_matches_the_spec_derived_default() {
+    let expected = oura_toolkit_auth::metadata::default_scopes().join(" ");
+    let text = read(&docs_site_page("guides/authentication.md"));
+    assert!(
+        text.contains(&format!("`{expected}`")),
+        "docs-site authentication guide's Scopes value drifted from \
+         metadata::default_scopes() — expected `{expected}`"
+    );
+}
+
+/// The docs-site auth guide's Redirect URI + port ⟷ the binary's real default `--port`.
+#[test]
+fn docs_site_redirect_uri_matches_the_cli_default_port() {
+    let help = oura_stdout(&["auth", "login", "--help"]);
+    let default_port: u16 = help
+        .split("[default: ")
+        .nth(1)
+        .and_then(|rest| rest.split(']').next())
+        .expect("`oura auth login --help` lost its `[default: <port>]` marker")
+        .trim()
+        .parse()
+        .expect("default port parses as u16");
+    let text = read(&docs_site_page("guides/authentication.md"));
+    assert!(
+        text.contains(&format!("http://localhost:{default_port}/callback")),
+        "docs-site auth guide's Redirect URI drifted from the default port {default_port}"
+    );
+    assert!(
+        text.contains(&format!("port {default_port}")),
+        "docs-site auth guide no longer names the default port {default_port}"
+    );
+}
+
+/// The docs-site auth guide's token-store paths ⟷ the auth crate's locked directory name.
+#[test]
+fn docs_site_store_paths_match_the_auth_crates_dir_name() {
+    let unix = format!("~/.config/{}/", oura_toolkit_auth::APP_DIR_NAME);
+    let windows = format!("%LOCALAPPDATA%\\{}\\", oura_toolkit_auth::APP_DIR_NAME);
+    let text = read(&docs_site_page("guides/authentication.md"));
+    for claim in [&unix, &windows] {
+        assert!(
+            text.contains(claim.as_str()),
+            "docs-site auth guide lost the store-path claim {claim:?} \
+             (source: oura_toolkit_auth::APP_DIR_NAME)"
+        );
+    }
+}
+
+/// Every `OURA_*` override read in api.rs is documented in the docs-site headless/CI guide.
+#[test]
+fn docs_site_env_overrides_documented() {
+    let root = repo_root();
+    let src = read(&root.join("cli/oura-toolkit-cli/src/api.rs"));
+    let names: BTreeSet<String> = src
+        .match_indices("OURA_")
+        .map(|(i, _)| {
+            let rest = &src[i..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            rest[..end].to_string()
+        })
+        .collect();
+    assert!(
+        names.contains("OURA_ACCESS_TOKEN") && names.contains("OURA_API_BASE_URL"),
+        "expected the #20 env overrides among api.rs's OURA_* names: {names:?}"
+    );
+    let text = read(&docs_site_page("guides/headless-ci.md"));
+    for name in &names {
+        assert!(
+            text.contains(name.as_str()),
+            "docs-site headless/CI guide does not document the env override {name} read in api.rs \
+             (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+}
+
+/// The rate-limit numbers the docs-site CLI guide states ⟷ the constants the code enforces.
+#[test]
+fn docs_site_rate_limit_numbers_match_the_constants() {
+    let cap = format!(
+        "{} seconds",
+        oura_toolkit_cli::api::RATE_LIMIT_WAIT_CAP_SECS
+    );
+    let budget = format!(
+        "{} rate-limit waits",
+        oura_toolkit_cli::api::RATE_LIMIT_MAX_WAITS
+    );
+    let text = read(&docs_site_page("guides/cli-usage.md"));
+    assert!(
+        text.contains(&cap),
+        "docs-site CLI guide no longer states the Retry-After cap as {cap:?} \
+         (source: api::RATE_LIMIT_WAIT_CAP_SECS)"
+    );
+    assert!(
+        text.contains(&budget),
+        "docs-site CLI guide no longer states the per-invocation budget as {budget:?} \
+         (source: api::RATE_LIMIT_MAX_WAITS)"
+    );
+}
+
+/// The GENERATED CLI reference has a section for every real command (top-level + `oura auth`),
+/// so a help-format change that breaks `just docs-gen-cli`'s enumeration — silently dropping a
+/// command from the reference — fails CI instead of shipping an incomplete page.
+#[test]
+fn docs_site_cli_reference_covers_every_command() {
+    let full = help_subcommands(&oura_stdout(&["--help"]), 12);
+    let mut auth = help_subcommands(&oura_stdout(&["auth", "--help"]), 5);
+    auth.remove("help");
+    let reference = read(&docs_site_page("cli/reference.md"));
+    for cmd in &full {
+        if cmd == "help" {
+            continue; // `help` is not given its own reference section
+        }
+        assert!(
+            reference.contains(&format!("`oura {cmd}`")),
+            "docs-site cli/reference.md is missing a section for `oura {cmd}` — \
+             run `just docs-gen-cli` and commit (the enumeration missed a command?)"
+        );
+    }
+    for sub in &auth {
+        assert!(
+            reference.contains(&format!("`oura auth {sub}`")),
+            "docs-site cli/reference.md is missing a section for `oura auth {sub}` — \
+             run `just docs-gen-cli` and commit"
+        );
+    }
+}
+
+/// The docs-site SDK pages ⟷ the languages the justfile actually generates (`generated_dirs`):
+/// exactly one `sdks/<lang>.md` per generated language, and no orphan SDK page. A seventh SDK —
+/// or a dropped one — fails CI until the site follows.
+#[test]
+fn docs_site_sdk_pages_match_generated_languages() {
+    let justfile = read(&repo_root().join("justfile"));
+    let line = justfile
+        .lines()
+        .find(|l| l.trim_start().starts_with("generated_dirs"))
+        .expect("justfile lost its generated_dirs var");
+    let langs: BTreeSet<String> = line
+        .split_whitespace()
+        .filter_map(|tok| {
+            tok.trim_matches('"')
+                .strip_prefix("sdks/")
+                .map(str::to_string)
+        })
+        .filter_map(|rest| rest.split('/').next().map(str::to_string))
+        .collect();
+    assert!(
+        langs.len() >= 6,
+        "parsed only {} SDK languages from generated_dirs: {langs:?}",
+        langs.len()
+    );
+    let sdk_dir = repo_root().join("docs-site/src/content/docs/sdks");
+    for lang in &langs {
+        assert!(
+            sdk_dir.join(format!("{lang}.md")).is_file(),
+            "docs-site is missing sdks/{lang}.md — every generated SDK language needs a docs \
+             page (source: justfile generated_dirs)"
+        );
+    }
+    for entry in std::fs::read_dir(&sdk_dir).expect("read docs-site sdks dir") {
+        let path = entry.expect("entry").path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.ends_with(".md") || name == "index.md" || name.starts_with('_') {
+            continue;
+        }
+        let lang = name.trim_end_matches(".md");
+        assert!(
+            langs.contains(lang),
+            "docs-site sdks/{name} has no matching generated language in the justfile \
+             generated_dirs — orphan SDK page?"
+        );
+    }
+}

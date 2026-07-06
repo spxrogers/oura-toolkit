@@ -92,6 +92,29 @@ net472 (which resolves the `netstandard2.0` asset) and runs it under **Mono** (`
 mono-devel`; `just setup` warns if missing). CI runs it as its own `csharp-netstandard`
 job.
 
+## Docs site (docs-site/)
+
+The documentation website ([ouratoolkit.com](https://ouratoolkit.com)) is an
+[Astro Starlight](https://starlight.astro.build) project under `docs-site/`, driven by the
+same sources as the code so it can't drift.
+
+```sh
+just docs-dev       # local dev server (overlaid spec + fresh CLI reference first)
+just docs-build     # production build to docs-site/dist/ (Pagefind search index)
+just docs-gen-cli   # regenerate the committed CLI reference from the `oura` binary
+just docs-check     # the docs CI gate: CLI-reference drift check + full build
+```
+
+Two things are generated, never hand-edited: the **API reference** is built from the overlaid
+spec at build time (so it *is* the spec), and the **CLI reference**
+(`docs-site/src/content/docs/cli/reference.md`) is generated from the `oura` binary by
+`just docs-gen-cli` and drift-checked by `just docs-gen-cli-check` — regenerate and commit it
+after any CLI-surface change. The hand-written guide/SDK pages' enumerable claims (scopes,
+ports, store paths, tool names, env vars, rate-limit numbers, the SDK language set) are pinned
+to source by the docs-site tripwires in `cli/oura-toolkit-cli/tests/docs_tripwire.rs`, so a code
+change that orphans the site fails `just ci`. Deploy is automatic: pushing to `main` runs
+`.github/workflows/docs-deploy.yml` (GitHub Pages).
+
 ## Testing bar (the release gate)
 
 This repo treats green CI as the release decision, which puts real weight on test
@@ -132,6 +155,7 @@ sdks/rust/oura-toolkit-auth  hand-written auth companion (token store, refresh)
 sdks/{typescript,python,go,java,csharp}  GENERATED breadth clients + hand-written auth companions
 cli/oura-toolkit-cli         the app: binary `oura` (CLI + MCP server)
 plugins/oura-toolkit/        the Claude plugin (MCP entry + skills)
+docs-site/                   the docs website (Astro Starlight -> ouratoolkit.com)
 docs/cli-contract.md         the scripting contract (exit codes, streams, formats)
 CLAUDE.md                    the law: hard constraints every change must satisfy
 ARCHITECTURE.md              the map: how the pieces fit together

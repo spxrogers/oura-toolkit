@@ -240,8 +240,9 @@ weakened to accommodate an implementation.
 ## DOCS STAY TRUE TO THE CODE (same weight as TESTING & VERIFICATION)
 
 `README.md` is the front door, and `CONTRIBUTING.md` / `docs/cli-contract.md` /
-`plugins/oura-toolkit/README.md` are shipped surface. A doc claim that contradicts the code is
-a bug of the same severity as the code change that orphaned it.
+`plugins/oura-toolkit/README.md` / the docs site (`docs-site/`, → ouratoolkit.com) are shipped
+surface. A doc claim that contradicts the code is a bug of the same severity as the code change
+that orphaned it.
 
 1. **Same-PR rule.** Any change to a documented fact — user-visible behavior (CLI surface,
    auth flow, token-store location, MCP tools, plugin, install/release paths) or
@@ -260,8 +261,11 @@ a bug of the same severity as the code change that orphaned it.
 4. **Mechanize what's mechanizable.** Doc claims that are enumerable — the README's command
    list, scope string, redirect URI, store paths, recipe names, MCP tool names — MUST be
    pinned by tripwire tests (in the mold of mcp.rs's tool-name tripwire; #45). CI, not
-   reviewer diligence, must catch drift. Prose claims (tone, walkthrough accuracy) remain a
-   review-gate responsibility (rules 1–3).
+   reviewer diligence, must catch drift. The **docs site** carries the same weight: its
+   generated pages are drift-checked (API reference from the spec at build time; CLI reference
+   via `just docs-gen-cli-check`) and its hand-written pages' enumerable claims are pinned by
+   the docs-site tripwires in `docs_tripwire.rs`. Prose claims (tone, walkthrough accuracy)
+   remain a review-gate responsibility (rules 1–3).
 
 ---
 
@@ -335,6 +339,28 @@ a bug of the same severity as the code change that orphaned it.
   (including its exact arg position) must equal the workspace version — written by `just
   set-version`, guarded by `just version-check`. Both manifests must pass `claude plugin
   validate --strict` via `just plugin-check`. Both recipes run in the `release-config` CI job.
+
+---
+
+## DOCS SITE
+
+- **ONE** documentation website: `docs-site/` (**Astro Starlight**), published to
+  **ouratoolkit.com** via **GitHub Pages** (apex domain pinned by `docs-site/public/CNAME`;
+  deploy on push to `main` via `.github/workflows/docs-deploy.yml`). STDIO-simple: no external
+  docs service. Built-in Pagefind search + dark mode.
+- **Driven by the source of truth** (DOCS STAY TRUE TO THE CODE applies in full):
+  - **API reference** — `starlight-openapi` over the **overlaid** spec at build time
+    (`just docs-spec` → `codegen/build/openapi.docs.json`; the docs-only `x-codeSamples`
+    language normalization lives in `codegen/docs-codesamples.jq`, NOT the shared overlay).
+  - **CLI reference** — GENERATED from the `oura` binary by `just docs-gen-cli` into
+    `docs-site/src/content/docs/cli/reference.md`; committed, `linguist-generated`, drift-checked
+    by `just docs-gen-cli-check`. Do **NOT** hand-edit it. Do **NOT** add an `oura` subcommand to
+    render it (it would leak into shell completions).
+  - **Guides + SDK pages** — hand-written; enumerable claims pinned by the docs-site tripwires
+    in `docs_tripwire.rs`.
+- **Everything is a `just docs-*` recipe** (`[group('docs')]`); raw npm/astro/jq stay inside
+  them. `just docs-check` (drift + build) is the CI gate — a broken build or stale CLI reference
+  fails a PR (green CI is releasable covers the docs too).
 
 ---
 

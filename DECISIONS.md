@@ -97,6 +97,30 @@ rewriter fails CI on the PR that broke it. Replaced a sprawl of per-file grep gu
 `rust-version` currently **1.89** (for `std::fs::File::lock`, chosen over a locking
 dependency). Pre-1.0, no shipped consumers; revisit only when a real consumer needs older.
 
+### Documentation site: Astro Starlight on GitHub Pages (`docs-site/`)
+The docs website ([ouratoolkit.com](https://ouratoolkit.com)) is **Astro Starlight** — modern,
+fast, built-in Pagefind search + dark mode, MD/MDX authoring — published to **GitHub Pages**
+(self-contained, CI-driven, no external service; apex domain via `public/CNAME`). Chosen over
+Docusaurus (heavier) and VitePress (weaker OpenAPI story). Wired to the source of truth so the
+docs can't drift, matching the repo's law:
+- **API reference** via the `starlight-openapi` plugin, fed the **overlaid** spec (so the
+  server URL is `api.ouraring.com`, not the leaked `api.None.com`). A docs-only jq step
+  (`codegen/docs-codesamples.jq`, run by `just docs-spec`) normalizes the spec's `x-codeSamples`
+  language labels ("cURL"/"Python"/…) to Shiki grammar ids for highlighting — kept OUT of the
+  shared `codegen/overlay.jq`, which feeds real codegen and must stay minimal. Starlight 3.1
+  support was verified against the pinned plugin (no down-convert needed).
+- **CLI reference** generated from the `oura` binary's `--help` by `just docs-gen-cli`,
+  committed + drift-checked (`docs-gen-cli-check`). **Rejected** adding a `clap-markdown` hidden
+  subcommand: `clap_complete` still emits hidden subcommands into the shell completions, leaking
+  an internal `oura markdown` command (with its docs-y description) into `oura <TAB>` — polluting
+  the tightly-curated CLI surface. Capturing `--help` verbatim needs no new dep, no new
+  subcommand, and no lib refactor, and mirrors how `gen-completions` already shells out to the
+  binary. A completeness tripwire guards the enumeration.
+- **Guides + SDK pages** hand-written; their enumerable claims are pinned by docs-site tripwires
+  in `docs_tripwire.rs` (the #45 pattern extended to `docs-site/`). A PR build gate
+  (`just docs-check`) is a CI job, so "green CI is releasable" covers the docs too.
+Everything is a `just docs-*` recipe (`[group('docs')]`); raw npm/astro/jq stay inside them.
+
 ---
 
 ## Toolchain realities (do not relitigate — these make the mandated paths work)

@@ -1,0 +1,10 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="otk" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c9cff"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <circle cx="16" cy="16" r="11" stroke="url(#otk)" stroke-width="4.5"/>
+  <circle cx="16" cy="16" r="4" fill="url(#otk)"/>
+</svg>
