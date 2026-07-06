@@ -57,9 +57,10 @@ Codegen touches **only** generated clients — never the hand-written auth compa
 
 `just gen-completions` regenerates the committed `cli/oura-toolkit-cli/dist-assets/`
 (shell completions + `oura.1`) that `dist-workspace.toml` `include`s into every release
-archive. It's drift-checked by `just gen-completions-check` (the `release-config` CI job),
-so run it after any change to the CLI surface **or the version** — the man page's `.TH`
-embeds the version, so a `just set-version` bump needs a follow-up `just gen-completions`.
+archive. It's drift-checked by `just gen-completions-check` (the `release-config` CI job); run it
+after any change to the CLI surface. The man page's `.TH` embeds the version, so
+`just set-version` regenerates it for you (it runs `gen-completions` as part of #59's single
+version writer).
 
 ### Upgrading the vendored spec
 

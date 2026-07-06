@@ -492,7 +492,9 @@ code is a bug of the same severity as the code change that orphaned it.
   man`, drift-checked by `just gen-completions-check` in `release-config`). cargo-dist 0.32's
   `include` copies existing files, so they're committed (a build-time writer can't hit a
   stable path without breaking the read-only crates.io publish); the man page's `.TH` embeds
-  the version, so `just set-version` needs a follow-up `just gen-completions`. **Known 0.32
+  the version, so `just set-version` (#59's single writer) regenerates them via
+  `just gen-completions`, and `dist-check` asserts they actually land in the built artifact.
+  **Known 0.32
   limit:** its Homebrew template has no completion/manpage wiring (and no config for it) — the
   files land in the formula's `pkgshare`, not auto-loaded. Archive INCLUSION is done; Homebrew
   AUTO-wiring is deferred to a cargo-dist upgrade (follow-up).

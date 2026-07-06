@@ -540,7 +540,11 @@ dist-check:
     dist generate --check
     dist build --artifacts=global
     tar -xzOf target/distrib/oura-toolkit-cli-npm-package.tar.gz package/package.json | jq -e '.name == "oura-toolkit" and (.bin | keys == ["oura"])' > /dev/null
-    @echo "dist config valid; npm artifact is oura-toolkit with bin oura"
+    # #75: the man page + completions the archives ship must ACTUALLY be packaged — assert
+    # they landed in the built artifact, so a typo'd/renamed `include` path in
+    # dist-workspace.toml fails a PR here, not silently at release-tag time (guarantee = test).
+    for f in oura.1 oura.bash oura.zsh oura.fish; do tar -tzf target/distrib/oura-toolkit-cli-npm-package.tar.gz | grep -qx "package/$f" || { echo "release artifact is missing $f -- the dist include list (dist-workspace.toml) is broken"; exit 1; }; done
+    @echo "dist config valid; npm artifact is oura-toolkit with bin oura; completions + man page packaged"
 
 # Prove the publishable crate builds from its PACKAGED form with NO repo root: the
 # tarball is extracted to a temp dir OUTSIDE the repo, where build.rs's walk-up fallback
@@ -570,6 +574,10 @@ publish-check:
 set-version new_version:
     codegen/version.sh set {{new_version}}
     cargo update --workspace --quiet
+    # The man page's `.TH` embeds the version (#75), so it's a version-carrying artifact:
+    # regenerate it here (the single writer, #59) rather than leave a stale oura.1 that would
+    # fail `just gen-completions-check` on the release PR.
+    just gen-completions
     @echo "Now commit, then tag v{{new_version}} and push to release (CLAUDE.md → DISTRIBUTION)."
 
 # THE single version-drift guard (#59): every hand-written manifest equals the workspace
