@@ -115,6 +115,11 @@ to source by the docs-site tripwires in `cli/oura-toolkit-cli/tests/docs_tripwir
 change that orphans the site fails `just ci`. Deploy is automatic: pushing to `main` runs
 `.github/workflows/docs-deploy.yml` (GitHub Pages).
 
+Each page's footer shows the **deployed commit's short SHA**, linked to the commit on GitHub —
+a "what's currently live" breadcrumb. It comes from CI's `GITHUB_SHA` (or your local `git` HEAD
+when you run `just docs-build`), resolved in `docs-site/astro.config.mjs` and rendered by the
+`LastUpdated` override in `docs-site/src/components/`.
+
 ## Testing bar (the release gate)
 
 This repo treats green CI as the release decision, which puts real weight on test
