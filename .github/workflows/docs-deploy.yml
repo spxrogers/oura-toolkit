@@ -44,10 +44,18 @@ permissions:
   pages: write
   id-token: write
 
-# One in-flight deploy at a time; let a newer push supersede an older run.
+# One in-flight deploy at a time. A newer push/dispatch supersedes an older in-flight run, but a
+# `workflow_run`-triggered run must NOT cancel one: on a normal push to main, that push starts a
+# real deploy here AND (via the Release workflow's dry-run completing) fires a second, guard-
+# skipped `workflow_run` run in this same `pages` group. Concurrency is resolved at queue time,
+# before the build job's `if`, so a blanket `cancel-in-progress: true` let the skip-only
+# `workflow_run` run cancel the legit push deploy — leaving the site un-refreshed. Gating cancel
+# on the event keeps "newer push wins" while making the `workflow_run` run queue-then-skip
+# instead of killing the deploy (a real release still deploys via `workflow_run`; nothing else
+# contends at release time).
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'workflow_run' }}
 
 defaults:
   run:
