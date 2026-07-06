@@ -14,3 +14,8 @@ sdks/csharp/api/** linguist-generated=true
 # Shell completions + man page shipped in release archives (#75) — generated from the CLI's
 # own `oura completion`/`oura man` via `just gen-completions`, drift-checked, do not hand-edit.
 cli/oura-toolkit-cli/dist-assets/** linguist-generated=true
+
+# Docs-site CLI reference — generated from the `oura` binary via `just docs-gen-cli`,
+# drift-checked (`just docs-gen-cli-check`), do not hand-edit. Only this one page is generated;
+# the rest of docs-site/ is hand-written.
+docs-site/src/content/docs/cli/reference.md linguist-generated=true

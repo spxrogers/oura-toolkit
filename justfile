@@ -21,6 +21,14 @@ build_dir       := "codegen/build"
 overlaid_spec   := build_dir / "openapi.overlaid.json"
 # Rust-only down-convert (3.1 -> 3.0.3) fed to progenitor.
 progenitor_spec := build_dir / "openapi.progenitor.json"
+# Docs-site API-reference input: the overlaid spec with x-codeSamples language labels normalized
+# to Shiki ids (docs-only presentation fix). Derived; produced by `just docs-spec`.
+docs_spec := build_dir / "openapi.docs.json"
+
+# Astro Starlight documentation site (docs-site/), published to ouratoolkit.com via GitHub
+# Pages. Its API reference is generated at build time from the OVERLAID spec, its CLI reference
+# from the `oura` binary; both are wired through the `docs-*` recipes below (never raw npm/astro).
+docs_dir := "docs-site"
 
 # Workspace version, derived from Cargo.toml [workspace.package].version (single source).
 version := `sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n1`
@@ -617,3 +625,85 @@ publish:
     cargo publish -p oura-toolkit-api
     cargo publish -p oura-toolkit-auth
     cargo publish -p oura-toolkit-cli
+
+# ---------------------------------------------------------------------------------------------
+# Docs site (docs-site/ — Astro Starlight, published to ouratoolkit.com via GitHub Pages)
+# ---------------------------------------------------------------------------------------------
+#
+# Two source-of-truth wirings keep the site from drifting (CLAUDE.md → DOCS STAY TRUE TO THE
+# CODE): the API reference is generated at build time from the OVERLAID spec (so it IS the
+# spec), and the CLI reference is generated from the `oura` binary and drift-checked. Raw
+# npm/astro live ONLY in these recipes.
+
+# Install the pinned docs toolchain (reproducible; committed package-lock.json). `npm ci`
+# mirrors the lockfile exactly, like the breadth-SDK npm trees.
+[group('docs')]
+docs-install:
+    cd {{docs_dir}} && npm ci
+
+# Regenerate the committed CLI reference (docs-site/src/content/docs/cli/reference.md) from the
+# `oura` binary's own `--help` — the SAME source as its completions/man page, so the documented
+# flags/defaults can't drift from the binary. Committed + drift-checked (`docs-gen-cli-check`),
+# exactly like `gen-completions`. Subcommands are enumerated FROM the binary (not a hand-kept
+# list) so a new command is captured automatically; a completeness tripwire in docs_tripwire.rs
+# fails CI if the enumeration ever misses one. stdout is a pipe here, so clap wraps at its fixed
+# default width — the output is deterministic regardless of the terminal.
+[group('docs')]
+docs-gen-cli:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --quiet -p oura-toolkit-cli
+    bin=./target/debug/oura
+    dir={{docs_dir}}/src/content/docs/cli
+    out="$dir/reference.md"
+    export NO_COLOR=1
+    cp "$dir/_reference.header.md" "$out"
+    # One section per command; `oura auth` subcommands nest under it as level-3 headings.
+    emit() { local level="$1"; shift; printf '\n%s `oura %s`\n\n```text\n' "$level" "$*" >> "$out"; "$bin" "$@" --help >> "$out"; printf '```\n' >> "$out"; }
+    # Subcommand names under a clap `Commands:` section: exactly-two-space-indented lines (first
+    # token), skipping deeper-indented wrapped descriptions and clap's own `help`.
+    subcommands() { "$bin" "$@" --help | awk '/^Commands:/{f=1;next} f{ if($0 !~ /^  /) exit; if($0 ~ /^   /) next; print $1 }' | grep -vx help; }
+    printf '\n## `oura`\n\n```text\n' >> "$out"; "$bin" --help >> "$out"; printf '```\n' >> "$out"
+    for cmd in $(subcommands); do
+      emit '##' "$cmd"
+      if [ "$cmd" = auth ]; then for sub in $(subcommands auth); do emit '###' auth "$sub"; done; fi
+    done
+    echo "Generated $out"
+
+# Drift guard: the committed CLI reference matches the current binary. Same doctrine as
+# `gen-completions-check`; run by the docs CI job (via `docs-check`).
+[group('docs')]
+docs-gen-cli-check: docs-gen-cli
+    git diff --exit-code -- {{docs_dir}}/src/content/docs/cli/reference.md
+    @test -z "$(git status --porcelain -- {{docs_dir}}/src/content/docs/cli/reference.md)" || { git status --porcelain -- {{docs_dir}}/src/content/docs/cli/reference.md; echo "docs-gen-cli-check: cli/reference.md is stale — run 'just docs-gen-cli' and commit"; exit 1; }
+
+# Build the docs-site API-reference input from the overlaid spec (docs-only transforms; see
+# codegen/docs-spec.jq): normalize x-codeSamples language labels to Shiki ids, and trim the
+# spec's 101-level "Getting Started" intro from info.description. starlight-openapi reads the
+# result (codegen/build/openapi.docs.json).
+[group('docs')]
+docs-spec: spec-overlay
+    jq -f codegen/docs-spec.jq {{overlaid_spec}} > {{docs_spec}}
+    @echo "Docs API-reference spec -> {{docs_spec}}"
+
+# Local Astro dev server (docs spec + fresh CLI reference generated first). Ctrl-C to stop.
+[group('docs')]
+docs-dev: docs-spec docs-gen-cli
+    cd {{docs_dir}} && npm run dev
+
+# Production build to docs-site/dist/ (Pagefind search index runs). Depends on the docs spec
+# (the API-reference source) and the freshly generated CLI reference. The GitHub Pages deploy
+# workflow runs exactly this recipe.
+[group('docs')]
+docs-build: docs-spec docs-gen-cli docs-install
+    cd {{docs_dir}} && npm run build
+
+# Serve the built site locally.
+[group('docs')]
+docs-preview: docs-build
+    cd {{docs_dir}} && npm run preview
+
+# The docs CI gate (one recipe, like every other CI job): the CLI-reference drift check, then a
+# full production build — a broken Astro/API build or a stale CLI reference fails here.
+[group('docs')]
+docs-check: docs-gen-cli-check docs-build

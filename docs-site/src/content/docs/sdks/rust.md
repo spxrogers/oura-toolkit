@@ -1,0 +1,38 @@
+---
+title: Rust
+description: The Rust SDK — a progenitor-generated client plus the oura-toolkit-auth companion, the same stack the CLI runs on.
+---
+
+The Rust SDK is two crates: `oura-toolkit-api` (the progenitor-generated data-plane client) and
+`oura-toolkit-auth` (the hand-written, non-interactive auth companion). The `oura` CLI depends
+on both directly, so this is the most exercised SDK in the toolkit.
+
+:::caution[Consume from source]
+Not yet published to crates.io. Depend on it from the repository for now.
+:::
+
+```toml
+# Cargo.toml
+[dependencies]
+oura-toolkit-api = { git = "https://github.com/spxrogers/oura-toolkit" }
+oura-toolkit-auth = { git = "https://github.com/spxrogers/oura-toolkit" }
+```
+
+## Usage sketch
+
+The client is auth-agnostic — attach a Bearer token (via the auth companion's middleware, or a
+raw token for a one-shot). Fetch daily sleep for a date range:
+
+```rust
+// Pseudocode shape: a generated `Client` with one method per Oura operation,
+// returning typed models. The auth companion supplies the Bearer middleware.
+let client = oura_toolkit_api::Client::new_with_client(base_url, http_with_bearer);
+let sleep = client.daily_sleep().start_date(start).end_date(end).send().await?;
+for day in sleep.into_inner().data {
+    println!("{} {:?}", day.day, day.score);
+}
+```
+
+The generated client is marked `// @generated` — never hand-edit it; regenerate from the spec
+instead. See the [API reference](/api/) for every operation and model, and
+[Authentication](/guides/authentication/) for how the companion manages tokens.

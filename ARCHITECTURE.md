@@ -134,6 +134,30 @@ Mono leg, release-config (`dist-check` / `version-check` / `plugin-check` /
 `gen-completions-check`), across an ubuntu/macos/windows matrix. The testing law that makes
 this trustworthy is [CLAUDE.md → TESTING & VERIFICATION](CLAUDE.md).
 
+## Documentation site
+
+The public docs website ([ouratoolkit.com](https://ouratoolkit.com)) is an
+[Astro Starlight](https://starlight.astro.build) project under `docs-site/`, published to
+**GitHub Pages** (apex domain pinned by `docs-site/public/CNAME`; deploy on push to `main` via
+`.github/workflows/docs-deploy.yml`). It is wired into the same source-of-truth discipline as
+the rest of the repo, so the docs can't drift from the code:
+
+- **API reference** — generated at build time by `starlight-openapi` from the overlaid spec
+  (`just docs-spec` → `codegen/build/openapi.docs.json`; `codegen/docs-spec.jq` applies docs-only
+  transforms: `x-codeSamples` language labels normalized for highlighting, and the spec's
+  101-level "Getting Started" intro trimmed from `info.description`). It *is* the spec, so a
+  spec/overlay problem fails the build.
+- **CLI reference** — generated from the `oura` binary's own `--help` by `just docs-gen-cli`,
+  committed at `docs-site/src/content/docs/cli/reference.md` and drift-checked by
+  `just docs-gen-cli-check` (same doctrine as the completions/man page).
+- **Guides + SDK pages** — hand-written, with every enumerable claim (scopes, ports, store
+  paths, MCP tool names, env overrides, rate-limit numbers, the SDK language set) pinned to
+  source by the docs-site tripwires in `cli/oura-toolkit-cli/tests/docs_tripwire.rs`.
+
+Everything goes through `just docs-*` recipes (a `[group('docs')]`); a PR build gate
+(`just docs-check`) runs in CI. Built-in Pagefind search, dark mode, and versioned nav come
+from Starlight.
+
 ## Repo layout
 
 ```
@@ -152,6 +176,7 @@ oura-toolkit/
 ├── cli/oura-toolkit-cli   # the app (binary `oura`)
 ├── .claude-plugin/marketplace.json   # at repo root (marketplace schema requires it)
 ├── plugins/oura-toolkit/  # single plugin: plugin.json + .mcp.json + skills/
+├── docs-site/             # docs website (Astro Starlight → ouratoolkit.com)
 ├── codegen/               # overlays + generator configs + conformance fixtures
 └── dist-workspace.toml    # cargo-dist config
 ```

@@ -184,3 +184,23 @@ jobs:
         # surprise CI breakage on unrelated PRs.
         run: npm install -g @anthropic-ai/claude-code@2.1.199
       - run: just plugin-check
+
+  # Documentation site (docs-site/, published to ouratoolkit.com). One recipe, like every other
+  # job: `just docs-check` = the CLI-reference drift guard (regenerate from the binary + diff,
+  # same doctrine as gen-completions-check) THEN a full production build. A broken Astro/API
+  # build or a stale committed CLI reference fails a PR here, not at deploy time — the docs are
+  # part of the release gate. Rust (docs-gen-cli builds `oura`), just, and node are all needed;
+  # jq (docs-spec) is preinstalled on ubuntu-latest. The tripwires that pin the site's prose
+  # claims run in the `ci` matrix job (just ci) already.
+  docs:
+    name: docs site (build + drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: extractions/setup-just@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: Swatinem/rust-cache@v2
+      - run: just docs-check

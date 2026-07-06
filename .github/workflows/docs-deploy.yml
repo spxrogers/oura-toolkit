@@ -1,0 +1,93 @@
+# Deploy the documentation site (docs-site/) to GitHub Pages at ouratoolkit.com.
+#
+# Deploys on three triggers: (1) push to main touching a docs source, (2) after a release, and
+# (3) manual dispatch. The PR build gate lives in ci.yml's `docs` job (which runs `just docs-check`
+# — drift + build — but never deploys). Like every other workflow here, the build step is a SINGLE
+# just recipe (`just docs-build`): the API reference is generated from the overlaid spec and the
+# CLI reference from the `oura` binary, so Rust + just + node are all needed (jq for the docs spec
+# is preinstalled on ubuntu-latest).
+#
+# Release chaining: `workflow_run` fires this after the tag-driven "Release" workflow completes, so
+# a new release always refreshes the docs. It is done via `workflow_run` (not by editing
+# release.yml, which is dist-generated + drift-checked by `just dist-check`, nor via a `release:`
+# event, which a GITHUB_TOKEN-created release would not fire). The build job's guard restricts the
+# workflow_run path to a SUCCESSFUL release from a tag push (the Release workflow also runs a
+# dry-run `dist plan` on PRs — those must not deploy); push/dispatch always deploy.
+#
+# One-time owner setup (cannot be mechanized here): in the repo's Pages settings choose the
+# "GitHub Actions" source and enable "Enforce HTTPS"; point the apex domain's DNS (A/AAAA records
+# to GitHub Pages, plus a `www` CNAME) at Pages. The custom domain itself is pinned by
+# docs-site/public/CNAME (ouratoolkit.com), which the build copies into the published artifact.
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something the site is generated from changes.
+    paths:
+      - "docs-site/**"
+      - "spec/openapi.json"
+      - "codegen/overlay.jq"
+      - "codegen/docs-spec.jq"
+      - "cli/oura-toolkit-cli/**"
+      - "justfile"
+      - ".github/workflows/docs-deploy.yml"
+  # Refresh the docs at the end of every release (see the header note).
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  # Allow a manual redeploy (e.g. after changing Pages settings, or an ad-hoc refresh).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deploy at a time; let a newer push supersede an older run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: build site
+    # push + workflow_dispatch always deploy; a workflow_run only deploys when the Release
+    # workflow SUCCEEDED and was a tag push (not its PR dry-run). deploy `needs: build`, so
+    # skipping build skips the whole deploy.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # On a release (workflow_run), build the exact released commit; otherwise the ref that
+          # triggered this run (head_sha is empty for push/dispatch, so it falls back).
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: extractions/setup-just@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: Swatinem/rust-cache@v2
+      - run: just docs-build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/dist
+
+  deploy:
+    name: deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
