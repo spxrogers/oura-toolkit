@@ -122,6 +122,10 @@ that makes CI build every installer and publish npm + Homebrew, and finishes the
 leg. It's still tag-driven — CI does the building, and guards refuse a dirty tree, a
 non-`main` branch, drift from origin, an existing tag, or missing crates.io auth. (The
 manual path is the same steps by hand: `just set-version X.Y.Z`, commit, tag, push.)
+Prefer a button? The **Cut release** GitHub Action (`workflow_dispatch`) runs the same
+choreography server-side via the shared `just release-tag` recipe — enter a version, and it
+gates, bumps, commits, and pushes the tag (crates.io stays a laptop step, #91). It needs a
+`RELEASE_TOKEN` PAT secret so the pushed tag can trigger the release build.
 `just version-check` (the single drift guard), `just dist-check`, `just publish-check` and
 `just plugin-check` guard the release config on every PR; `just dist-build` is a local smoke
 build and `just publish` covers crates.io. Details in [CLAUDE.md → DISTRIBUTION](CLAUDE.md).

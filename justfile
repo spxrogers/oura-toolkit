@@ -603,17 +603,15 @@ plugin-check:
     claude plugin validate plugins/oura-toolkit --strict
     claude plugin validate . --strict
 
-# Cut a release in ONE command: `just release 0.1.0` (a leading `v` is fine too). Bumps every
-# manifest, runs the full local gate, pushes the vX.Y.Z tag that drives the CI release, then
-# publishes the crates. Still TAG-DRIVEN (#59): the installers + npm/homebrew publish jobs are
-# built by CI on the pushed tag, NOT on your laptop — this recipe only automates the
-# set-version → commit → tag → push choreography and adds the crates.io leg (which was never
-# CI-driven). Order of publish sinks is deliberate: the tag (primary, NPX-FIRST) fires before
-# crates.io (secondary), so a crates.io hiccup never blocks the primary launch — rerun
-# `just publish` to finish it. Guards refuse a dirty tree, a non-`main` branch, drift from
-# origin/main, an existing tag, or missing crates.io auth — nothing mutates until they all pass.
-# IRREVERSIBLE past the tag push (a tag triggers the public release; crates.io versions can't be
-# reused). Needs the release toolchain — run `just setup` first (dist + the claude CLI).
+# Cut a release in ONE command from your laptop: `just release 0.1.0` (a leading `v` is fine
+# too). Local-only preconditions, then the shared `release-tag` choreography (gate → bump →
+# commit → tag → push, which triggers the CI release), then the crates.io leg. Still
+# TAG-DRIVEN (#59): CI builds the installers + publishes npm/homebrew on the pushed tag; the
+# crates.io publish is the lone laptop-driven step (cargo-dist has no crates.io publisher —
+# #91 tracks moving it into CI). The tag (primary, NPX-FIRST) is pushed before crates.io
+# (secondary), so a crates.io hiccup never blocks the primary launch — rerun `just publish` to
+# finish it. IRREVERSIBLE past the tag push. Needs the release toolchain — run `just setup`.
+# (Prefer the button? The Cut-release GitHub Action runs the same `release-tag` server-side.)
 [group('release')]
 release new_version:
     #!/usr/bin/env bash
@@ -621,7 +619,8 @@ release new_version:
     ver="{{ trim_start_match(new_version, 'v') }}"
     tag="v${ver}"
 
-    # 1. Preconditions — nothing is mutated until every one of these passes.
+    # Local-only preconditions — the gate + tag-existence checks live in `release-tag`. Nothing
+    # is mutated until every one of these passes.
     printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$' \
       || { echo "release: '{{new_version}}' is not a semver version (expected X.Y.Z)"; exit 1; }
     branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -630,23 +629,47 @@ release new_version:
     git fetch --quiet origin main
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
       || { echo "release: local main has diverged from origin/main — sync first"; exit 1; }
-    git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1 \
-      && { echo "release: tag ${tag} already exists locally"; exit 1; } || true
-    git ls-remote --exit-code origin "refs/tags/${tag}" >/dev/null 2>&1 \
-      && { echo "release: tag ${tag} already exists on origin"; exit 1; } || true
     [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || [ -f "${CARGO_HOME:-$HOME/.cargo}/credentials.toml" ] \
       || [ -f "${CARGO_HOME:-$HOME/.cargo}/credentials" ] \
       || { echo "release: not authenticated to crates.io — run 'cargo login' or set CARGO_REGISTRY_TOKEN"; exit 1; }
 
-    # 2. Code gate FIRST, on the still-pristine tree — a failure here mutates nothing.
+    # Shared choreography: gate → set-version → guards → commit → tag → push (triggers CI).
+    just release-tag "${ver}"
+
+    # crates.io — secondary, laptop-driven, never part of the CI release (#91).
+    echo "==> crates.io publish (api -> auth -> cli)"
+    just publish
+
+    echo ""
+    echo "Released ${tag}: crates.io done; CI is building installers + publishing npm/Homebrew (watch the Actions tab)."
+
+# The shared release choreography behind BOTH `just release` (laptop) and the Cut-release GitHub
+# Action (.github/workflows/cut-release.yml). Runs the full gate ('green == releasable'), bumps
+# every manifest, commits, and pushes the commit + vX.Y.Z tag — the tag push triggers
+# .github/workflows/release.yml (installers + npm/homebrew). Pushes with whatever git
+# credentials are configured (your local remote, or the workflow's checkout PAT). Does NOT
+# publish crates.io. `dry_run=true` runs the gate + bump but pushes nothing (a preview).
+[group('release')]
+release-tag new_version dry_run="false":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ver="{{ trim_start_match(new_version, 'v') }}"
+    tag="v${ver}"
+
+    printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$' \
+      || { echo "release-tag: '{{new_version}}' is not a semver version (expected X.Y.Z)"; exit 1; }
+    git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1 \
+      && { echo "release-tag: tag ${tag} already exists locally"; exit 1; } || true
+    git ls-remote --exit-code origin "refs/tags/${tag}" >/dev/null 2>&1 \
+      && { echo "release-tag: tag ${tag} already exists on origin"; exit 1; } || true
+
+    # Code gate FIRST, on the still-pristine tree — a failure here mutates nothing.
     echo "==> release gate: just ci"
     just ci
-
-    # 3. Bump every manifest (single writer, #59; also refreshes completions + Cargo.lock).
+    # Bump every manifest (single writer, #59; also refreshes completions + Cargo.lock).
     echo "==> set-version ${ver}"
     just set-version "${ver}"
-
-    # 4. Release-config gate — the SAME guards CI's release-config job runs ('green == releasable').
+    # The SAME guards CI's release-config job runs.
     echo "==> release gate: release-config guards"
     just version-check
     just gen-completions-check
@@ -654,22 +677,21 @@ release new_version:
     just publish-check
     just plugin-check
 
-    # 5. Commit + push the bump to main.
-    echo "==> commit + push main"
+    if [ "{{dry_run}}" = "true" ]; then
+      echo "DRY RUN — gate passed and manifests bumped to ${ver} in the working tree; nothing committed, tagged, or pushed."
+      git --no-pager diff --stat
+      exit 0
+    fi
+
+    echo "==> commit + tag ${tag}"
     git commit -aqm "Release ${tag}"
-    git push --quiet origin main
-
-    # 6. Tag + push — THIS triggers .github/workflows/release.yml (npm + Homebrew + GitHub Release).
-    echo "==> tag ${tag} + push (triggers the CI release)"
     git tag -a "${tag}" -m "Release ${tag}"
+
+    # Tag push triggers .github/workflows/release.yml (npm + Homebrew + GitHub Release).
+    echo "==> push main + tag ${tag}"
+    git push --quiet origin HEAD:main
     git push --quiet origin "${tag}"
-
-    # 7. crates.io — secondary, laptop-driven, never part of the CI release.
-    echo "==> crates.io publish (api -> auth -> cli)"
-    just publish
-
-    echo ""
-    echo "Released ${tag}: crates.io done; CI is building installers + publishing npm/Homebrew (watch the Actions tab)."
+    echo "Pushed ${tag}: CI is building installers + publishing npm/Homebrew (watch the Actions tab)."
 
 # Build installers/artifacts locally (smoke test — publishes nothing). REAL releases go through
 # `just release X.Y.Z`: pushing vX.Y.Z runs .github/workflows/release.yml (generated by dist
