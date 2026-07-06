@@ -132,8 +132,13 @@ construction silently vanish (the `#[tool]` attr only takes literal descriptions
 build-time ones are injected into the router's public `map` in `OuraMcp::new`).
 
 ### openapi-generator per-language post-patches (all guarded)
-The pinned generator emits broken packaging in several languages; each fix is a guarded
-post-patch that fails the recipe if it stops applying:
+The generator is pinned **two ways** for reproducibility: the npm wrapper
+`@openapitools/openapi-generator-cli@2.39.1` (the `oag` justfile var), which in turn resolves
+the generator jar to **7.14.0** via `codegen/openapitools.json`. Doc/test emission is
+suppressed with a verified CLI flag set (`oag_skip_docs` —
+`--global-property=apiDocs=false,…`) rather than config, which 7.14.0 ignores. The generator
+emits broken packaging in several languages; each fix is a guarded post-patch that fails the
+recipe if it stops applying:
 - **Python**: root metadata mis-names the dist and won't build → `sdks/python`'s pyproject +
   namespace `__init__.py` are hand-written; `just gen-py` copies only the generated subtree.
 - **C#**: emits a single netstandard2.0 target and rejects net10.0 → `just gen-csharp`

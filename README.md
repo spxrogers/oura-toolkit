@@ -240,9 +240,10 @@ just ci      # what CI runs: fmt-check + lint + tests
 just         # list all recipes
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, and
-[CLAUDE.md](CLAUDE.md) for the architecture decisions and the testing law this repo is
-built under ("green CI is the release decision").
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, [CLAUDE.md](CLAUDE.md) for the hard
+constraints and the testing law this repo is built under ("green CI is the release
+decision"), [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together, and
+[DECISIONS.md](DECISIONS.md) for why each locked choice was made.
 
 ## License
 

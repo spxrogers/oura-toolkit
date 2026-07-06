@@ -27,7 +27,7 @@ codegen/overlay.jq  ── shared overlay (3.1, all languages) ──┐
 progenitor down-convert (3.1→3.0, Rust only)      openapi-generator 7.14.0
       │   just gen-rust                              │   just gen-ts/py/go/java/csharp
       ▼                                              ▼
-sdks/rust/oura-toolkit-api  (the Rust SDK)   sdks/{ts,py,go,java,csharp}/api
+sdks/rust/oura-toolkit-api  (the Rust SDK)   sdks/{typescript,python,go,java,csharp}/api
 ```
 
 - **Shared overlay** (`codegen/overlay.jq`) fixes the spec's known defects for *every*
@@ -61,25 +61,24 @@ tokens were deprecated Dec 2025; no PKCE). Because a client_secret can't be safe
 in a distributed binary, the model is **bring-your-own-credentials**: each user registers
 their own Oura OAuth app.
 
-- **Interactive consent** (browser open + loopback listener on port 8788) lives **only** in
-  the CLI (`oura auth setup` / `oura auth login`). No SDK/companion contains it.
-- **Non-interactive machinery** lives in `oura-toolkit-auth`:
-  - **Token store** at `$XDG_CONFIG_HOME/oura-toolkit/` (Unix) /
-    `%LOCALAPPDATA%\oura-toolkit\` (Windows). Two records: `credentials.json`
-    (client_id/secret) and `tokens.json` (access/refresh/expiry/scope). 0600 + atomic
-    writes on Unix.
-  - **`TokenManager`** is the refresh engine: proactive refresh before expiry, one 401→
-    refresh→retry on the data plane, and refresh-token **rotation persisted** (Oura
-    invalidates the old refresh token on use).
-  - **Cross-process safety**: the CLI and the long-running MCP server share the store, so
-    every refresh runs under an exclusive advisory `.lock`, re-reads the store first (adopt
-    a rotation another process already did), and retries a 400 once against fresh disk state.
+- **Interactive consent** (browser open + loopback callback listener) lives **only** in the
+  CLI (`oura auth setup` / `oura auth login`). No SDK/companion contains it.
+- **Non-interactive machinery** lives in `oura-toolkit-auth`, three pieces:
+  - a **token store** at the locked config path — two records (`credentials.json` +
+    `tokens.json`) so a failed login never loses the pasted secret;
+  - **`TokenManager`**, the refresh engine — proactive refresh, one 401→refresh→retry on the
+    data plane, and refresh-token **rotation persisted**;
+  - a **cross-process lock** so the CLI and the long-running MCP server can share one store
+    without clobbering each other's rotations.
 - **Headless / CI**: `OURA_ACCESS_TOKEN` injects a raw Bearer token that bypasses the store
   entirely (`TokenManager::from_access_token`, never refreshes); `--no-browser` swaps the
   loopback catch for a paste-the-redirect-URL flow (still CSRF-checked via `state`).
 
-Full invariants (rotation, perms, locking, keyring deferral) in
-[CLAUDE.md → AUTH](CLAUDE.md); the reasoning in [DECISIONS.md](DECISIONS.md).
+This is the shape only. The exact store paths, file modes, default port, rotation and
+locking protocol are the load-bearing invariants — stated once, authoritatively, in
+[CLAUDE.md → AUTH](CLAUDE.md) (and tripwire-pinned there against the code); the reasoning is
+in [DECISIONS.md](DECISIONS.md). This map deliberately does not restate the literals so there
+is one source to keep true.
 
 ## CLI surface
 

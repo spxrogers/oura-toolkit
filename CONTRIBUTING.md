@@ -133,5 +133,7 @@ sdks/{typescript,python,go,java,csharp}  GENERATED breadth clients + hand-writte
 cli/oura-toolkit-cli         the app: binary `oura` (CLI + MCP server)
 plugins/oura-toolkit/        the Claude plugin (MCP entry + skills)
 docs/cli-contract.md         the scripting contract (exit codes, streams, formats)
-CLAUDE.md                    architecture decisions + the testing law
+CLAUDE.md                    the law: hard constraints every change must satisfy
+ARCHITECTURE.md              the map: how the pieces fit together
+DECISIONS.md                 the log: why each locked choice was made
 ```
