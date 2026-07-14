@@ -1,0 +1,341 @@
+/* oura-toolkit "Midnight" theme.
+ *
+ * Dark mode (the default) is modeled on the Oura app: deep midnight navy, periwinkle
+ * score-blue, soft cyan glows. Light mode is the ouraring.com counterpart: airy cool
+ * paper with ink-navy text. Fonts: Manrope (variable) for UI/headings, IBM Plex Mono
+ * for code — both self-hosted via @fontsource (no external font requests).
+ */
+
+:root {
+	/* Typography */
+	--sl-font: 'Manrope Variable', ui-sans-serif, system-ui, sans-serif;
+	--sl-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+	/* Brand tokens */
+	--ot-peri: #7195f5; /* Oura score-blue / periwinkle */
+	--ot-ice: #9fd8ff; /* highlight cyan-ice */
+	--ot-glow: #4cc9f0;
+
+	/* Dark (default): midnight navy, tinted — never neutral gray */
+	--sl-color-accent-low: #1c2f5e;
+	--sl-color-accent: #5c82ea;
+	--sl-color-accent-high: #bdd0fd;
+	--sl-color-white: #f2f5fc;
+	--sl-color-gray-1: #d3dcee;
+	--sl-color-gray-2: #adbad4;
+	--sl-color-gray-3: #8391b0;
+	--sl-color-gray-4: #4c5a7c;
+	--sl-color-gray-5: #283454;
+	--sl-color-gray-6: #131b2f;
+	--sl-color-black: #0d1322;
+	--sl-color-hairline-shade: #1e2946;
+
+	--ot-card-radius: 1rem;
+	--sl-content-width: 50rem;
+}
+
+:root[data-theme='light'] {
+	/* Light: ouraring.com's clean, airy paper */
+	--sl-color-accent-low: #dfe7fc;
+	--sl-color-accent: #3a60d0;
+	--sl-color-accent-high: #223d86;
+	--sl-color-white: #1c2438;
+	--sl-color-gray-1: #303a52;
+	--sl-color-gray-2: #45506a;
+	--sl-color-gray-3: #66738f;
+	--sl-color-gray-4: #9aa5bd;
+	--sl-color-gray-5: #dbe0ec;
+	--sl-color-gray-6: #eff2f8;
+	--sl-color-gray-7: #f6f8fc;
+	--sl-color-black: #fcfdff;
+	--sl-color-hairline-shade: #e3e8f2;
+}
+
+/* Headings get Manrope's heavier cuts — geometric, rounded, ring-like. */
+.sl-markdown-content :is(h1, h2, h3, h4),
+.hero h1,
+.site-title {
+	font-weight: 750;
+	letter-spacing: -0.015em;
+}
+
+/* ---- Hero: gradient wordmark + night glow ------------------------------ */
+
+.hero {
+	position: relative;
+}
+
+.hero h1 .ot-wordmark {
+	background: linear-gradient(105deg, var(--ot-peri) 10%, var(--ot-ice) 90%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+/* On paper the night-sky stops wash out — use deeper ink-blues. */
+:root[data-theme='light'] .hero h1 .ot-wordmark {
+	background: linear-gradient(105deg, #3556c9 10%, #2e9dd6 90%);
+	-webkit-background-clip: text;
+	background-clip: text;
+}
+
+/* A soft sensor-LED glow behind the hero — visible but calm, dimmer in light mode. */
+.hero::before {
+	content: '';
+	position: absolute;
+	inset: -15% -10% auto -10%;
+	height: 420px;
+	z-index: -1;
+	pointer-events: none;
+	background: radial-gradient(
+		55% 75% at 72% 20%,
+		color-mix(in oklab, var(--ot-glow) 20%, transparent),
+		transparent 70%
+	);
+}
+
+:root[data-theme='light'] .hero::before {
+	background: radial-gradient(
+		55% 75% at 72% 20%,
+		color-mix(in oklab, var(--ot-peri) 14%, transparent),
+		transparent 70%
+	);
+}
+
+/* The hero visual (ring + terminal) needs more room than Starlight's 20rem default. */
+.hero > .hero-html {
+	width: min(100%, 27rem);
+}
+
+/* ---- Hero visual: readiness-style ring --------------------------------- */
+
+.ot-hero {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 100%;
+}
+
+.ot-ring {
+	--ot-score: 82; /* keep in sync with the terminal card below */
+	position: relative;
+	width: 9.5rem;
+	height: 9.5rem;
+	/* Perch on the terminal's top-right corner without covering its title bar. */
+	align-self: flex-end;
+	margin-inline-end: 1.25rem;
+	margin-bottom: -1.5rem;
+	z-index: 2;
+	filter: drop-shadow(0 0 18px color-mix(in oklab, var(--ot-glow) 45%, transparent));
+	animation: ot-breathe 5s ease-in-out infinite;
+}
+
+.ot-ring-dial {
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background: conic-gradient(
+		from 220deg,
+		var(--ot-peri) 0deg,
+		var(--ot-ice) calc(var(--ot-score) * 3.6deg),
+		color-mix(in oklab, var(--ot-peri) 18%, transparent) calc(var(--ot-score) * 3.6deg)
+	);
+	-webkit-mask: radial-gradient(closest-side, transparent calc(100% - 13px), #000 calc(100% - 12px));
+	mask: radial-gradient(closest-side, transparent calc(100% - 13px), #000 calc(100% - 12px));
+}
+
+.ot-ring-core {
+	position: absolute;
+	inset: 13px;
+	border-radius: 50%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.1rem;
+	background: color-mix(in oklab, var(--sl-color-black) 82%, var(--ot-peri) 6%);
+	border: 1px solid var(--sl-color-hairline-shade);
+}
+
+.ot-ring-score {
+	font-size: 2.4rem;
+	font-weight: 800;
+	line-height: 1;
+	/* Fixed, not var(--sl-color-white): the ring core stays dark in BOTH modes
+	   (it's a screen), so the score must stay light in both too. */
+	color: #f2f5fc;
+	font-variant-numeric: tabular-nums;
+}
+
+.ot-ring-label {
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.22em;
+	text-transform: uppercase;
+	color: var(--ot-ice);
+}
+
+@keyframes ot-breathe {
+	0%,
+	100% {
+		filter: drop-shadow(0 0 12px color-mix(in oklab, var(--ot-glow) 30%, transparent));
+	}
+	50% {
+		filter: drop-shadow(0 0 26px color-mix(in oklab, var(--ot-glow) 55%, transparent));
+	}
+}
+
+/* Light mode: the ring core sits on paper, so keep it night-navy (it's a screen). */
+:root[data-theme='light'] .ot-ring-core {
+	background: #101728;
+	border-color: #26324f;
+}
+
+/* ---- Hero visual: terminal card ----------------------------------------
+ * Terminals stay dark in both color schemes — a terminal is a screen, not paper.
+ * Output mirrors the documented `oura sleep` table shape (see guides/getting-started).
+ */
+
+.ot-term {
+	width: 100%;
+	border-radius: 0.8rem;
+	overflow: hidden;
+	text-align: left;
+	background: #0a101f;
+	border: 1px solid #24304f;
+	box-shadow: 0 18px 48px -18px rgb(4 8 20 / 0.9);
+}
+
+.ot-term-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.55rem 0.8rem;
+	background: #101728;
+	border-bottom: 1px solid #1d2946;
+}
+
+.ot-term-bar span {
+	width: 0.6rem;
+	height: 0.6rem;
+	border-radius: 50%;
+	background: #2c3a5e;
+}
+
+.ot-term-bar em {
+	font-style: normal;
+	margin-inline: auto;
+	transform: translateX(-0.9rem); /* optically centered against the dots */
+	font-family: var(--sl-font-mono);
+	font-size: 0.68rem;
+	color: #64749a;
+}
+
+.ot-term-body {
+	display: block;
+	padding: 0.9rem 1rem 1rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.74rem;
+	line-height: 1.7;
+	color: #aeb9d6;
+}
+
+.ot-term-body .ln {
+	display: block;
+	white-space: pre;
+}
+
+.ot-term-body .ot-p {
+	color: var(--ot-ice);
+}
+
+.ot-term-body .ot-cmd {
+	color: #eef2fb;
+}
+
+.ot-term-body .ot-hd {
+	color: #5b6b93;
+}
+
+.ot-term-body .ot-score {
+	color: var(--ot-ice);
+	font-weight: 600;
+}
+
+.ot-cursor {
+	display: inline-block;
+	width: 0.55em;
+	height: 1.05em;
+	vertical-align: text-bottom;
+	background: var(--ot-peri);
+	animation: ot-blink 1.1s steps(1) infinite;
+}
+
+@keyframes ot-blink {
+	50% {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ot-ring,
+	.ot-cursor {
+		animation: none;
+	}
+}
+
+/* ---- Cards: rounded, ring-flavored -------------------------------------- */
+
+.card {
+	border-radius: var(--ot-card-radius);
+	transition: border-color 0.15s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+	border-color: color-mix(in oklab, var(--sl-color-accent) 55%, var(--sl-color-hairline-shade));
+	box-shadow: 0 0 0 1px color-mix(in oklab, var(--sl-color-accent) 35%, transparent),
+		0 10px 34px -18px color-mix(in oklab, var(--ot-glow) 45%, transparent);
+}
+
+.card .icon {
+	color: var(--ot-ice);
+	background: color-mix(in oklab, var(--sl-color-accent) 22%, transparent);
+	border-radius: 0.55rem;
+}
+
+:root[data-theme='light'] .card .icon {
+	color: var(--sl-color-accent);
+}
+
+/* ---- Chrome: pills and rings everywhere the shape language allows ------- */
+
+/* Sidebar current-page marker: a pill, with a small ring dot. */
+.sidebar-content a[aria-current='page'] {
+	border-radius: 999px;
+	position: relative;
+}
+
+.sidebar-content a[aria-current='page']::before {
+	content: '';
+	position: absolute;
+	inset-inline-start: -0.05rem;
+	top: 50%;
+	translate: -100% -50%;
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	border: 2px solid var(--sl-color-accent);
+}
+
+/* Search button + theme select soften into pills. */
+button[data-open-modal] {
+	border-radius: 999px;
+}
+
+/* Inline code: subtle navy chip. */
+.sl-markdown-content code:not(:is(pre code)) {
+	border-radius: 0.4rem;
+	padding: 0.1em 0.35em;
+	background: color-mix(in oklab, var(--sl-color-accent) 12%, var(--sl-color-gray-6));
+}
