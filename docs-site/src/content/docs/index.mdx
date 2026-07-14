@@ -3,9 +3,27 @@ title: oura-toolkit
 description: Your Oura Ring data everywhere you work — a fast Rust CLI, a local MCP server, a Claude plugin, and SDKs in six languages, all driven by Oura's OpenAPI spec.
 template: splash
 hero:
+  title: <span class="ot-wordmark">oura-toolkit</span>
   tagline: Your Oura Ring data, everywhere you work. A fast CLI, a local MCP server for AI assistants, a Claude plugin, and generated SDK clients in six languages — all driven by Oura's own OpenAPI spec.
+  # Decorative hero visual (styled in src/styles/theme.css). The terminal card mirrors the
+  # documented `oura sleep` sample table from guides/getting-started.md — keep them in sync.
   image:
-    file: ../../assets/logo.svg
+    html: |-
+      <div class="ot-hero" aria-hidden="true">
+      <div class="ot-ring">
+      <div class="ot-ring-dial"></div>
+      <div class="ot-ring-core"><span class="ot-ring-score">82</span><span class="ot-ring-label">sleep</span></div>
+      </div>
+      <div class="ot-term">
+      <div class="ot-term-bar"><span></span><span></span><span></span><em>oura — zsh</em></div>
+      <code class="ot-term-body">
+      <span class="ln"><span class="ot-p">$</span> <span class="ot-cmd">oura sleep --date yesterday</span></span>
+      <span class="ln ot-hd">DAY         SCORE  DEEP  REM  EFFICIENCY</span>
+      <span class="ln">2026-06-27  <span class="ot-score">82</span>     70    85   93</span>
+      <span class="ln"><span class="ot-p">$</span> <span class="ot-cursor"></span></span>
+      </code>
+      </div>
+      </div>
   actions:
     - text: Get started
       link: /guides/getting-started/

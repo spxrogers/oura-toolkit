@@ -44,6 +44,36 @@ export default defineConfig({
         "Your Oura Ring data everywhere you work: a fast Rust CLI, a local MCP server, a Claude plugin, and SDKs in six languages — all driven by Oura's OpenAPI spec.",
       logo: { src: "./src/assets/logo.svg", replacesTitle: false },
       favicon: "/favicon.svg",
+      // "Midnight" theme: self-hosted fonts (no external font requests) + the palette,
+      // hero, and chrome styling in theme.css.
+      customCss: [
+        "@fontsource-variable/manrope",
+        "@fontsource/ibm-plex-mono/400.css",
+        "@fontsource/ibm-plex-mono/600.css",
+        "./src/styles/theme.css",
+      ],
+      // One dark code theme in BOTH color schemes: terminals are screens, not paper —
+      // the docs are CLI-output-heavy and the night-navy frames carry the brand.
+      expressiveCode: {
+        themes: ["night-owl"],
+        styleOverrides: {
+          borderRadius: "0.6rem",
+          borderColor: "#24304f",
+          codeFontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          frames: { shadowColor: "transparent" },
+        },
+      },
+      head: [
+        {
+          // Dark is the flagship ("Midnight"): seed the theme choice to dark for
+          // first-time visitors. Runs before Starlight's ThemeProvider script (config
+          // head entries render earlier in <head>), and never overrides an explicit
+          // user choice since it only writes when the key is absent.
+          tag: "script",
+          content:
+            "try{if(!localStorage.getItem('starlight-theme'))localStorage.setItem('starlight-theme','dark')}catch(e){}",
+        },
+      ],
       social: [{ icon: "github", label: "GitHub", href: GITHUB_URL }],
       editLink: { baseUrl: `${GITHUB_URL}/edit/main/docs-site/` },
       lastUpdated: true,
