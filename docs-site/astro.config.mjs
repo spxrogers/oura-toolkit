@@ -65,6 +65,12 @@ export default defineConfig({
       },
       head: [
         {
+          // Social-preview card (public/og.png) — the "Midnight" brand card, rendered
+          // from the site's own self-hosted fonts.
+          tag: "meta",
+          attrs: { property: "og:image", content: "https://ouratoolkit.com/og.png" },
+        },
+        {
           // Dark is the flagship ("Midnight"): seed the theme choice to dark for
           // first-time visitors. Runs before Starlight's ThemeProvider script (config
           // head entries render earlier in <head>), and never overrides an explicit
