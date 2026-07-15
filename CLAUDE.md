@@ -309,15 +309,16 @@ that orphaned it.
   `.github/workflows/release.yml` (dist-generated, committed, drift-checked by `just
   dist-check`) builds artifacts and runs the npm + homebrew publish jobs. **`just release
   X.Y.Z`** wraps that whole flow in one command — local guards (clean tree / on `main` / in
-  sync / crates.io auth), then the shared **`just release-tag`** choreography (full gate →
-  set-version → commit → tag → push; the tag still drives CI, nothing is built on the laptop),
-  then the crates.io leg. The tag (primary) is pushed before the crates.io publish (secondary).
-  The SAME `release-tag` recipe runs server-side in the **Cut-release Action**
-  (`.github/workflows/cut-release.yml`, `workflow_dispatch`) so a release can be cut from the
-  GitHub UI — it pushes the tag with a `RELEASE_TOKEN` PAT (the default `GITHUB_TOKEN` can't
-  trigger `release.yml`) and leaves crates.io to the laptop (#91). `just dist-build` is the
-  LOCAL smoke build (publishes nothing); `just publish` covers only crates.io (order: api →
-  auth → cli) and is also the crates.io leg `just release` calls.
+  sync), then the shared **`just release-tag`** choreography (full gate → set-version → commit →
+  tag → push; the tag drives all CI publishing, nothing is built or published on the laptop).
+  EVERY publish channel is tag-driven (#91): the pushed tag fans out to `release.yml`
+  (installers + npm/homebrew) **and** `.github/workflows/publish-crates.yml` (crates.io via
+  **Trusted Publishing / OIDC** — no stored registry token). The SAME `release-tag` recipe runs
+  server-side in the **Cut-release Action** (`.github/workflows/cut-release.yml`,
+  `workflow_dispatch`) so a release can be cut from the GitHub UI — it pushes the tag with a
+  `RELEASE_TOKEN` PAT (the default `GITHUB_TOKEN` can't trigger the tag workflows). `just
+  dist-build` is the LOCAL smoke build (publishes nothing); `just publish` (order: api → auth →
+  cli) is the MANUAL crates.io fallback (needs `cargo login`) — CI is the primary path now.
 - **Crates.io publishability:** the spec-reading build scripts read a crate-local
   `openapi.json` bundle (a published package has no repo root to walk to); sync-guarded by
   per-crate bundled-spec tests. `release-config` CI runs `just dist-check` + `just
@@ -329,7 +330,11 @@ that orphaned it.
   `HOMEBREW_TAP_TOKEN`, and `NPM_TOKEN`. Until then tag pushes still build every artifact —
   only the publish jobs fail. The **Cut-release Action** additionally needs a `RELEASE_TOKEN`
   PAT (Contents: read/write) so its pushed tag triggers `release.yml`; the laptop `just
-  release` path does not need it. Before the breadth SDKs publish (later): claim the npm
+  release` path does not need it. **crates.io publishing (#91) needs NO token** but does need a
+  one-time **Trusted Publisher** configured on crates.io for each crate (`oura-toolkit-api`,
+  `-auth`, `-cli`): owner `spxrogers`, repo `oura-toolkit`, workflow `publish-crates.yml` (no
+  environment); until that's set the `publish-crates` job fails at auth while the tag + other
+  channels still succeed. Before the breadth SDKs publish (later, #96): claim the npm
   `@oura-toolkit` scope, verify `com.ouratoolkit` on Maven Central, register the NuGet + PyPI
   names.
 
