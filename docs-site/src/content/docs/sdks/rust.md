@@ -17,8 +17,8 @@ cargo add oura-toolkit-api oura-toolkit-auth
 
 ```toml
 [dependencies]
-oura-toolkit-api = "0.1"
-oura-toolkit-auth = "0.1"
+oura-toolkit-api = "$PREFERRED_VERSION"
+oura-toolkit-auth = "$PREFERRED_VERSION"
 ```
 
 ## Usage sketch
