@@ -3,13 +3,16 @@ title: TypeScript
 description: The TypeScript SDK — an openapi-generator client plus the @oura-toolkit/auth companion.
 ---
 
-The TypeScript SDK is the generated client at `sdks/typescript/api` (reserved as
-`@oura-toolkit/api` on npm) plus the hand-written `@oura-toolkit/auth` companion.
+The TypeScript SDK is the generated client published as
+[`@oura-toolkit/api`](https://www.npmjs.com/package/@oura-toolkit/api) plus the hand-written
+[`@oura-toolkit/auth`](https://www.npmjs.com/package/@oura-toolkit/auth) companion — versioned
+in lockstep with the toolkit and published on every release tag.
 
-:::caution[Consume from source]
-Not yet published to npm. Consume it from the repository for now, and supply your own access
-token until the companion is published.
-:::
+## Install
+
+```sh
+npm install @oura-toolkit/api @oura-toolkit/auth
+```
 
 ## Usage sketch
 

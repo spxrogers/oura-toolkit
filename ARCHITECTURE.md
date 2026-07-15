@@ -119,7 +119,10 @@ for why):
   5 targets. Release archives also ship the man page + shell completions (committed under
   `cli/oura-toolkit-cli/dist-assets/`, drift-checked).
 - **Releases are tag-driven**: `just set-version X.Y.Z` (the single version writer) → commit
-  → tag `vX.Y.Z` → push. CI builds artifacts and runs the npm + homebrew publish jobs.
+  → tag `vX.Y.Z` → push. The one tag fans out to every publish channel in CI: `release.yml`
+  (installers + CLI npm/homebrew), `publish-crates.yml` (crates.io via OIDC) and
+  `publish-sdks.yml` (breadth SDKs — today `@oura-toolkit/api` + `@oura-toolkit/auth` on npm,
+  #96).
 - **Launch is NPX-first**: `npx -y oura-toolkit ...`; brew / bun are speed-path alternatives.
 - **One Claude plugin** (`plugins/oura-toolkit/`) ships both the MCP server config
   (`npx -y oura-toolkit@<version> mcp`) and skills (`morning-checkin`, `wellness-report`).

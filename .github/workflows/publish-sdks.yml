@@ -1,0 +1,56 @@
+# Publish the breadth SDKs on a version tag — the SDK leg of the tag-driven release (#96).
+# Runs alongside release.yml (installers + npm/Homebrew for the CLI) and publish-crates.yml
+# (crates.io) on the SAME vX.Y.Z tag push, so one tag drives every distribution channel. The
+# publish commands live in `just sdk-publish-*` recipes (raw npm stays inside recipes, per
+# CLAUDE.md → TASK RUNNER).
+#
+# One job per ecosystem; npm (TypeScript) is the first (#96 ships them one at a time — PyPI,
+# Go, Maven Central and NuGet land here as their own jobs once their registry prerequisites
+# are done).
+#
+# AUTH (npm): the SAME NPM_TOKEN secret release.yml's npm publish job uses (a classic
+# automation token owned by the @oura-toolkit org owner). npm's OIDC Trusted Publishing was
+# considered (like publish-crates.yml) but it can only be configured on a package that ALREADY
+# exists, so the first publish needs a token anyway; migrating to OIDC after the packages exist
+# is tracked in #96. Provenance attestation (`npm publish --provenance`) is deferred with it.
+
+name: Publish SDKs
+
+on:
+  push:
+    tags:
+      # Same version-tag shape as release.yml / publish-crates.yml.
+      - '**[0-9]+.[0-9]+.[0-9]+*'
+  # Manual backfill: publish the CURRENT workspace version outside a tag push (e.g. the first
+  # run right after this workflow lands, so the already-released version's SDK packages exist
+  # without waiting for the next tag). Safe to re-run any time — the recipe skips versions
+  # that are already on the registry.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-sdks-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: publish npm SDKs (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    # Skip prereleases (a semver prerelease tag contains a '-'), matching release.yml and
+    # publish-crates.yml, which do not publish prereleases either.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # Writes an .npmrc that reads the publish token from NODE_AUTH_TOKEN (set on the
+          # publish step below) — the standard setup-node auth seam.
+          registry-url: 'https://registry.npmjs.org'
+      - uses: extractions/setup-just@v4
+      - name: Publish @oura-toolkit/api + @oura-toolkit/auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: just sdk-publish-ts

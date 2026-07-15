@@ -218,19 +218,20 @@ Every language gets the same shape under `sdks/<lang>/`: a data-plane client gen
 from Oura's OpenAPI spec (auth-agnostic — bring a Bearer token) plus a hand-written auth
 companion (token store + refresh). What exists today:
 
-| Language | Generated client | Auth companion | Package name (reserved) |
+| Language | Generated client | Auth companion | Package |
 |---|---|---|---|
-| Rust | `sdks/rust/oura-toolkit-api` (the CLI runs on it — dogfooded end to end) | `oura-toolkit-auth` ✅ | `oura-toolkit-api` / `oura-toolkit-auth` (crates.io) |
-| TypeScript | `sdks/typescript/api` | `@oura-toolkit/auth` ✅ | `@oura-toolkit/api` (npm) |
-| Python | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` ✅ | `oura-toolkit` (PyPI) |
+| Rust | `sdks/rust/oura-toolkit-api` (the CLI runs on it — dogfooded end to end) | `oura-toolkit-auth` ✅ | `oura-toolkit-api` / `oura-toolkit-auth` — published (crates.io) |
+| TypeScript | `sdks/typescript/api` | `@oura-toolkit/auth` ✅ | `@oura-toolkit/api` / `@oura-toolkit/auth` — published (npm) |
+| Python | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` ✅ | `oura-toolkit` (PyPI, reserved) |
 | Go | `sdks/go` | `sdks/go/auth` ✅ | module `github.com/spxrogers/oura-toolkit/sdks/go` |
-| Java | `sdks/java/api` | `com.ouratoolkit:auth` ✅ | `com.ouratoolkit:api` (Maven Central) |
-| C# | `sdks/csharp/api` | `OuraToolkit.Auth` ✅ | `OuraToolkit.Api` (NuGet) |
+| Java | `sdks/java/api` | `com.ouratoolkit:auth` ✅ | `com.ouratoolkit:api` (Maven Central, reserved) |
+| C# | `sdks/csharp/api` | `OuraToolkit.Auth` ✅ | `OuraToolkit.Api` (NuGet, reserved) |
 
-The breadth clients are compile-checked and drift-checked in CI, and smoke-tested against
-Oura's live sandbox (all five: TypeScript, Python, Go, Java and C#), but **not yet
-published** to their registries — consume them from
-source for now. Until each language's auth companion lands, supply your own access token.
+Every breadth client is compile-checked and drift-checked in CI, and smoke-tested against
+Oura's live sandbox. The Rust crates and the TypeScript packages
+(`npm install @oura-toolkit/api @oura-toolkit/auth`) are published; the Python, Go, Java
+and C# clients are **not yet published** to their registries (#96) — consume those from
+source for now, and supply your own access token.
 
 ## Developing
 

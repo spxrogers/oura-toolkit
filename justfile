@@ -247,7 +247,10 @@ gen-ts: spec-overlay
     @test -f sdks/typescript/api/tsconfig.esm.json || { echo "gen-ts: generator no longer emits tsconfig.esm.json — update this recipe"; exit 1; }
     jq -f codegen/ts-package-postpatch.jq sdks/typescript/api/package.json > sdks/typescript/api/package.json.tmp && mv sdks/typescript/api/package.json.tmp sdks/typescript/api/package.json
     rm -f sdks/typescript/api/tsconfig.esm.json
-    @jq -e '(.exports["."] == {"types": "./dist/index.d.ts", "default": "./dist/index.js"}) and (.module | not) and (.typings | not) and .files == ["dist"] and .types == "./dist/index.d.ts"' sdks/typescript/api/package.json > /dev/null || { echo "gen-ts: packaging post-patch did not apply — see codegen/ts-package-postpatch.jq"; exit 1; }
+    # Publish metadata (#96): ship the repo LICENSE in the package (npm pack always includes a
+    # LICENSE file regardless of the `files` allowlist) to back the post-patched `license: MIT`.
+    cp LICENSE sdks/typescript/api/LICENSE
+    @jq -e '(.exports["."] == {"types": "./dist/index.d.ts", "default": "./dist/index.js"}) and (.module | not) and (.typings | not) and .files == ["dist"] and .types == "./dist/index.d.ts" and .license == "MIT"' sdks/typescript/api/package.json > /dev/null || { echo "gen-ts: packaging post-patch did not apply — see codegen/ts-package-postpatch.jq"; exit 1; }
     @echo "Generated sdks/typescript/api (@oura-toolkit/api {{version}}; CJS + exports map)"
 
 # Generate the Python SDK client (openapi-generator) -> sdks/python/oura_toolkit/api.
@@ -329,7 +332,7 @@ sdk-check-ts:
     # regression here leaves require() green and breaks `import {…}` consumers.
     cd sdks/typescript/api && node --input-type=module -e "const m = await import('@oura-toolkit/api'); if (typeof m.Configuration !== 'function') throw new Error('ESM named import via the exports map broke (interop/lexer regression?)');"
     @test ! -d sdks/typescript/api/dist/esm || { echo "sdk-check-ts: dist/esm reappeared — the CJS-only packaging post-patch (#57) regressed"; exit 1; }
-    cd sdks/typescript/api && npm pack --dry-run --json | jq -e '.[0].files | map(.path) | all(. == "package.json" or . == "README.md" or . == "LICENSE" or startswith("dist/")) and any(startswith("dist/"))' > /dev/null || { echo "sdk-check-ts: npm pack would ship files outside dist/ (src, tsconfigs?) — files allowlist broken"; exit 1; }
+    cd sdks/typescript/api && npm pack --dry-run --json | jq -e '.[0].files | map(.path) | all(. == "package.json" or . == "README.md" or . == "LICENSE" or startswith("dist/")) and any(startswith("dist/")) and any(. == "LICENSE")' > /dev/null || { echo "sdk-check-ts: npm pack surface broken — files outside dist/ (src, tsconfigs?) or the LICENSE file (#96 publish metadata) is missing"; exit 1; }
 
 # Hand-written TS auth companion (#15): build + the hermetic node:test suite (mock token
 # endpoint on 127.0.0.1, tempdir stores — no network, no real credentials). (package.json's
@@ -626,9 +629,10 @@ plugin-check:
 
 # Cut a release in ONE command from your laptop: `just release 0.1.0` (a leading `v` is fine
 # too). Local-only preconditions, then the shared `release-tag` choreography (gate → bump →
-# commit → tag → push). Fully TAG-DRIVEN (#59, #91): the pushed vX.Y.Z tag drives EVERY publish
-# channel in CI — release.yml (installers + npm/Homebrew) AND publish-crates.yml (crates.io via
-# OIDC Trusted Publishing). Nothing is published from your laptop. IRREVERSIBLE past the tag
+# commit → tag → push). Fully TAG-DRIVEN (#59, #91, #96): the pushed vX.Y.Z tag drives EVERY
+# publish channel in CI — release.yml (installers + npm/Homebrew), publish-crates.yml (crates.io
+# via OIDC Trusted Publishing) AND publish-sdks.yml (the breadth SDK packages, npm today).
+# Nothing is published from your laptop. IRREVERSIBLE past the tag
 # push. Needs the release toolchain — run `just setup`. (Prefer a button? The Cut-release GitHub
 # Action runs the same `release-tag` server-side.)
 [group('release')]
@@ -654,7 +658,7 @@ release new_version:
     just release-tag "${ver}"
 
     echo ""
-    echo "Released ${tag}: CI is publishing installers + npm/Homebrew (release.yml) and crates.io (publish-crates.yml). Watch the Actions tab."
+    echo "Released ${tag}: CI is publishing installers + npm/Homebrew (release.yml), crates.io (publish-crates.yml) and the SDK packages (publish-sdks.yml). Watch the Actions tab."
 
 # The shared release choreography behind BOTH `just release` (laptop) and the Cut-release GitHub
 # Action (.github/workflows/cut-release.yml). Runs the full gate ('green == releasable'), bumps
@@ -722,7 +726,7 @@ release-tag new_version dry_run="false":
     echo "==> push ${tag}"
     if [ "$committed" = 1 ]; then git push --quiet origin HEAD:main; fi
     git push --quiet origin "${tag}"
-    echo "Pushed ${tag}: CI is building installers + publishing npm/Homebrew (watch the Actions tab)."
+    echo "Pushed ${tag}: CI is building installers + publishing npm/Homebrew, crates.io and the SDK packages (watch the Actions tab)."
 
 # Build installers/artifacts locally (smoke test — publishes nothing). REAL releases go through
 # `just release X.Y.Z`: pushing vX.Y.Z runs .github/workflows/release.yml (generated by dist
@@ -740,6 +744,33 @@ publish:
     cargo publish -p oura-toolkit-api
     cargo publish -p oura-toolkit-auth
     cargo publish -p oura-toolkit-cli
+
+# Publish the TypeScript SDK packages (@oura-toolkit/api, then @oura-toolkit/auth) to npm — the
+# first breadth-SDK publish channel (#96). Tag-driven like every other channel: CI runs this via
+# .github/workflows/publish-sdks.yml on the same vX.Y.Z tag push. Auth comes from the
+# environment (CI: setup-node's .npmrc + NODE_AUTH_TOKEN; manual fallback: `npm login`), never
+# from this recipe. Skip-if-published makes re-runs safe: a job that published `api` but failed
+# on `auth` can be re-run without tripping over the half that landed (npm rejects re-publishing
+# an existing version, and versions are immutable — no risk of a different artifact sneaking in).
+[group('release')]
+sdk-publish-ts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in sdks/typescript/api sdks/typescript/auth; do
+      name="$(jq -r .name "$dir/package.json")"
+      pkgver="$(jq -r .version "$dir/package.json")"
+      # `npm publish` ships the package.json version; the skip-check below asks about the
+      # WORKSPACE version. On a release tree they're identical (just version-check), but refuse
+      # a drifted tree outright rather than publish one thing while checking another.
+      [ "$pkgver" = "{{version}}" ] || { echo "sdk-publish-ts: ${name} package.json is ${pkgver} but the workspace is {{version}} — run 'just version-check'"; exit 1; }
+      if [ "$(npm view "${name}@{{version}}" version 2>/dev/null)" = "{{version}}" ]; then
+        echo "==> ${name}@{{version}} already on npm — skipping"
+        continue
+      fi
+      echo "==> publishing ${name}@{{version}}"
+      # Same install flags as sdk-check-ts (devDeps for tsc; `prepare` builds dist/ on publish).
+      (cd "$dir" && npm install --no-package-lock --no-fund --no-audit && npm publish --access public)
+    done
 
 # ---------------------------------------------------------------------------------------------
 # Docs site (docs-site/ — Astro Starlight, published to ouratoolkit.com via GitHub Pages)

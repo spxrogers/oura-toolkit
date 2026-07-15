@@ -102,6 +102,17 @@ then caught on the next PR. Consequence: the release toolchain (and the Cut-rele
 carries the codegen deps (nightly rustfmt + progenitor + openapi-generator), since a release
 now regenerates.
 
+### Breadth-SDK publishing: one ecosystem at a time; npm via token, not OIDC (#96)
+The breadth SDKs publish from `.github/workflows/publish-sdks.yml` on the same `vX.Y.Z` tag
+as every other channel — one job per ecosystem, each wrapping a `just sdk-publish-<lang>`
+recipe, landed one ecosystem at a time as its registry prerequisites clear (npm first; the
+`@oura-toolkit` scope was already claimed). The npm job reuses the stored `NPM_TOKEN` instead
+of npm's Trusted Publishing (OIDC): npm can only attach a trusted publisher to a package that
+**already exists**, so the first publish needs a token regardless — migrating to OIDC (and
+adding `--provenance`) once the packages exist stays on #96. Publishes are idempotent
+(skip-if-already-on-registry), so a half-failed job re-runs safely, and the workflow's
+`workflow_dispatch` can backfill the current version's packages without cutting a tag.
+
 ### MSRV floats with recent stable
 `rust-version` currently **1.89** (for `std::fs::File::lock`, chosen over a locking
 dependency). Pre-1.0, no shipped consumers; revisit only when a real consumer needs older.
