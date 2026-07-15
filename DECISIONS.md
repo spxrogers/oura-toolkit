@@ -93,6 +93,15 @@ across the root Cargo.toml, every hand-written companion manifest, plugin.json, 
 guard** (same script, check mode) and round-trips the writer against a temp copy, so a broken
 rewriter fails CI on the PR that broke it. Replaced a sprawl of per-file grep guards.
 
+The **generated** breadth clients also carry the version, but the writer for those is
+codegen, not `version.sh`: openapi-generator stamps `npmVersion`/`packageVersion`/
+`artifactVersion` at generation time. So `just set-version` also runs `just gen` (alongside
+`gen-completions`), keeping the generated clients in lockstep — otherwise a bump drifts them
+until the next `just gen`, which is exactly what the v0.2.0 release shipped and `gen-check`
+then caught on the next PR. Consequence: the release toolchain (and the Cut-release Action)
+carries the codegen deps (nightly rustfmt + progenitor + openapi-generator), since a release
+now regenerates.
+
 ### MSRV floats with recent stable
 `rust-version` currently **1.89** (for `std::fs::File::lock`, chosen over a locking
 dependency). Pre-1.0, no shipped consumers; revisit only when a real consumer needs older.

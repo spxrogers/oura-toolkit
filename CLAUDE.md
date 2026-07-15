@@ -303,7 +303,8 @@ that orphaned it.
   completion/manpage wiring — archive INCLUSION is done; Homebrew AUTO-wiring is deferred to a
   cargo-dist upgrade (#75, see [DECISIONS.md](DECISIONS.md)).
 - **Releases are TAG-DRIVEN, not laptop-driven:** `just set-version X.Y.Z` (#59 — the SINGLE
-  WRITER of the version across every manifest, self-verifying; also regenerates completions)
+  WRITER of the version across every manifest, self-verifying; also regenerates completions +
+  the version-stamped SDK clients via `just gen`)
   → commit → tag `vX.Y.Z` → push. `just version-check` is the SINGLE drift guard (and
   round-trips the writer, so a broken rewriter fails the `release-config` CI job).
   `.github/workflows/release.yml` (dist-generated, committed, drift-checked by `just

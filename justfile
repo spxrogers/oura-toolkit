@@ -593,6 +593,12 @@ set-version new_version:
     # regenerate it here (the single writer, #59) rather than leave a stale oura.1 that would
     # fail `just gen-completions-check` on the release PR.
     just gen-completions
+    # The generated breadth clients embed the version at codegen time (openapi-generator's
+    # npmVersion/packageVersion/artifactVersion), so a version bump drifts them until they're
+    # regenerated — do it here, as the single writer, so `just gen-check` stays clean. (The 0.2.0
+    # release shipped this drift because set-version did NOT regenerate them.) Full `just gen` is
+    # uniform: the Rust/Go clients don't embed the version today, but this stays correct if they do.
+    just gen
     @echo "Now commit, then tag v{{new_version}} and push to release (CLAUDE.md → DISTRIBUTION)."
 
 # THE single version-drift guard (#59): every hand-written manifest equals the workspace

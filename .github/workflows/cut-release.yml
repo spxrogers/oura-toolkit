@@ -67,6 +67,20 @@ jobs:
       - name: Install claude CLI (plugin/marketplace schema validation)
         # Pinned like CI's release-config job (needed by `just plugin-check`).
         run: npm install -g @anthropic-ai/claude-code@2.1.199
+      - name: Cache cargo-progenitor
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-progenitor
+          key: cargo-progenitor-${{ runner.os }}-v1
+      - name: Install codegen toolchain (pinned nightly rustfmt + progenitor)
+        # set-version now runs `just gen` so the generated SDK clients stay in sync with the
+        # version bump (openapi-generator stamps the version at codegen time). `just gen` runs
+        # progenitor for the Rust client, so the release needs the pinned nightly rustfmt +
+        # cargo-progenitor — same setup as CI's gen-drift job. java/node/jq (for the
+        # openapi-generator breadth clients) are preinstalled on ubuntu-latest.
+        run: |
+          just install-nightly-rustfmt
+          command -v cargo-progenitor >/dev/null || just install-progenitor
       - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"

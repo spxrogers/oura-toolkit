@@ -60,7 +60,9 @@ Codegen touches **only** generated clients — never the hand-written auth compa
 archive. It's drift-checked by `just gen-completions-check` (the `release-config` CI job); run it
 after any change to the CLI surface. The man page's `.TH` embeds the version, so
 `just set-version` regenerates it for you (it runs `gen-completions` as part of #59's single
-version writer).
+version writer). For the same reason `set-version` also runs `just gen`: the generated breadth
+clients stamp the version at codegen time (openapi-generator's `npmVersion`/`packageVersion`/
+`artifactVersion`), so a bump would drift them until the next `just gen` otherwise.
 
 ### Upgrading the vendored spec
 
@@ -145,7 +147,8 @@ short version reviewers will hold you to:
 Tag-driven, never from a laptop: `just release X.Y.Z` does the whole thing in one
 command — runs the full local gate, then bumps every manifest (`just set-version`, the
 single writer — it rewrites the root `Cargo.toml` source plus every hand-written manifest
-that carries the version, and refreshes `Cargo.lock`), commits, and pushes the `vX.Y.Z`
+that carries the version, refreshes `Cargo.lock`, and regenerates the completions + the
+version-stamped SDK clients via `just gen`), commits, and pushes the `vX.Y.Z`
 tag. That one tag drives **every** publish channel in CI: `release.yml` builds every
 installer and publishes npm + Homebrew, and `publish-crates.yml` publishes the crates to
 crates.io via Trusted Publishing (OIDC, no token — #91). Nothing publishes from your
