@@ -7,6 +7,13 @@ members = ["cargo:."]
 cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
+# Don't run release.yml on pull requests. cargo-dist's default ("plan") runs a `dist plan`
+# config-sanity check on every PR, but that's already covered — more thoroughly — by the
+# `release-config` CI job (`just dist-check` = dist plan + generate --check + global build +
+# artifact assertions), so the PR run was a redundant, "skipped"-noise duplicate. "skip" drops
+# the `pull_request` trigger; releases stay fully tag-driven. Regenerate release.yml with
+# `just dist-generate` after changing this (drift-guarded by `just dist-check`).
+pr-run-mode = "skip"
 # The installers to generate for each app. NPX-FIRST launch (CLAUDE.md → DISTRIBUTION):
 # `npx -y oura-toolkit ...` runs the `oura` binary; brew / shell / powershell are the
 # speed-path alternatives. PowerShell is unblocked by #24 (Windows CI leg is green).

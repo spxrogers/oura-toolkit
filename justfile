@@ -534,6 +534,13 @@ auth-token:
 # Release / publish
 # ---------------------------------------------------------------------------------------------
 
+# Regenerate the dist-managed CI (release.yml) after changing the [dist] config in
+# dist-workspace.toml. The counterpart to `dist-check`'s `dist generate --check` drift guard
+# (gen ↔ gen-check doctrine): edit the config, run this, commit the regenerated release.yml.
+[group('release')]
+dist-generate:
+    dist generate
+
 # Validate the release config (CI runs this as its own job: a broken dist-workspace.toml
 # must fail PRs, not the release tag). Three guards:
 #  1. `dist plan` — config parses and the release resolves.
