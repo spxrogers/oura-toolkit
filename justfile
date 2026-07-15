@@ -534,6 +534,13 @@ auth-token:
 # Release / publish
 # ---------------------------------------------------------------------------------------------
 
+# Regenerate the dist-managed CI (release.yml) after changing the [dist] config in
+# dist-workspace.toml. The counterpart to `dist-check`'s `dist generate --check` drift guard
+# (gen ↔ gen-check doctrine): edit the config, run this, commit the regenerated release.yml.
+[group('release')]
+dist-generate:
+    dist generate
+
 # Validate the release config (CI runs this as its own job: a broken dist-workspace.toml
 # must fail PRs, not the release tag). Three guards:
 #  1. `dist plan` — config parses and the release resolves.
@@ -586,6 +593,12 @@ set-version new_version:
     # regenerate it here (the single writer, #59) rather than leave a stale oura.1 that would
     # fail `just gen-completions-check` on the release PR.
     just gen-completions
+    # The generated breadth clients embed the version at codegen time (openapi-generator's
+    # npmVersion/packageVersion/artifactVersion), so a version bump drifts them until they're
+    # regenerated — do it here, as the single writer, so `just gen-check` stays clean. (The 0.2.0
+    # release shipped this drift because set-version did NOT regenerate them.) Full `just gen` is
+    # uniform: the Rust/Go clients don't embed the version today, but this stays correct if they do.
+    just gen
     @echo "Now commit, then tag v{{new_version}} and push to release (CLAUDE.md → DISTRIBUTION)."
 
 # THE single version-drift guard (#59): every hand-written manifest equals the workspace
