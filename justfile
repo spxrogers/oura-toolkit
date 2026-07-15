@@ -613,13 +613,11 @@ plugin-check:
 
 # Cut a release in ONE command from your laptop: `just release 0.1.0` (a leading `v` is fine
 # too). Local-only preconditions, then the shared `release-tag` choreography (gate → bump →
-# commit → tag → push, which triggers the CI release), then the crates.io leg. Still
-# TAG-DRIVEN (#59): CI builds the installers + publishes npm/homebrew on the pushed tag; the
-# crates.io publish is the lone laptop-driven step (cargo-dist has no crates.io publisher —
-# #91 tracks moving it into CI). The tag (primary, NPX-FIRST) is pushed before crates.io
-# (secondary), so a crates.io hiccup never blocks the primary launch — rerun `just publish` to
-# finish it. IRREVERSIBLE past the tag push. Needs the release toolchain — run `just setup`.
-# (Prefer the button? The Cut-release GitHub Action runs the same `release-tag` server-side.)
+# commit → tag → push). Fully TAG-DRIVEN (#59, #91): the pushed vX.Y.Z tag drives EVERY publish
+# channel in CI — release.yml (installers + npm/Homebrew) AND publish-crates.yml (crates.io via
+# OIDC Trusted Publishing). Nothing is published from your laptop. IRREVERSIBLE past the tag
+# push. Needs the release toolchain — run `just setup`. (Prefer a button? The Cut-release GitHub
+# Action runs the same `release-tag` server-side.)
 [group('release')]
 release new_version:
     #!/usr/bin/env bash
@@ -628,7 +626,8 @@ release new_version:
     tag="v${ver}"
 
     # Local-only preconditions — the gate + tag-existence checks live in `release-tag`. Nothing
-    # is mutated until every one of these passes.
+    # is mutated until every one of these passes. (No crates.io-auth check: publishing is now
+    # CI-driven via OIDC, #91 — the laptop never needs a registry token.)
     printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$' \
       || { echo "release: '{{new_version}}' is not a semver version (expected X.Y.Z)"; exit 1; }
     branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -637,19 +636,12 @@ release new_version:
     git fetch --quiet origin main
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
       || { echo "release: local main has diverged from origin/main — sync first"; exit 1; }
-    [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || [ -f "${CARGO_HOME:-$HOME/.cargo}/credentials.toml" ] \
-      || [ -f "${CARGO_HOME:-$HOME/.cargo}/credentials" ] \
-      || { echo "release: not authenticated to crates.io — run 'cargo login' or set CARGO_REGISTRY_TOKEN"; exit 1; }
 
     # Shared choreography: gate → set-version → guards → commit → tag → push (triggers CI).
     just release-tag "${ver}"
 
-    # crates.io — secondary, laptop-driven, never part of the CI release (#91).
-    echo "==> crates.io publish (api -> auth -> cli)"
-    just publish
-
     echo ""
-    echo "Released ${tag}: crates.io done; CI is building installers + publishing npm/Homebrew (watch the Actions tab)."
+    echo "Released ${tag}: CI is publishing installers + npm/Homebrew (release.yml) and crates.io (publish-crates.yml). Watch the Actions tab."
 
 # The shared release choreography behind BOTH `just release` (laptop) and the Cut-release GitHub
 # Action (.github/workflows/cut-release.yml). Runs the full gate ('green == releasable'), bumps
@@ -719,9 +711,10 @@ release-tag new_version dry_run="false":
 dist-build:
     dist build
 
-# Publish the Rust crates to crates.io in dependency order (the crates.io leg of `just release`;
-# also runnable on its own to finish/redo a crates.io publish). npm + homebrew publishing is
-# CI-driven by the release workflow on tag push — not from a laptop.
+# Publish the Rust crates to crates.io in dependency order. On a release this runs in CI via
+# .github/workflows/publish-crates.yml (Trusted Publishing / OIDC, #91) — this recipe is the
+# MANUAL fallback (needs `cargo login`), e.g. to finish a crates.io publish CI couldn't. npm +
+# homebrew publishing is CI-driven by release.yml on tag push — not from a laptop.
 [group('release')]
 publish:
     cargo publish -p oura-toolkit-api

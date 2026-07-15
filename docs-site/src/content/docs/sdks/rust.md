@@ -7,15 +7,10 @@ The Rust SDK is two crates: `oura-toolkit-api` (the progenitor-generated data-pl
 `oura-toolkit-auth` (the hand-written, non-interactive auth companion). The `oura` CLI depends
 on both directly, so this is the most exercised SDK in the toolkit.
 
-:::caution[Consume from source]
-Not yet published to crates.io. Depend on it from the repository for now.
-:::
+Both crates are published on [crates.io](https://crates.io/crates/oura-toolkit-api):
 
-```toml
-# Cargo.toml
-[dependencies]
-oura-toolkit-api = { git = "https://github.com/spxrogers/oura-toolkit" }
-oura-toolkit-auth = { git = "https://github.com/spxrogers/oura-toolkit" }
+```sh
+cargo add oura-toolkit-api oura-toolkit-auth
 ```
 
 ## Usage sketch
