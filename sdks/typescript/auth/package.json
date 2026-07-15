@@ -1,6 +1,6 @@
 {
   "name": "@oura-toolkit/auth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hand-written auth companion for @oura-toolkit/api: token store, OAuth2 refresh with rotation, and a Configuration accessToken seam",
   "repository": {
     "type": "git",
