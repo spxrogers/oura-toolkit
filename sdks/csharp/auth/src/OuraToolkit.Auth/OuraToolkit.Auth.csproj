@@ -17,7 +17,7 @@
     <RootNamespace>OuraToolkit.Auth</RootNamespace>
     <!-- Version must equal the workspace version (root Cargo.toml, the single version
          source) — written by `just set-version`, guarded by `just version-check` (#59). -->
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <!-- records / `required` / `init` need C# 9+/11; the netstandard2.0 leg would otherwise
          default to C# 7.3. The missing compiler-required attributes are polyfilled
          (Polyfills.cs, fenced to netstandard2.0). Pin the version (not `latest`) so a future

@@ -5,7 +5,7 @@
 # `just version-check` (#59) — never edit it by hand.
 [project]
 name = "oura-toolkit"
-version = "0.2.0"
+version = "0.2.1"
 description = "Oura Ring API v2 client (generated from Oura's OpenAPI spec) — part of oura-toolkit"
 readme = "README.md"
 license = { text = "MIT" }
