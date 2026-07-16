@@ -24,12 +24,17 @@ installers = ["shell", "powershell", "npm", "homebrew"]
 npm-package = "oura-toolkit"
 # Homebrew formula name + tap. `brew install spxrogers/tap/oura-toolkit`.
 # PREREQUISITES (one-time, manual): the tap repo `spxrogers/homebrew-tap` must exist and
-# CI needs a HOMEBREW_TAP_TOKEN secret with push access to it; npm publishing needs an
-# NPM_TOKEN secret. Until those exist, tag-driven releases still build every installer
-# artifact — only the publish jobs fail.
+# CI needs a HOMEBREW_TAP_TOKEN secret with push access to it. Until those exist, tag-driven
+# releases still build every installer artifact — only the publish jobs fail.
 formula = "oura-toolkit"
 tap = "spxrogers/homebrew-tap"
-publish-jobs = ["homebrew", "npm"]
+# NO "npm" here: dist 0.32's npm publish job is token-only (Node 20 / npm 10.x, NODE_AUTH_TOKEN),
+# so the CLI npm package publishes from the standalone .github/workflows/publish-cli-npm.yml
+# instead — Trusted Publishing (OIDC), no NPM_TOKEN — which runs on Release completion and
+# publishes the npm tarball this config still BUILDS (the "npm" installer above) and hosts on
+# the GitHub Release. Same standalone-over-custom-publish-job reasoning as crates.io (#91);
+# see DECISIONS.md.
+publish-jobs = ["homebrew"]
 # ACCEPTED UPSTREAM RISK (adversarial review, PR #41): cargo-dist 0.32's npm installer
 # (binary-install.js) downloads the platform binary from GitHub releases over https with
 # NO checksum verification — unlike the shell installer and homebrew formula, which both

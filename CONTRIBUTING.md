@@ -150,12 +150,15 @@ single writer — it rewrites the root `Cargo.toml` source plus every hand-writt
 that carries the version, refreshes `Cargo.lock`, and regenerates the completions + the
 version-stamped SDK clients via `just gen`), commits, and pushes the `vX.Y.Z`
 tag. That one tag drives **every** publish channel in CI: `release.yml` builds every
-installer and publishes npm + Homebrew, `publish-crates.yml` publishes the crates to
-crates.io via Trusted Publishing (OIDC, no token — #91), and `publish-sdks.yml` publishes
+installer and publishes Homebrew, `publish-crates.yml` publishes the crates to
+crates.io via Trusted Publishing (OIDC, no token — #91), `publish-sdks.yml` publishes
 the breadth SDKs (#96 — today the npm packages `@oura-toolkit/api` + `@oura-toolkit/auth`
 via `just sdk-publish-ts`, also Trusted Publishing (OIDC) with automatic provenance; more
 ecosystems join as their registry prerequisites land, and its `workflow_dispatch` can
-backfill the current version). Nothing publishes from your
+backfill the current version), and — once `release.yml` completes — `publish-cli-npm.yml`
+publishes the CLI's `oura-toolkit` npm launcher (`just publish-cli-npm`, OIDC too, from the
+tarball hosted on the GitHub Release; no npm token is stored anywhere). Nothing publishes
+from your
 laptop; guards refuse a dirty tree, a non-`main` branch, drift from origin, or an existing
 tag. (The manual path is the same steps by hand: `just set-version X.Y.Z`, commit, tag,
 push. `just publish` remains the manual crates.io fallback, needing `cargo login`.)

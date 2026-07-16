@@ -308,17 +308,21 @@ that orphaned it.
   → commit → tag `vX.Y.Z` → push. `just version-check` is the SINGLE drift guard (and
   round-trips the writer, so a broken rewriter fails the `release-config` CI job).
   `.github/workflows/release.yml` (dist-generated, committed, drift-checked by `just
-  dist-check`) builds artifacts and runs the npm + homebrew publish jobs. **`just release
+  dist-check`) builds artifacts and runs the homebrew publish job. **`just release
   X.Y.Z`** wraps that whole flow in one command — local guards (clean tree / on `main` / in
   sync), then the shared **`just release-tag`** choreography (full gate → set-version → commit →
   tag → push; the tag drives all CI publishing, nothing is built or published on the laptop).
   EVERY publish channel is tag-driven (#91): the pushed tag fans out to `release.yml`
-  (installers + npm/homebrew), `.github/workflows/publish-crates.yml` (crates.io via
-  **Trusted Publishing / OIDC** — no stored registry token) **and**
+  (installers + homebrew), `.github/workflows/publish-crates.yml` (crates.io via
+  **Trusted Publishing / OIDC** — no stored registry token),
   `.github/workflows/publish-sdks.yml` (the breadth SDKs, #96 — today the npm leg,
   `just sdk-publish-ts` → `@oura-toolkit/api` + `@oura-toolkit/auth`, via npm **Trusted
   Publishing / OIDC** with automatic provenance — no stored token; more ecosystems join as
-  their registry prerequisites land). The SAME
+  their registry prerequisites land) **and** — once release.yml completes —
+  `.github/workflows/publish-cli-npm.yml` (`just publish-cli-npm` — the CLI's `oura-toolkit`
+  npm launcher, published via the same **OIDC** from the tarball hosted on the GitHub
+  Release; `workflow_run`-chained because dist 0.32's own npm job is token-only and
+  release.yml can't be hand-edited). **No npm token is stored anywhere.** The SAME
   `release-tag` recipe runs
   server-side in the **Cut-release Action** (`.github/workflows/cut-release.yml`,
   `workflow_dispatch`) so a release can be cut from the GitHub UI — it pushes the tag with a
@@ -333,20 +337,21 @@ that orphaned it.
   speed-path alternatives. Known accepted risk: cargo-dist 0.32's npm installer does not
   checksum-verify the binary it downloads (shell + homebrew do).
 - **One-time prerequisites before the first real release:** `spxrogers/homebrew-tap` +
-  `HOMEBREW_TAP_TOKEN`, and `NPM_TOKEN`. Until then tag pushes still build every artifact —
-  only the publish jobs fail. The **Cut-release Action** additionally needs a `RELEASE_TOKEN`
+  `HOMEBREW_TAP_TOKEN` (the ONLY stored publish secret — no npm token anywhere). Until then
+  tag pushes still build every artifact — only the publish jobs fail. The **Cut-release
+  Action** additionally needs a `RELEASE_TOKEN`
   PAT (Contents: read/write) so its pushed tag triggers `release.yml`; the laptop `just
   release` path does not need it. **crates.io publishing (#91) needs NO token** but does need a
   one-time **Trusted Publisher** configured on crates.io for each crate (`oura-toolkit-api`,
   `-auth`, `-cli`): owner `spxrogers`, repo `oura-toolkit`, workflow `publish-crates.yml` (no
   environment); until that's set the `publish-crates` job fails at auth while the tag + other
-  channels still succeed. Breadth-SDK publishing (#96) ships one ecosystem at a time: the
-  **npm packages are live**, publishing via npm **Trusted Publishing / OIDC** (no token; a
-  one-time trusted-publisher config on npmjs.com for each of `@oura-toolkit/api` and
-  `@oura-toolkit/auth`: owner `spxrogers`, repo `oura-toolkit`, workflow `publish-sdks.yml`,
-  no environment). `NPM_TOKEN` remains only for `release.yml`'s CLI npm package. Before the
-  remaining SDKs publish: verify `com.ouratoolkit` on Maven Central, register the NuGet +
-  PyPI names.
+  channels still succeed. **npm publishing needs NO token either** — a one-time
+  trusted-publisher config on npmjs.com per package: `@oura-toolkit/api` + `@oura-toolkit/auth`
+  → workflow `publish-sdks.yml`, and the CLI's `oura-toolkit` → workflow `publish-cli-npm.yml`
+  (owner `spxrogers`, repo `oura-toolkit`, no environment, allowed action `npm publish`).
+  Breadth-SDK publishing (#96) ships one ecosystem at a time (the npm packages are live);
+  before the remaining SDKs publish: verify `com.ouratoolkit` on Maven Central, register the
+  NuGet + PyPI names.
 
 ---
 

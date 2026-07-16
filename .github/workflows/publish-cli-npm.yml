@@ -1,0 +1,86 @@
+# Publish the CLI's npm launcher package (`oura-toolkit` — the NPX-FIRST install channel) via
+# npm Trusted Publishing (OIDC), completing the no-stored-npm-token story (#96 follow-through):
+# dist 0.32's built-in npm publish job is token-only (Node 20 / npm 10.x + NODE_AUTH_TOKEN) and
+# release.yml is dist-generated (hand-edits fail `just dist-check`), so "npm" is disabled in
+# dist-workspace.toml's publish-jobs and published from this standalone workflow instead — the
+# same standalone-over-custom-publish-job call as crates.io (#91): an unambiguous workflow
+# filename for the OIDC claim, and release.yml stays drift-clean.
+#
+# TRIGGER: `workflow_run` on Release completing, NOT the tag push — the package content is the
+# npm tarball release.yml builds and hosts on the GitHub Release (this workflow builds nothing;
+# it ships exactly the reviewed release artifact). `workflow_run` fires even though release.yml
+# runs on GITHUB_TOKEN (unlike tag/release events, it's exempt from the recursion guard).
+# Ordering note: the GitHub Release is announced before this publishes (~a minute) — same
+# eventual-consistency the crates.io channel already has.
+#
+# AUTH: npm ≥ 11.5.1 exchanges the workflow's OIDC identity for a short-lived credential;
+# provenance attestations are automatic (the tarball's package.json carries the repository
+# field dist stamps into it).
+#
+# ONE-TIME SETUP (npmjs.com → oura-toolkit → Settings → Trusted Publisher → GitHub Actions):
+# organization/user `spxrogers`, repository `oura-toolkit`, workflow `publish-cli-npm.yml`,
+# environment (none), allowed actions `npm publish`. Until configured, this job fails at
+# publish — the release itself and every other channel still succeed.
+
+name: Publish CLI npm package
+
+on:
+  workflow_run:
+    # Must match release.yml's `name:`. Only successful tag runs publish (see the job `if`).
+    workflows: [Release]
+    types: [completed]
+  # Manual backfill/retry for an already-released tag (e.g. the Release run predated this
+  # workflow, or the trusted publisher wasn't configured yet). Idempotent: the recipe skips
+  # versions already on the registry.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Released tag whose npm package to publish, e.g. v0.2.2"
+        required: true
+        type: string
+
+permissions:
+  id-token: write # mint the short-lived npm OIDC credential (and sign provenance)
+  contents: read
+
+concurrency:
+  group: publish-cli-npm-${{ inputs.tag || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: publish oura-toolkit (${{ inputs.tag || github.event.workflow_run.head_branch }})
+    runs-on: ubuntu-latest
+    # workflow_run path: only a SUCCESSFUL Release run, and only for a version tag —
+    # release.yml triggers solely on tag pushes, and for tag-triggered runs GitHub reports the
+    # tag name in head_branch. Skip prereleases (semver prerelease contains '-'), matching
+    # every other publish channel.
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && !contains(inputs.tag, '-'))
+          || (github.event.workflow_run.conclusion == 'success'
+              && startsWith(github.event.workflow_run.head_branch, 'v')
+              && !contains(github.event.workflow_run.head_branch, '-')) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24 bundles npm ≥ 11.5.1, the floor for Trusted Publishing (Node 22 bundles
+          # npm 10.x, which would silently fall back to looking for a token and fail).
+          node-version: 24
+          # Still required for trusted publishing per npm's docs: pins the publish registry
+          # in the runner's npmrc. No NODE_AUTH_TOKEN — auth is the OIDC exchange.
+          registry-url: 'https://registry.npmjs.org'
+      - uses: extractions/setup-just@v4
+      - name: Assert npm supports Trusted Publishing (>= 11.5.1)
+        # Fail fast with a diagnosis instead of a cryptic publish-time auth error if the
+        # runner image ever hands us an older npm.
+        run: |
+          v="$(npm --version)"
+          floor="11.5.1"
+          [ "$(printf '%s\n%s\n' "$floor" "$v" | sort -V | head -n1)" = "$floor" ] \
+            || { echo "::error::npm ${v} < ${floor} — too old for Trusted Publishing (OIDC). Bump node-version (Node 24+ bundles npm 11.5.1+)."; exit 1; }
+          echo "npm ${v} OK"
+      - name: Publish oura-toolkit from the release tarball (OIDC + provenance)
+        env:
+          TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+        run: just publish-cli-npm "$TAG"

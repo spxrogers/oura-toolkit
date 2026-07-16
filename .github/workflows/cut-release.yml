@@ -1,8 +1,9 @@
 # Cut a release from the GitHub Actions UI (workflow_dispatch) — the server-side equivalent of
 # `just release X.Y.Z`. It runs the SAME gate + version bump + tag choreography through the
 # shared `just release-tag` recipe (never re-implemented in this YAML, per CLAUDE.md → TASK
-# RUNNER); the pushed vX.Y.Z tag then drives .github/workflows/release.yml (installers +
-# npm/homebrew). crates.io stays out of this path — see #91 to move it into CI.
+# RUNNER); the pushed vX.Y.Z tag then drives every publish channel — release.yml (installers +
+# homebrew), publish-crates.yml (crates.io, #91), publish-sdks.yml (npm SDKs, #96) and, chained
+# off release.yml's completion, publish-cli-npm.yml (the CLI npm launcher).
 #
 # WHY A PAT (RELEASE_TOKEN): a tag pushed with the default GITHUB_TOKEN does NOT trigger other
 # workflows (GitHub's recursion guard), so release.yml would never fire. Pushing the tag with a
