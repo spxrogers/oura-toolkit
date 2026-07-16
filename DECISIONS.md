@@ -102,14 +102,17 @@ then caught on the next PR. Consequence: the release toolchain (and the Cut-rele
 carries the codegen deps (nightly rustfmt + progenitor + openapi-generator), since a release
 now regenerates.
 
-### Breadth-SDK publishing: one ecosystem at a time; npm via token, not OIDC (#96)
+### Breadth-SDK publishing: one ecosystem at a time; npm bootstrapped by token, then OIDC (#96)
 The breadth SDKs publish from `.github/workflows/publish-sdks.yml` on the same `vX.Y.Z` tag
 as every other channel — one job per ecosystem, each wrapping a `just sdk-publish-<lang>`
 recipe, landed one ecosystem at a time as its registry prerequisites clear (npm first; the
-`@oura-toolkit` scope was already claimed). The npm job reuses the stored `NPM_TOKEN` instead
-of npm's Trusted Publishing (OIDC): npm can only attach a trusted publisher to a package that
-**already exists**, so the first publish needs a token regardless — migrating to OIDC (and
-adding `--provenance`) once the packages exist stays on #96. Publishes are idempotent
+`@oura-toolkit` scope was already claimed). npm auth was a deliberate two-step: npm can only
+attach a trusted publisher to a package that **already exists**, so the FIRST publish (0.2.1)
+used the stored `NPM_TOKEN`, and the workflow migrated to npm **Trusted Publishing (OIDC)**
+immediately after — no stored token, `id-token: write`, npm ≥ 11.5.1 (Node 24; asserted in
+the workflow, since Node 22's npm 10.x would quietly look for a token instead). Provenance is
+automatic on an OIDC publish, so the recipe deliberately does NOT pass `--provenance` — the
+manual `npm login` fallback keeps working. Publishes are idempotent
 (skip-if-already-on-registry), so a half-failed job re-runs safely, and the workflow's
 `workflow_dispatch` can backfill the current version's packages without cutting a tag.
 

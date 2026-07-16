@@ -748,8 +748,11 @@ publish:
 # Publish the TypeScript SDK packages (@oura-toolkit/api, then @oura-toolkit/auth) to npm — the
 # first breadth-SDK publish channel (#96). Tag-driven like every other channel: CI runs this via
 # .github/workflows/publish-sdks.yml on the same vX.Y.Z tag push. Auth comes from the
-# environment (CI: setup-node's .npmrc + NODE_AUTH_TOKEN; manual fallback: `npm login`), never
-# from this recipe. Skip-if-published makes re-runs safe: a job that published `api` but failed
+# environment, never from this recipe: in CI, npm ≥ 11.5.1 exchanges the workflow's OIDC
+# identity for a short-lived credential (Trusted Publishing — no stored token) and attaches
+# provenance automatically; the manual fallback is `npm login` (no provenance, deliberately not
+# forced via --provenance so this path keeps working). Skip-if-published makes re-runs safe: a
+# job that published `api` but failed
 # on `auth` can be re-run without tripping over the half that landed (npm rejects re-publishing
 # an existing version, and versions are immutable — no risk of a different artifact sneaking in).
 [group('release')]

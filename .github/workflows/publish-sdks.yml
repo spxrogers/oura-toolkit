@@ -8,11 +8,18 @@
 # Go, Maven Central and NuGet land here as their own jobs once their registry prerequisites
 # are done).
 #
-# AUTH (npm): the SAME NPM_TOKEN secret release.yml's npm publish job uses (a classic
-# automation token owned by the @oura-toolkit org owner). npm's OIDC Trusted Publishing was
-# considered (like publish-crates.yml) but it can only be configured on a package that ALREADY
-# exists, so the first publish needs a token anyway; migrating to OIDC after the packages exist
-# is tracked in #96. Provenance attestation (`npm publish --provenance`) is deferred with it.
+# AUTH (npm): Trusted Publishing (OIDC) — NO stored token, same model as publish-crates.yml.
+# npm ≥ 11.5.1 detects the GitHub Actions OIDC environment and mints its own short-lived
+# credential for `npm publish`; provenance attestations are generated AUTOMATICALLY on an
+# OIDC publish (no --provenance flag, so the recipe's manual `npm login` fallback still
+# works). The first publish (0.2.1) had to use NPM_TOKEN — npm can only attach a trusted
+# publisher to a package that already exists — and was migrated here right after.
+#
+# ONE-TIME SETUP (per package, on npmjs.com → package → Settings → Trusted Publisher →
+# GitHub Actions): organization/user `spxrogers`, repository `oura-toolkit`, workflow
+# `publish-sdks.yml`, environment (none), allowed actions `npm publish`. Required for
+# @oura-toolkit/api and @oura-toolkit/auth. Until configured, this job fails at publish —
+# the tag and every other channel still succeed.
 
 name: Publish SDKs
 
@@ -28,6 +35,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  id-token: write # mint the short-lived npm OIDC credential (and sign provenance)
   contents: read
 
 concurrency:
@@ -45,12 +53,21 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          # Writes an .npmrc that reads the publish token from NODE_AUTH_TOKEN (set on the
-          # publish step below) — the standard setup-node auth seam.
+          # Node 24 bundles npm ≥ 11.5.1, the floor for Trusted Publishing (Node 22 bundles
+          # npm 10.x, which would silently fall back to looking for a token and fail).
+          node-version: 24
+          # Still required for trusted publishing per npm's docs: pins the publish registry
+          # in the runner's npmrc. No NODE_AUTH_TOKEN — auth is the OIDC exchange.
           registry-url: 'https://registry.npmjs.org'
       - uses: extractions/setup-just@v4
-      - name: Publish @oura-toolkit/api + @oura-toolkit/auth
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Assert npm supports Trusted Publishing (>= 11.5.1)
+        # Fail fast with a diagnosis instead of a cryptic publish-time auth error if the
+        # runner image ever hands us an older npm.
+        run: |
+          v="$(npm --version)"
+          floor="11.5.1"
+          [ "$(printf '%s\n%s\n' "$floor" "$v" | sort -V | head -n1)" = "$floor" ] \
+            || { echo "::error::npm ${v} < ${floor} — too old for Trusted Publishing (OIDC). Bump node-version (Node 24+ bundles npm 11.5.1+)."; exit 1; }
+          echo "npm ${v} OK"
+      - name: Publish @oura-toolkit/api + @oura-toolkit/auth (OIDC + provenance)
         run: just sdk-publish-ts
