@@ -121,7 +121,8 @@ for why):
 - **Releases are tag-driven**: `just set-version X.Y.Z` (the single version writer) → commit
   → tag `vX.Y.Z` → push. The one tag fans out to every publish channel in CI: `release.yml`
   (installers + homebrew), `publish-crates.yml` (crates.io via OIDC), `publish-sdks.yml`
-  (breadth SDKs — today `@oura-toolkit/api` + `@oura-toolkit/auth` on npm, #96) and, chained
+  (breadth SDKs — `@oura-toolkit/api` + `@oura-toolkit/auth` on npm and `oura-toolkit` on
+  PyPI so far, #96) and, chained
   off release.yml's completion, `publish-cli-npm.yml` (the CLI's `oura-toolkit` npm launcher,
   OIDC, from the hosted release tarball). Every npm/crates publish is Trusted Publishing — the
   only stored publish secret is the Homebrew tap token.

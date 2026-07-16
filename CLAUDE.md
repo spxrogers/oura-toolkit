@@ -316,9 +316,11 @@ that orphaned it.
   (installers + homebrew), `.github/workflows/publish-crates.yml` (crates.io via
   **Trusted Publishing / OIDC** — no stored registry token),
   `.github/workflows/publish-sdks.yml` (the breadth SDKs, #96 — today the npm leg,
-  `just sdk-publish-ts` → `@oura-toolkit/api` + `@oura-toolkit/auth`, via npm **Trusted
-  Publishing / OIDC** with automatic provenance — no stored token; more ecosystems join as
-  their registry prerequisites land) **and** — once release.yml completes —
+  `just sdk-publish-ts` → `@oura-toolkit/api` + `@oura-toolkit/auth`, and the PyPI leg,
+  `just sdk-build-py` + the official pypa publish action → `oura-toolkit`, both via
+  **Trusted Publishing / OIDC** with automatic provenance/attestations — no stored token;
+  more ecosystems join as their registry prerequisites land) **and** — once release.yml
+  completes —
   `.github/workflows/publish-cli-npm.yml` (`just publish-cli-npm` — the CLI's `oura-toolkit`
   npm launcher, published via the same **OIDC** from the tarball hosted on the GitHub
   Release; `workflow_run`-chained because dist 0.32's own npm job is token-only and
@@ -349,9 +351,11 @@ that orphaned it.
   trusted-publisher config on npmjs.com per package: `@oura-toolkit/api` + `@oura-toolkit/auth`
   → workflow `publish-sdks.yml`, and the CLI's `oura-toolkit` → workflow `publish-cli-npm.yml`
   (owner `spxrogers`, repo `oura-toolkit`, no environment, allowed action `npm publish`).
-  Breadth-SDK publishing (#96) ships one ecosystem at a time (the npm packages are live);
-  before the remaining SDKs publish: verify `com.ouratoolkit` on Maven Central, register the
-  NuGet + PyPI names.
+  **PyPI needs NO token either** — a one-time PENDING trusted publisher on pypi.org (project
+  `oura-toolkit`, owner `spxrogers`, repo `oura-toolkit`, workflow `publish-sdks.yml`, no
+  environment; PyPI creates the project on first publish). Breadth-SDK publishing (#96) ships
+  one ecosystem at a time (npm + PyPI are live); before the remaining SDKs publish: verify
+  `com.ouratoolkit` on Maven Central, register the NuGet names.
 
 ---
 
