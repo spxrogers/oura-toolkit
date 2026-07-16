@@ -116,6 +116,17 @@ manual `npm login` fallback keeps working. Publishes are idempotent
 (skip-if-already-on-registry), so a half-failed job re-runs safely, and the workflow's
 `workflow_dispatch` can backfill the current version's packages without cutting a tag.
 
+The **PyPI leg** followed the same tag-driven shape with two PyPI-specific differences.
+(1) No token bootstrap: PyPI supports **pending** trusted publishers — configured before the
+project exists, creating it on first publish — so unlike npm there was never a stored secret.
+(2) The split of build vs upload: `just sdk-build-py` builds AND guards the artifacts (twine
+`--strict`, both PEP 561 `py.typed` markers, LICENSE in the wheel dist-info, no stray
+top-level packages — break-verified like the sdk-check-ts pack guard), while the upload is
+the official `pypa/gh-action-pypi-publish` action rather than raw twine in a recipe: the OIDC
+token exchange and default PEP 740 attestation signing are implemented inside that action
+(the same reason publish-crates.yml uses crates-io-auth-action), and `skip-existing: true`
+keeps re-runs idempotent like the npm leg's skip-if-published.
+
 ### CLI npm launcher: OIDC via a workflow_run-chained standalone workflow
 The CLI's `oura-toolkit` npm package completes the no-stored-npm-token story, but dist 0.32's
 built-in npm publish job is token-only (Node 20 / npm 10.x + `NODE_AUTH_TOKEN`) and release.yml

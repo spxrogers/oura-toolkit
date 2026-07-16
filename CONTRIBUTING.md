@@ -152,9 +152,10 @@ version-stamped SDK clients via `just gen`), commits, and pushes the `vX.Y.Z`
 tag. That one tag drives **every** publish channel in CI: `release.yml` builds every
 installer and publishes Homebrew, `publish-crates.yml` publishes the crates to
 crates.io via Trusted Publishing (OIDC, no token — #91), `publish-sdks.yml` publishes
-the breadth SDKs (#96 — today the npm packages `@oura-toolkit/api` + `@oura-toolkit/auth`
-via `just sdk-publish-ts`, also Trusted Publishing (OIDC) with automatic provenance; more
-ecosystems join as their registry prerequisites land, and its `workflow_dispatch` can
+the breadth SDKs (#96 — the npm packages `@oura-toolkit/api` + `@oura-toolkit/auth` via
+`just sdk-publish-ts` and the PyPI dist `oura-toolkit` via `just sdk-build-py` + the official
+pypa publish action, all Trusted Publishing (OIDC) with automatic provenance/attestations;
+more ecosystems join as their registry prerequisites land, and its `workflow_dispatch` can
 backfill the current version), and — once `release.yml` completes — `publish-cli-npm.yml`
 publishes the CLI's `oura-toolkit` npm launcher (`just publish-cli-npm`, OIDC too, from the
 tarball hosted on the GitHub Release; no npm token is stored anywhere). Nothing publishes

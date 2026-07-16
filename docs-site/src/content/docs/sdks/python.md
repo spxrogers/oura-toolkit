@@ -3,14 +3,17 @@ title: Python
 description: The Python SDK — a single oura-toolkit distribution with oura_toolkit.api and oura_toolkit.auth modules.
 ---
 
-Python ships as a single distribution (reserved as `oura-toolkit` on PyPI) with two modules:
+Python ships as a single distribution — published as
+[`oura-toolkit`](https://pypi.org/project/oura-toolkit/) on PyPI — with two modules:
 `oura_toolkit.api` (the generated data-plane client) and `oura_toolkit.auth` (the auth
-companion) — no per-function micro-packages.
+companion) — no per-function micro-packages. It's versioned in lockstep with the toolkit and
+published on every release tag.
 
-:::caution[Consume from source]
-Not yet published to PyPI. Install from the repository for now, and supply your own access token
-until the companion is published.
-:::
+## Install
+
+```sh
+pip install oura-toolkit
+```
 
 ## Usage sketch
 

@@ -982,3 +982,35 @@ fn documented_npm_sdk_install_matches_package_names() {
         );
     }
 }
+
+/// The documented pip install command ⟷ the real pyproject.toml dist name (#96, the PyPI
+/// sibling of the npm tripwire above). The single Python dist is NAMING-locked to
+/// `oura-toolkit`; every doc that tells users to install it must use exactly that name.
+#[test]
+fn documented_pypi_install_matches_dist_name() {
+    let root = repo_root();
+    let pyproject = read(&root.join("sdks/python/pyproject.toml"));
+    let name = pyproject
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix("name = \"")
+                .and_then(|rest| rest.strip_suffix('"'))
+        })
+        .expect("sdks/python/pyproject.toml lost its [project] name line");
+    assert_eq!(
+        name, "oura-toolkit",
+        "pyproject.toml dist is named {name}, not the NAMING-locked oura-toolkit"
+    );
+    let install = format!("pip install {name}");
+    for doc in [
+        root.join("README.md"),
+        root.join("sdks/python/README.md"),
+        docs_site_page("sdks/python.md"),
+    ] {
+        assert!(
+            read(&doc).contains(&install),
+            "{doc:?} does not carry the install command `{install}` — dist renamed or install \
+             docs drifted (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+}

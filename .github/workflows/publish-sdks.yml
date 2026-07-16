@@ -1,25 +1,36 @@
 # Publish the breadth SDKs on a version tag — the SDK leg of the tag-driven release (#96).
 # Runs alongside release.yml (installers + Homebrew for the CLI) and publish-crates.yml
 # (crates.io) on the SAME vX.Y.Z tag push, so one tag drives every distribution channel. The
-# publish commands live in `just sdk-publish-*` recipes (raw npm stays inside recipes, per
+# publish/build commands live in `just sdk-*` recipes (raw npm/python stay inside recipes, per
 # CLAUDE.md → TASK RUNNER).
 #
-# One job per ecosystem; npm (TypeScript) is the first (#96 ships them one at a time — PyPI,
-# Go, Maven Central and NuGet land here as their own jobs once their registry prerequisites
-# are done).
+# One job per ecosystem — npm (TypeScript) and PyPI (Python) so far; Go, Maven Central and
+# NuGet land here as their own jobs once their registry prerequisites are done (#96).
+# Everything is Trusted Publishing (OIDC) — NO stored token anywhere, same model as
+# publish-crates.yml.
 #
-# AUTH (npm): Trusted Publishing (OIDC) — NO stored token, same model as publish-crates.yml.
-# npm ≥ 11.5.1 detects the GitHub Actions OIDC environment and mints its own short-lived
-# credential for `npm publish`; provenance attestations are generated AUTOMATICALLY on an
-# OIDC publish (no --provenance flag, so the recipe's manual `npm login` fallback still
-# works). The first publish (0.2.1) had to use NPM_TOKEN — npm can only attach a trusted
-# publisher to a package that already exists — and was migrated here right after.
+# AUTH (npm): npm ≥ 11.5.1 detects the GitHub Actions OIDC environment and mints its own
+# short-lived credential for `npm publish`; provenance attestations are generated
+# AUTOMATICALLY on an OIDC publish (no --provenance flag, so the recipe's manual `npm login`
+# fallback still works). The first publish (0.2.1) had to use NPM_TOKEN — npm can only attach
+# a trusted publisher to a package that already exists — and was migrated here right after.
 #
-# ONE-TIME SETUP (per package, on npmjs.com → package → Settings → Trusted Publisher →
+# AUTH (PyPI): the official pypa/gh-action-pypi-publish performs the OIDC exchange and
+# generates PEP 740 attestations by default — that upload step is the one publish command
+# that ISN'T a `just` recipe (the exchange + attestation signing are implemented inside the
+# action, exactly like publish-crates.yml's crates-io-auth-action); everything it uploads is
+# built and guarded by `just sdk-build-py` first. skip-existing keeps re-runs idempotent,
+# matching the npm leg.
+#
+# ONE-TIME SETUP (npm, per package, on npmjs.com → package → Settings → Trusted Publisher →
 # GitHub Actions): organization/user `spxrogers`, repository `oura-toolkit`, workflow
 # `publish-sdks.yml`, environment (none), allowed actions `npm publish`. Required for
-# @oura-toolkit/api and @oura-toolkit/auth. Until configured, this job fails at publish —
-# the tag and every other channel still succeed.
+# @oura-toolkit/api and @oura-toolkit/auth. (DONE.)
+# ONE-TIME SETUP (PyPI, on pypi.org → account → Publishing → add a PENDING publisher — PyPI,
+# unlike npm, lets the trusted publisher be registered BEFORE the project exists and creates
+# it on first publish): project `oura-toolkit`, owner `spxrogers`, repository `oura-toolkit`,
+# workflow `publish-sdks.yml`, environment (none). Until configured, the pypi job fails at
+# upload — the tag and every other channel still succeed.
 
 name: Publish SDKs
 
@@ -71,3 +82,27 @@ jobs:
           echo "npm ${v} OK"
       - name: Publish @oura-toolkit/api + @oura-toolkit/auth (OIDC + provenance)
         run: just sdk-publish-ts
+
+  pypi:
+    name: publish PyPI SDK (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    # Same prerelease skip as the npm job.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          # Same pin as CI's sdk job; the dist is pure-python (py3-none-any).
+          python-version: '3.12'
+      - uses: extractions/setup-just@v4
+      - name: Build sdist + wheel (guarded)
+        # twine metadata check + wheel-content guards (py.typed markers, LICENSE, no stray
+        # top-level packages) — the upload below ships exactly this output.
+        run: just sdk-build-py
+      - name: Publish oura-toolkit to PyPI (OIDC + PEP 740 attestations)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: codegen/build/py-dist
+          # Idempotent re-runs (a re-run after a partial failure must not trip over the
+          # version already being on the registry) — the npm leg's skip-if-published.
+          skip-existing: true

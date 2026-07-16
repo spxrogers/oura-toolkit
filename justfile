@@ -359,6 +359,43 @@ sdk-test-py:
     {{build_dir}}/py-test-venv/bin/pip install --quiet ./sdks/python pytest
     {{build_dir}}/py-test-venv/bin/python -m pytest -q sdks/python/tests
 
+# Build the publishable PyPI artifacts (sdist + wheel) for the `oura-toolkit` dist into
+# {{build_dir}}/py-dist — the build half of the PyPI publish leg (#96). The UPLOAD half lives in
+# .github/workflows/publish-sdks.yml as the official pypa/gh-action-pypi-publish action (the
+# OIDC token exchange + PEP 740 attestations are implemented there, like publish-crates.yml's
+# auth action) — this recipe produces and GUARDS exactly what that step uploads. Guards, in the
+# sdk-check-ts pack-guard mold: twine metadata check, both PEP 561 py.typed markers, the LICENSE
+# in the wheel's dist-info, and no stray top-level packages (tests/, codegen leftovers).
+[group('release')]
+sdk-build-py:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    venv="{{build_dir}}/py-build-venv"
+    out="{{build_dir}}/py-dist"
+    rm -rf "$venv" "$out"
+    python3 -m venv "$venv"
+    "$venv/bin/pip" install --quiet build twine
+    "$venv/bin/python" -m build --outdir "$out" sdks/python
+    "$venv/bin/twine" check --strict "$out"/*
+    "$venv/bin/python" - "$out" <<'PYEOF'
+    import glob, sys, zipfile
+    [whl] = glob.glob(sys.argv[1] + "/*.whl")  # exactly one wheel
+    names = zipfile.ZipFile(whl).namelist()
+    problems = []
+    for marker in ("oura_toolkit/api/py.typed", "oura_toolkit/auth/py.typed"):
+        if marker not in names:
+            problems.append(f"missing PEP 561 marker {marker} (type checkers would ignore the package)")
+    if not any(n.split("/")[-1] == "LICENSE" and ".dist-info" in n for n in names):
+        problems.append("LICENSE missing from the wheel dist-info (publish metadata, #96)")
+    tops = {n.split("/", 1)[0] for n in names}
+    stray = {t for t in tops if t != "oura_toolkit" and not t.endswith(".dist-info")}
+    if stray:
+        problems.append(f"stray top-level entries in the wheel: {sorted(stray)} (packages.find include broken?)")
+    if problems:
+        sys.exit(f"sdk-build-py: {whl} is not publishable:\n  - " + "\n  - ".join(problems))
+    print(f"sdk-build-py: {whl} OK (py.typed x2, LICENSE, clean top-level)")
+    PYEOF
+
 [group('codegen')]
 sdk-check-go:
     cd sdks/go && go build ./...
