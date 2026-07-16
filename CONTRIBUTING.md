@@ -155,11 +155,12 @@ crates.io via Trusted Publishing (OIDC, no token — #91), `publish-sdks.yml` pu
 the breadth SDKs (#96 — the npm packages `@oura-toolkit/api` + `@oura-toolkit/auth` via
 `just sdk-publish-ts`, the PyPI dist `oura-toolkit` via `just sdk-build-py` + the official
 pypa publish action, all Trusted Publishing (OIDC) with automatic provenance/attestations,
-and the Go module via `just sdk-publish-go`, which pushes the `sdks/go/vX.Y.Z` sub-tag Go
+the Go module via `just sdk-publish-go`, which pushes the `sdks/go/vX.Y.Z` sub-tag Go
 needs to resolve the nested module — from CI only, where the GITHUB_TOKEN push can't
-re-trigger tag workflows; more ecosystems join as their registry prerequisites land, and its
-`workflow_dispatch` can backfill the current version), and — once `release.yml` completes —
-`publish-cli-npm.yml`
+re-trigger tag workflows — and the NuGet packages `OuraToolkit.Api` + `OuraToolkit.Auth` via
+`just sdk-publish-nuget`, keyed by the NuGet/login OIDC exchange; Maven Central joins as its
+registry prerequisites land, and its `workflow_dispatch` can backfill the current version),
+and — once `release.yml` completes — `publish-cli-npm.yml`
 publishes the CLI's `oura-toolkit` npm launcher (`just publish-cli-npm`, OIDC too, from the
 tarball hosted on the GitHub Release; no npm token is stored anywhere). Nothing publishes
 from your

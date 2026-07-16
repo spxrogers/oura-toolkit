@@ -1050,3 +1050,61 @@ fn documented_go_get_matches_module_path() {
          stop being tagged (sdks/go/vX.Y.Z)"
     );
 }
+
+/// The documented `dotnet add package` commands ⟷ the real csproj PackageIds (#96, the NuGet
+/// sibling of the npm/PyPI/Go tripwires above). Both C# packages are NAMING-locked; every doc
+/// that tells users to install them uses exactly those ids, and the publish workflow must keep
+/// running the recipe that ships them.
+#[test]
+fn documented_nuget_install_matches_package_ids() {
+    let root = repo_root();
+    let mut ids = Vec::new();
+    for (csproj, expected) in [
+        (
+            "sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj",
+            "OuraToolkit.Api",
+        ),
+        (
+            "sdks/csharp/auth/src/OuraToolkit.Auth/OuraToolkit.Auth.csproj",
+            "OuraToolkit.Auth",
+        ),
+    ] {
+        let content = read(&root.join(csproj));
+        let id = content
+            .lines()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix("<PackageId>")
+                    .and_then(|rest| rest.strip_suffix("</PackageId>"))
+            })
+            .unwrap_or_else(|| panic!("{csproj} lost its <PackageId>"));
+        assert_eq!(
+            id, expected,
+            "{csproj} PackageId is {id}, not the NAMING-locked {expected}"
+        );
+        ids.push(id.to_string());
+    }
+    for doc in [
+        root.join("README.md"),
+        root.join("sdks/csharp/auth/README.md"),
+        docs_site_page("sdks/csharp.md"),
+    ] {
+        let content = read(&doc);
+        for id in &ids {
+            let install = format!("dotnet add package {id}");
+            assert!(
+                content.contains(&install),
+                "{doc:?} does not carry `{install}` — package renamed or install docs drifted \
+                 (DOCS STAY TRUE TO THE CODE)"
+            );
+        }
+    }
+    // The publish workflow must keep shipping them (match the step's `run:` line, not the
+    // recipe name — header comments also mention it; see the Go tripwire above).
+    let workflow = read(&root.join(".github/workflows/publish-sdks.yml"));
+    assert!(
+        workflow.contains("run: just sdk-publish-nuget"),
+        "publish-sdks.yml no longer runs `just sdk-publish-nuget` — NuGet releases would \
+         silently stop publishing"
+    );
+}

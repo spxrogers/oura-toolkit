@@ -320,9 +320,10 @@ that orphaned it.
   `just sdk-build-py` + the official pypa publish action → `oura-toolkit`, both via
   **Trusted Publishing / OIDC** with automatic provenance/attestations — no stored token —
   plus the Go leg, `just sdk-publish-go`, which pushes the `sdks/go/vX.Y.Z` sub-tag that
-  makes the nested Go module resolvable, via GITHUB_TOKEN so the push stays inert;
-  more ecosystems join as their registry prerequisites land) **and** — once release.yml
-  completes —
+  makes the nested Go module resolvable, via GITHUB_TOKEN so the push stays inert, and the
+  NuGet leg, `just sdk-publish-nuget` → `OuraToolkit.Api` + `OuraToolkit.Auth`, keyed by the
+  NuGet/login OIDC exchange; Maven Central joins once its registry prerequisites land)
+  **and** — once release.yml completes —
   `.github/workflows/publish-cli-npm.yml` (`just publish-cli-npm` — the CLI's `oura-toolkit`
   npm launcher, published via the same **OIDC** from the tarball hosted on the GitHub
   Release; `workflow_run`-chained because dist 0.32's own npm job is token-only and
@@ -356,9 +357,13 @@ that orphaned it.
   **PyPI needs NO token either** — a one-time PENDING trusted publisher on pypi.org (project
   `oura-toolkit`, owner `spxrogers`, repo `oura-toolkit`, workflow `publish-sdks.yml`, no
   environment; PyPI creates the project on first publish). **Go needs NO setup at all** (no
-  registry — the release-tagged sub-tag is the publish). Breadth-SDK publishing (#96) ships
-  one ecosystem at a time (npm + PyPI + Go are live); before the remaining SDKs publish:
-  verify `com.ouratoolkit` on Maven Central, register the NuGet names.
+  registry — the release-tagged sub-tag is the publish). **NuGet needs NO token either** — a
+  one-time Trusted Publishing POLICY on nuget.org (owner-scoped, so it covers the
+  first-publish of new package IDs: repository owner `spxrogers`, repo `oura-toolkit`,
+  workflow `publish-sdks.yml`, no environment; the login step's `user:` must equal the
+  nuget.org profile name). Breadth-SDK publishing (#96) ships one ecosystem at a time
+  (npm + PyPI + Go + NuGet are live); before the last SDK publishes: verify `com.ouratoolkit`
+  on Maven Central.
 
 ---
 

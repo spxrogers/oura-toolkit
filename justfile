@@ -310,6 +310,24 @@ gen-csharp: spec-overlay
     # resolve" on every modern TFM otherwise.
     perl -0pi -e 's{\s*<ItemGroup>\s*<(?:None Remove|Reference Include)="System\.Web"\s*/>\s*</ItemGroup>}{}g' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
     @! grep -q 'System.Web' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: System.Web strip did not apply"; exit 1; }
+    # Publish-metadata post-patch (#96, NuGet leg — same doctrine as ts-package-postpatch): the
+    # generator emits placeholders (Authors "OpenAPI", GIT_USER_ID repo URL, "No Copyright", no
+    # license) that nuget.org would show verbatim. Pre-guard pins the generator shape, then
+    # replace the exact emitted lines and inject license/readme/project-url; post-guard asserts
+    # the result. The README is packed from the generated api README.md.
+    @grep -q '<Authors>OpenAPI</Authors>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: generator csproj metadata shape changed (Authors placeholder gone) — update the publish-metadata post-patch"; exit 1; }
+    perl -0pi -e 's{<Authors>OpenAPI</Authors>}{<Authors>spxrogers</Authors>}; \
+                  s{<Company>OpenAPI</Company>}{<Company>oura-toolkit</Company>}; \
+                  s{<AssemblyTitle>OpenAPI Library</AssemblyTitle>}{<AssemblyTitle>Oura Ring API v2 client</AssemblyTitle>}; \
+                  s{<Description>A library generated from a OpenAPI doc</Description>}{<Description>Generated client for the Oura Ring API v2 — part of oura-toolkit. Auth-agnostic: bring a Bearer token, or pair with OuraToolkit.Auth.</Description>}; \
+                  s{<Copyright>No Copyright</Copyright>}{<Copyright>Copyright (c) spxrogers. MIT license.</Copyright>}; \
+                  s{<RepositoryUrl>https://github.com/GIT_USER_ID/GIT_REPO_ID.git</RepositoryUrl>}{<RepositoryUrl>https://github.com/spxrogers/oura-toolkit</RepositoryUrl>}; \
+                  s{\s*<PackageReleaseNotes>Minor update</PackageReleaseNotes>}{}; \
+                  s{<RepositoryType>git</RepositoryType>}{<RepositoryType>git</RepositoryType>\n    <PackageLicenseExpression>MIT</PackageLicenseExpression>\n    <PackageProjectUrl>https://ouratoolkit.com</PackageProjectUrl>\n    <PackageReadmeFile>README.md</PackageReadmeFile>}' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    perl -0pi -e 's{(  <ItemGroup>\n    <PackageReference)}{  <ItemGroup>\n    <None Include="../../README.md" Pack="true" PackagePath="/" />\n  </ItemGroup>\n\n$1}' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    @grep -q '<PackageLicenseExpression>MIT</PackageLicenseExpression>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: publish-metadata post-patch did not apply (license)"; exit 1; }
+    @grep -q '<None Include="../../README.md" Pack="true" PackagePath="/" />' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: publish-metadata post-patch did not apply (packed README)"; exit 1; }
+    @! grep -Eq 'OpenAPI Library|GIT_USER_ID|No Copyright|Minor update' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: generator placeholder metadata survived the post-patch"; exit 1; }
     @echo "Generated sdks/csharp/api (OuraToolkit.Api {{version}}; netstandard2.0;net8.0;net10.0)"
 
 # Compile/import-check every committed breadth client (the generated code must actually
@@ -844,6 +862,55 @@ sdk-publish-ts:
       echo "==> publishing ${name}@{{version}}"
       # Same install flags as sdk-check-ts (devDeps for tsc; `prepare` builds dist/ on publish).
       (cd "$dir" && npm install --no-package-lock --no-fund --no-audit && npm publish --access public)
+    done
+
+# Publish the C# SDK packages (OuraToolkit.Api + OuraToolkit.Auth) to nuget.org (#96, NuGet
+# leg). Packs from source (multi-TFM: netstandard2.0;net8.0;net10.0 — needs the .NET 10 SDK,
+# like sdk-check-csharp), GUARDS the .nupkgs (MIT license expression, packed README, real
+# repository URL — no generator placeholders — and all three lib/ TFMs), then pushes with
+# --skip-duplicate (idempotent re-runs, the npm leg's skip-if-published). Auth comes from the
+# environment: NUGET_API_KEY — in CI the NuGet/login step exchanges the workflow's OIDC
+# identity for a 1-hour key (Trusted Publishing — no stored token); locally, a nuget.org key.
+[group('release')]
+sdk-publish-nuget:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${NUGET_API_KEY:?sdk-publish-nuget: NUGET_API_KEY is not set — CI gets it from the NuGet/login (OIDC) step; locally supply a nuget.org API key}"
+    out="{{build_dir}}/nuget-dist"
+    rm -rf "$out"
+    dotnet pack sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj -c Release -o "$out" --nologo -v quiet
+    dotnet pack sdks/csharp/auth/src/OuraToolkit.Auth/OuraToolkit.Auth.csproj -c Release -o "$out" --nologo -v quiet
+    python3 - "$out" "{{version}}" <<'PYEOF'
+    import sys, zipfile
+    out, ver = sys.argv[1], sys.argv[2]
+    problems = []
+    for pkg_id in ("OuraToolkit.Api", "OuraToolkit.Auth"):
+        path = f"{out}/{pkg_id}.{ver}.nupkg"
+        try:
+            z = zipfile.ZipFile(path)
+        except OSError:
+            problems.append(f"{path} missing — csproj <Version> disagrees with the workspace? run 'just version-check'")
+            continue
+        names = z.namelist()
+        nuspec = z.read(f"{pkg_id}.nuspec").decode()
+        if f"<version>{ver}</version>" not in nuspec:
+            problems.append(f"{pkg_id}: nuspec version is not {ver}")
+        if '<license type="expression">MIT</license>' not in nuspec:
+            problems.append(f"{pkg_id}: MIT license expression missing from nuspec (publish metadata, #96)")
+        if "<readme>README.md</readme>" not in nuspec or "README.md" not in names:
+            problems.append(f"{pkg_id}: packed README missing (nuget.org package page)")
+        if "https://github.com/spxrogers/oura-toolkit" not in nuspec or "GIT_USER_ID" in nuspec:
+            problems.append(f"{pkg_id}: repository URL wrong or generator placeholder survived")
+        for tfm in ("netstandard2.0", "net8.0", "net10.0"):
+            if f"lib/{tfm}/{pkg_id}.dll" not in names:
+                problems.append(f"{pkg_id}: lib/{tfm}/{pkg_id}.dll missing — a target framework fell out of the pack")
+    if problems:
+        sys.exit("sdk-publish-nuget: not publishable:\n  - " + "\n  - ".join(problems))
+    print(f"sdk-publish-nuget: both nupkgs OK (MIT, README, repo URL, 3 TFMs) at {ver}")
+    PYEOF
+    for pkg_id in OuraToolkit.Api OuraToolkit.Auth; do
+      echo "==> pushing ${pkg_id} {{version}}"
+      dotnet nuget push "$out/${pkg_id}.{{version}}.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
     done
 
 # "Publish" the Go SDK for the current workspace version (#96) — Go has no registry to upload
