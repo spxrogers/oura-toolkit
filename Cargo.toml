@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 # 1.89+ for std file locking (File::lock/try_lock), used by the token store's advisory lock.
 rust-version = "1.89"
@@ -53,8 +53,8 @@ anyhow = "1"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 
 # internal crates (directory names match crate names)
-oura-toolkit-api = { version = "0.2.1", path = "sdks/rust/oura-toolkit-api" }
-oura-toolkit-auth = { version = "0.2.1", path = "sdks/rust/oura-toolkit-auth" }
+oura-toolkit-api = { version = "0.2.2", path = "sdks/rust/oura-toolkit-api" }
+oura-toolkit-auth = { version = "0.2.2", path = "sdks/rust/oura-toolkit-auth" }
 
 # The profile that 'dist' will build with
 [profile.dist]
