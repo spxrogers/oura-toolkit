@@ -16,6 +16,7 @@
   "devDependencies": {
     "typescript": "^4.9 || ^5.0"
   },
+  "license": "MIT",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {

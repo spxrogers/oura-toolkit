@@ -20,6 +20,10 @@
 
 del(.author)
 | .description = "Generated typescript-fetch client for the Oura Ring API v2 — part of oura-toolkit"
+# Publish metadata (#96): the generator emits no license field, and npm shows the package as
+# "Unlicensed" without one. MIT, same as the repo LICENSE (gen-ts copies that file into the
+# package so `npm pack` ships it alongside this declaration).
+| .license = "MIT"
 | del(.module)
 | del(.typings)
 | .repository = {

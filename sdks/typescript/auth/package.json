@@ -2,6 +2,7 @@
   "name": "@oura-toolkit/auth",
   "version": "0.2.1",
   "description": "Hand-written auth companion for @oura-toolkit/api: token store, OAuth2 refresh with rotation, and a Configuration accessToken seam",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/spxrogers/oura-toolkit.git",

@@ -313,8 +313,12 @@ that orphaned it.
   sync), then the shared **`just release-tag`** choreography (full gate → set-version → commit →
   tag → push; the tag drives all CI publishing, nothing is built or published on the laptop).
   EVERY publish channel is tag-driven (#91): the pushed tag fans out to `release.yml`
-  (installers + npm/homebrew) **and** `.github/workflows/publish-crates.yml` (crates.io via
-  **Trusted Publishing / OIDC** — no stored registry token). The SAME `release-tag` recipe runs
+  (installers + npm/homebrew), `.github/workflows/publish-crates.yml` (crates.io via
+  **Trusted Publishing / OIDC** — no stored registry token) **and**
+  `.github/workflows/publish-sdks.yml` (the breadth SDKs, #96 — today the npm leg,
+  `just sdk-publish-ts` → `@oura-toolkit/api` + `@oura-toolkit/auth`, using the same
+  `NPM_TOKEN`; more ecosystems join as their registry prerequisites land). The SAME
+  `release-tag` recipe runs
   server-side in the **Cut-release Action** (`.github/workflows/cut-release.yml`,
   `workflow_dispatch`) so a release can be cut from the GitHub UI — it pushes the tag with a
   `RELEASE_TOKEN` PAT (the default `GITHUB_TOKEN` can't trigger the tag workflows). `just
@@ -335,9 +339,10 @@ that orphaned it.
   one-time **Trusted Publisher** configured on crates.io for each crate (`oura-toolkit-api`,
   `-auth`, `-cli`): owner `spxrogers`, repo `oura-toolkit`, workflow `publish-crates.yml` (no
   environment); until that's set the `publish-crates` job fails at auth while the tag + other
-  channels still succeed. Before the breadth SDKs publish (later, #96): claim the npm
-  `@oura-toolkit` scope, verify `com.ouratoolkit` on Maven Central, register the NuGet + PyPI
-  names.
+  channels still succeed. Breadth-SDK publishing (#96) ships one ecosystem at a time: the
+  **npm packages are live** (the `@oura-toolkit` scope is claimed and `publish-sdks.yml`
+  reuses `NPM_TOKEN`). Before the remaining SDKs publish: verify `com.ouratoolkit` on Maven
+  Central, register the NuGet + PyPI names.
 
 ---
 

@@ -945,3 +945,40 @@ fn docs_site_sdk_pages_match_generated_languages() {
         );
     }
 }
+
+/// The documented npm install command ⟷ the real package.json names (#96). The published-SDK
+/// claim is enumerable: both TS packages are named per the NAMING lock, and every doc that
+/// tells users to install them uses exactly those names. Renaming a package (or documenting a
+/// package that doesn't exist) fails CI here, not on npmjs.com.
+#[test]
+fn documented_npm_sdk_install_matches_package_names() {
+    let root = repo_root();
+    let mut names = Vec::new();
+    for (dir, expected) in [
+        ("sdks/typescript/api", "@oura-toolkit/api"),
+        ("sdks/typescript/auth", "@oura-toolkit/auth"),
+    ] {
+        let manifest = read(&root.join(dir).join("package.json"));
+        let parsed: serde_json::Value =
+            serde_json::from_str(&manifest).unwrap_or_else(|e| panic!("{dir}/package.json: {e}"));
+        let name = parsed["name"].as_str().expect("package.json has a name");
+        assert_eq!(
+            name, expected,
+            "{dir}/package.json is named {name}, not the NAMING-locked {expected}"
+        );
+        names.push(name.to_string());
+    }
+    // The single install line every doc claim must carry verbatim (api first, like the docs).
+    let install = format!("npm install {}", names.join(" "));
+    for doc in [
+        root.join("README.md"),
+        root.join("sdks/typescript/auth/README.md"),
+        docs_site_page("sdks/typescript.md"),
+    ] {
+        assert!(
+            read(&doc).contains(&install),
+            "{doc:?} does not carry the npm install command `{install}` — package renamed or \
+             install docs drifted (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+}
