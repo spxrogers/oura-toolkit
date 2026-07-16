@@ -1,5 +1,5 @@
 # Publish the Rust crates to crates.io on a version tag — the crates.io leg of the tag-driven
-# release (#91). Runs alongside release.yml (installers + npm/Homebrew) on the SAME vX.Y.Z tag
+# release (#91). Runs alongside release.yml (installers + Homebrew) on the SAME vX.Y.Z tag
 # push, so one tag now drives every distribution channel. The `cargo publish` calls live in
 # `just publish` (raw cargo stays inside recipes, per CLAUDE.md → TASK RUNNER).
 #

@@ -120,9 +120,11 @@ for why):
   `cli/oura-toolkit-cli/dist-assets/`, drift-checked).
 - **Releases are tag-driven**: `just set-version X.Y.Z` (the single version writer) → commit
   → tag `vX.Y.Z` → push. The one tag fans out to every publish channel in CI: `release.yml`
-  (installers + CLI npm/homebrew), `publish-crates.yml` (crates.io via OIDC) and
-  `publish-sdks.yml` (breadth SDKs — today `@oura-toolkit/api` + `@oura-toolkit/auth` on npm,
-  #96).
+  (installers + homebrew), `publish-crates.yml` (crates.io via OIDC), `publish-sdks.yml`
+  (breadth SDKs — today `@oura-toolkit/api` + `@oura-toolkit/auth` on npm, #96) and, chained
+  off release.yml's completion, `publish-cli-npm.yml` (the CLI's `oura-toolkit` npm launcher,
+  OIDC, from the hosted release tarball). Every npm/crates publish is Trusted Publishing — the
+  only stored publish secret is the Homebrew tap token.
 - **Launch is NPX-first**: `npx -y oura-toolkit ...`; brew / bun are speed-path alternatives.
 - **One Claude plugin** (`plugins/oura-toolkit/`) ships both the MCP server config
   (`npx -y oura-toolkit@<version> mcp`) and skills (`morning-checkin`, `wellness-report`).

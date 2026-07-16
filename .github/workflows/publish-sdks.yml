@@ -1,5 +1,5 @@
 # Publish the breadth SDKs on a version tag — the SDK leg of the tag-driven release (#96).
-# Runs alongside release.yml (installers + npm/Homebrew for the CLI) and publish-crates.yml
+# Runs alongside release.yml (installers + Homebrew for the CLI) and publish-crates.yml
 # (crates.io) on the SAME vX.Y.Z tag push, so one tag drives every distribution channel. The
 # publish commands live in `just sdk-publish-*` recipes (raw npm stays inside recipes, per
 # CLAUDE.md → TASK RUNNER).

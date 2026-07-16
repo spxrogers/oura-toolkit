@@ -116,6 +116,22 @@ manual `npm login` fallback keeps working. Publishes are idempotent
 (skip-if-already-on-registry), so a half-failed job re-runs safely, and the workflow's
 `workflow_dispatch` can backfill the current version's packages without cutting a tag.
 
+### CLI npm launcher: OIDC via a workflow_run-chained standalone workflow
+The CLI's `oura-toolkit` npm package completes the no-stored-npm-token story, but dist 0.32's
+built-in npm publish job is token-only (Node 20 / npm 10.x + `NODE_AUTH_TOKEN`) and release.yml
+is dist-generated — hand-edits fail `just dist-check`. So `publish-jobs` drops `"npm"` (the npm
+**installer artifact** is still built and hosted — that's the `installers` list) and the
+standalone `.github/workflows/publish-cli-npm.yml` publishes instead, rejecting dist's
+custom-publish-job hook for the same reasons #91 rejected it for crates.io: it runs as a
+*reusable* workflow, where the caller caps `id-token: write` and the trusted-publisher
+workflow-filename claim is ambiguous. Because the package content is the tarball release.yml
+builds and hosts on the GitHub Release, the workflow triggers on **`workflow_run`** (Release
+completed), not the tag — `workflow_run` is exempt from the GITHUB_TOKEN recursion guard that
+makes `on: release` unusable here — downloads that exact reviewed artifact, guards its embedded
+version against the tag, and `npm publish`es it (OIDC, automatic provenance; `just
+publish-cli-npm`). Accepted ordering shift: the GitHub Release is announced ~a minute before
+the npm version exists, the same eventual consistency the crates.io channel already has.
+
 ### MSRV floats with recent stable
 `rust-version` currently **1.89** (for `std::fs::File::lock`, chosen over a locking
 dependency). Pre-1.0, no shipped consumers; revisit only when a real consumer needs older.
