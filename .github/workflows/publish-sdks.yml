@@ -4,10 +4,16 @@
 # publish/build commands live in `just sdk-*` recipes (raw npm/python stay inside recipes, per
 # CLAUDE.md → TASK RUNNER).
 #
-# One job per ecosystem — npm (TypeScript) and PyPI (Python) so far; Go, Maven Central and
+# One job per ecosystem — npm (TypeScript), PyPI (Python) and Go so far; Maven Central and
 # NuGet land here as their own jobs once their registry prerequisites are done (#96).
 # Everything is Trusted Publishing (OIDC) — NO stored token anywhere, same model as
 # publish-crates.yml.
+#
+# Go has no registry: its job "publishes" by pushing the `sdks/go/vX.Y.Z` sub-tag that makes
+# the nested module resolvable (`just sdk-publish-go`). That push MUST come from GITHUB_TOKEN:
+# the sub-tag's name matches release.yml's version-tag glob (which cargo-dist can't parse), and
+# GITHUB_TOKEN pushes never trigger workflows — the recursion guard keeps the sub-tag inert.
+# This workflow's own tag glob is `v`-anchored (below) so it ignores sub-tags regardless.
 #
 # AUTH (npm): npm ≥ 11.5.1 detects the GitHub Actions OIDC environment and mints its own
 # short-lived credential for `npm publish`; provenance attestations are generated
@@ -37,8 +43,10 @@ name: Publish SDKs
 on:
   push:
     tags:
-      # Same version-tag shape as release.yml / publish-crates.yml.
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+      # Root version tags only, deliberately TIGHTER than release.yml's `**`-glob: `v`-anchored
+      # so the `sdks/go/vX.Y.Z` sub-tag the go job pushes can never re-trigger this workflow
+      # (defense in depth — the CI push is already inert via GITHUB_TOKEN).
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
   # Manual backfill: publish the CURRENT workspace version outside a tag push (e.g. the first
   # run right after this workflow lands, so the already-released version's SDK packages exist
   # without waiting for the next tag). Safe to re-run any time — the recipe skips versions
@@ -106,3 +114,19 @@ jobs:
           # Idempotent re-runs (a re-run after a partial failure must not trip over the
           # version already being on the registry) — the npm leg's skip-if-published.
           skip-existing: true
+
+  go:
+    name: publish Go SDK (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    # Job-level: pushing the sub-tag needs contents write (the workflow default is read).
+    permissions:
+      contents: write
+    # Same prerelease skip as the other jobs.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      # persist-credentials (the checkout default) leaves GITHUB_TOKEN as the push credential —
+      # load-bearing here: that's what keeps the sub-tag push from triggering any workflow.
+      - uses: actions/checkout@v7
+      - uses: extractions/setup-just@v4
+      - name: Tag sdks/go/vX.Y.Z at the released commit
+        run: just sdk-publish-go

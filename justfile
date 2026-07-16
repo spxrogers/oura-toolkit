@@ -846,6 +846,37 @@ sdk-publish-ts:
       (cd "$dir" && npm install --no-package-lock --no-fund --no-audit && npm publish --access public)
     done
 
+# "Publish" the Go SDK for the current workspace version (#96) — Go has no registry to upload
+# to; a nested module (sdks/go/go.mod) becomes a consumable release when a tag named
+# `sdks/go/vX.Y.Z` exists, so this creates that sub-tag AT THE SAME COMMIT the root vX.Y.Z tag
+# points to (both name the identical release; the root tag must already exist, i.e. the version
+# is released). Idempotent: skips if the sub-tag is already on origin.
+#
+# RUN THIS FROM CI (the `go` job in .github/workflows/publish-sdks.yml), not a laptop: the
+# sub-tag's name matches release.yml's version-tag glob, and cargo-dist cannot parse it, so a
+# push with PERSONAL credentials triggers a doomed release.yml run (red noise, no side
+# effects). CI pushes with GITHUB_TOKEN, whose pushes never trigger workflows (GitHub's
+# recursion guard) — the sub-tag lands inert, exactly as intended.
+[group('release')]
+sdk-publish-go:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tag="v{{version}}"
+    subtag="sdks/go/${tag}"
+    if git ls-remote --exit-code origin "refs/tags/${subtag}" >/dev/null 2>&1; then
+      echo "==> ${subtag} already on origin — skipping"
+      exit 0
+    fi
+    # The version must be RELEASED: resolve the root tag from origin (works in shallow CI
+    # checkouts too) and anchor the sub-tag to the exact same commit.
+    git fetch --quiet origin "refs/tags/${tag}:refs/tags/${tag}" \
+      || { echo "sdk-publish-go: tag ${tag} does not exist on origin — release {{version}} first"; exit 1; }
+    commit="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
+    echo "==> tagging ${subtag} at ${commit} (= ${tag})"
+    git tag --no-sign -f "${subtag}" "${commit}"
+    git push --quiet origin "refs/tags/${subtag}"
+    echo "Tagged ${subtag}: 'go get github.com/spxrogers/oura-toolkit/sdks/go@${tag}' now resolves."
+
 # ---------------------------------------------------------------------------------------------
 # Docs site (docs-site/ — Astro Starlight, published to ouratoolkit.com via GitHub Pages)
 # ---------------------------------------------------------------------------------------------

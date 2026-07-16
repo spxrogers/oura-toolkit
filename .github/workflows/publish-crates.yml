@@ -17,8 +17,10 @@ name: Publish crates
 on:
   push:
     tags:
-      # Same version-tag shape as release.yml.
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+      # Root version tags only — `v`-anchored (tighter than release.yml's `**`-glob) so the
+      # `sdks/go/vX.Y.Z` sub-tag pushed by publish-sdks.yml's go job can never trigger a
+      # doomed re-publish here.
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
   id-token: write # mint the short-lived crates.io OIDC token

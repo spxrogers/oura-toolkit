@@ -1014,3 +1014,39 @@ fn documented_pypi_install_matches_dist_name() {
         );
     }
 }
+
+/// The documented `go get` path ⟷ the real go.mod module line (#96, the Go sibling of the npm
+/// and PyPI tripwires above). The nested module's path is NAMING-locked; a moved/renamed
+/// module (or docs pointing at a path that doesn't exist) fails CI here, not at `go get` time.
+#[test]
+fn documented_go_get_matches_module_path() {
+    let root = repo_root();
+    let gomod = read(&root.join("sdks/go/go.mod"));
+    let module = gomod
+        .lines()
+        .find_map(|l| l.strip_prefix("module "))
+        .expect("sdks/go/go.mod lost its module line")
+        .trim();
+    assert_eq!(
+        module, "github.com/spxrogers/oura-toolkit/sdks/go",
+        "go.mod module path is {module}, not the NAMING-locked repo-subdirectory path"
+    );
+    let install = format!("go get {module}");
+    for doc in [root.join("README.md"), docs_site_page("sdks/go.md")] {
+        assert!(
+            read(&doc).contains(&install),
+            "{doc:?} does not carry the install command `{install}` — module moved or install \
+             docs drifted (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+    // The sub-tag choreography that makes versions resolvable: the publish workflow must
+    // carry a job invoking the recipe (a deleted job would silently stop tagging). Match the
+    // step's `run:` line, NOT the bare recipe name — the header comment also mentions the
+    // recipe, and a comment must not satisfy this (break-verified by deleting the job).
+    let workflow = read(&root.join(".github/workflows/publish-sdks.yml"));
+    assert!(
+        workflow.contains("run: just sdk-publish-go"),
+        "publish-sdks.yml no longer runs `just sdk-publish-go` — Go releases would silently \
+         stop being tagged (sdks/go/vX.Y.Z)"
+    );
+}
