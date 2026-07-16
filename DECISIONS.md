@@ -139,6 +139,16 @@ sub-tag anchors to the exact commit the root tag names, so both tags describe on
 Our hand-written tag workflows (publish-crates, publish-sdks) also tightened their globs to
 `v`-anchored as defense in depth; release.yml's dist-generated glob stays as generated.
 
+One caveat, learned from the first backfill run: GITHUB_TOKEN is an App token and can never
+hold the `workflows` permission, and GitHub only lets it create a ref whose
+`.github/workflows` tree matches the default-branch tip. A fresh release always satisfies
+that (the tag commit IS the tip); a **backfill** of a version released before a workflow
+change gets "refusing to allow … without `workflows` permission". The recipe's fallback:
+when the rejected anchor's `sdks/go` tree is **byte-identical** to the default tip's
+(checked with `git diff --quiet`, never assumed), re-anchor the sub-tag at the tip — Go
+consumers download the identical module either way. If `sdks/go` itself changed, the recipe
+refuses (a tip anchor would ship wrong content) and names the manual escape hatches.
+
 ### CLI npm launcher: OIDC via a workflow_run-chained standalone workflow
 The CLI's `oura-toolkit` npm package completes the no-stored-npm-token story, but dist 0.32's
 built-in npm publish job is token-only (Node 20 / npm 10.x + `NODE_AUTH_TOKEN`) and release.yml

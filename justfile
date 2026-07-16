@@ -874,8 +874,37 @@ sdk-publish-go:
     commit="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
     echo "==> tagging ${subtag} at ${commit} (= ${tag})"
     git tag --no-sign -f "${subtag}" "${commit}"
-    git push --quiet origin "refs/tags/${subtag}"
-    echo "Tagged ${subtag}: 'go get github.com/spxrogers/oura-toolkit/sdks/go@${tag}' now resolves."
+    if push_err="$(git push origin "refs/tags/${subtag}" 2>&1)"; then
+      echo "Tagged ${subtag}: 'go get github.com/spxrogers/oura-toolkit/sdks/go@${tag}' now resolves."
+      exit 0
+    fi
+    echo "${push_err}"
+    # BACKFILL FALLBACK. GITHUB_TOKEN (a GitHub App token, which can never hold the
+    # `workflows` permission) may only create a ref whose .github/workflows tree matches the
+    # default branch tip — always true for a fresh release (the tag commit IS the tip), but a
+    # BACKFILL of a version released before a workflow change gets "refusing to allow …
+    # without `workflows` permission". Go only consumes the sdks/go tree at the tag, so when
+    # that tree is BYTE-IDENTICAL between the root tag and the default tip, anchoring the
+    # sub-tag at the tip publishes the exact same module content — verified, not hoped.
+    echo "${push_err}" | grep -q "refusing to allow" \
+      || { echo "sdk-publish-go: push of ${subtag} failed (see above)"; exit 1; }
+    default_sha="$(git ls-remote origin HEAD | cut -f1)"
+    git rev-parse -q --verify "${default_sha}^{commit}" >/dev/null 2>&1 \
+      || git fetch --quiet --depth=1 origin "${default_sha}"
+    if git diff --quiet "${commit}" "${default_sha}" -- sdks/go; then
+      echo "==> workflows drifted since ${tag} (GITHUB_TOKEN can't tag ${commit}); sdks/go is"
+      echo "    byte-identical at the default tip — re-anchoring ${subtag} at ${default_sha}"
+      git tag --no-sign -f "${subtag}" "${default_sha}"
+      git push --quiet origin "refs/tags/${subtag}"
+      echo "Tagged ${subtag} (content-identical anchor): 'go get github.com/spxrogers/oura-toolkit/sdks/go@${tag}' now resolves."
+    else
+      echo "sdk-publish-go: cannot backfill ${subtag}: GITHUB_TOKEN may only tag commits whose"
+      echo "workflow files match the default branch tip, and sdks/go itself changed since ${tag}"
+      echo "so a tip anchor would ship the wrong module content. Options: release a new version"
+      echo "(the steady-state path tags it automatically), or push the sub-tag manually with"
+      echo "release.yml temporarily disabled (its tag glob matches the sub-tag and cannot parse it)."
+      exit 1
+    fi
 
 # ---------------------------------------------------------------------------------------------
 # Docs site (docs-site/ — Astro Starlight, published to ouratoolkit.com via GitHub Pages)
