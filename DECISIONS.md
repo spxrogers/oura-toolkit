@@ -127,6 +127,15 @@ token exchange and default PEP 740 attestation signing are implemented inside th
 (the same reason publish-crates.yml uses crates-io-auth-action), and `skip-existing: true`
 keeps re-runs idempotent like the npm leg's skip-if-published.
 
+The **NuGet leg** mirrors npm's shape with one twist each way: nuget.org Trusted Publishing
+policies are OWNER-scoped (not per-package), so — unlike npm — the policy covers package IDs
+that don't exist yet and the first publish needs no token; and the OIDC exchange is a
+separate `NuGet/login` step that mints a 1-hour API key consumed by `just sdk-publish-nuget`
+(pack → nupkg guards → `dotnet nuget push --skip-duplicate`), so the push command itself
+stays a recipe. The generated csproj needed a publish-metadata post-patch in `gen-csharp`
+(placeholder Authors/Description/RepositoryUrl, no license — same doctrine as
+ts-package-postpatch, pre/post-guarded), and both packages pack a README for nuget.org.
+
 The **Go leg** has no registry: publishing IS pushing the `sdks/go/vX.Y.Z` sub-tag Go
 requires to resolve a nested module's versions (the root `vX.Y.Z` tag only versions a root
 module, which this repo doesn't have). The sub-tag is deliberately pushed from CI

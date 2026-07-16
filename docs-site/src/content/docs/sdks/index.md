@@ -18,14 +18,13 @@ to end.
 | [Python](/sdks/python/) | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` | `oura-toolkit` — published ([PyPI](https://pypi.org/project/oura-toolkit/)) |
 | [Go](/sdks/go/) | `sdks/go` | `sdks/go/auth` | `github.com/spxrogers/oura-toolkit/sdks/go` — published (release-tagged) |
 | [Java](/sdks/java/) | `sdks/java/api` | `com.ouratoolkit:auth` | `com.ouratoolkit:api` (Maven Central, reserved) |
-| [C#](/sdks/csharp/) | `sdks/csharp/api` | `OuraToolkit.Auth` | `OuraToolkit.Api` (NuGet, reserved) |
+| [C#](/sdks/csharp/) | `sdks/csharp/api` | `OuraToolkit.Auth` | `OuraToolkit.Api` / `OuraToolkit.Auth` — published ([NuGet](https://www.nuget.org/packages/OuraToolkit.Api)) |
 
 :::caution[Publishing in progress]
 Every breadth client is compile-checked and drift-checked in CI, and smoke-tested against
-Oura's live sandbox. Rust (crates.io), TypeScript (npm), Python (PyPI) and Go (release-tagged
-for `go get`) are published; the Java and C# clients are **not yet published** to their
-registries. Consume those from source for now, and supply your own access token where the
-auth companion isn't published.
+Oura's live sandbox. Rust (crates.io), TypeScript (npm), Python (PyPI), Go (release-tagged
+for `go get`) and C# (NuGet) are published; the Java client is **not yet published** to
+Maven Central. Consume it from source for now, and supply your own access token.
 :::
 
 ## What each client does — and doesn't

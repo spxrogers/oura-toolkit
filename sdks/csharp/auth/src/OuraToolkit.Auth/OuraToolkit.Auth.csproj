@@ -27,10 +27,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Authors>oura-toolkit</Authors>
+    <Authors>spxrogers</Authors>
     <Description>Non-interactive OAuth2 auth companion (token store + refresh with rotation) for the OuraToolkit.Api client. Bring your own Oura OAuth app credentials.</Description>
     <RepositoryUrl>https://github.com/spxrogers/oura-toolkit</RepositoryUrl>
+    <!-- Publish metadata (#96, NuGet leg) — mirrors the generated api csproj's post-patched
+         fields; the README below renders as the nuget.org package page. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://ouratoolkit.com</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <!-- System.Text.Json is in-box on net8/net10; on netstandard2.0 it is a NuGet dependency.
        This is the only non-BCL runtime reference, and only on the netstandard2.0 leg. -->

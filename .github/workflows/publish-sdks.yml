@@ -4,8 +4,8 @@
 # publish/build commands live in `just sdk-*` recipes (raw npm/python stay inside recipes, per
 # CLAUDE.md → TASK RUNNER).
 #
-# One job per ecosystem — npm (TypeScript), PyPI (Python) and Go so far; Maven Central and
-# NuGet land here as their own jobs once their registry prerequisites are done (#96).
+# One job per ecosystem — npm (TypeScript), PyPI (Python), Go and NuGet (C#) so far; Maven
+# Central lands here as its own job once its registry prerequisites are done (#96).
 # Everything is Trusted Publishing (OIDC) — NO stored token anywhere, same model as
 # publish-crates.yml.
 #
@@ -28,6 +28,11 @@
 # built and guarded by `just sdk-build-py` first. skip-existing keeps re-runs idempotent,
 # matching the npm leg.
 #
+# AUTH (NuGet): the NuGet/login action exchanges the workflow's OIDC identity for a 1-hour
+# nuget.org API key against a Trusted Publishing POLICY (owner-scoped, so it covers new
+# package IDs too — first push claims them); `just sdk-publish-nuget` packs, guards, and
+# pushes with that key. No stored token, like every other leg.
+#
 # ONE-TIME SETUP (npm, per package, on npmjs.com → package → Settings → Trusted Publisher →
 # GitHub Actions): organization/user `spxrogers`, repository `oura-toolkit`, workflow
 # `publish-sdks.yml`, environment (none), allowed actions `npm publish`. Required for
@@ -35,8 +40,12 @@
 # ONE-TIME SETUP (PyPI, on pypi.org → account → Publishing → add a PENDING publisher — PyPI,
 # unlike npm, lets the trusted publisher be registered BEFORE the project exists and creates
 # it on first publish): project `oura-toolkit`, owner `spxrogers`, repository `oura-toolkit`,
-# workflow `publish-sdks.yml`, environment (none). Until configured, the pypi job fails at
-# upload — the tag and every other channel still succeed.
+# workflow `publish-sdks.yml`, environment (none). (DONE.)
+# ONE-TIME SETUP (NuGet, on nuget.org → username menu → Trusted Publishing → add policy):
+# repository owner `spxrogers`, repository `oura-toolkit`, workflow file `publish-sdks.yml`
+# (filename only), environment (none). The `user:` input on the login step below must equal
+# the nuget.org PROFILE NAME that owns the policy. Until configured, the nuget job fails at
+# login — the tag and every other channel still succeed.
 
 name: Publish SDKs
 
@@ -114,6 +123,32 @@ jobs:
           # Idempotent re-runs (a re-run after a partial failure must not trip over the
           # version already being on the registry) — the npm leg's skip-if-published.
           skip-existing: true
+
+  nuget:
+    name: publish NuGet SDKs (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    # Same prerelease skip as the other jobs.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Same pins as CI's sdk job: the packages multi-target netstandard2.0;net8.0;net10.0
+          # and an 8.x/9.x SDK cannot build the net10.0 leg.
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: extractions/setup-just@v4
+      - name: NuGet login (OIDC -> 1-hour API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          # nuget.org PROFILE NAME owning the Trusted Publishing policy (not an email).
+          user: spxrogers
+      - name: Pack, guard + publish OuraToolkit.Api + OuraToolkit.Auth
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: just sdk-publish-nuget
 
   go:
     name: publish Go SDK (${{ github.ref_name }})

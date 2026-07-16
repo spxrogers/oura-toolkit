@@ -122,7 +122,8 @@ for why):
   → tag `vX.Y.Z` → push. The one tag fans out to every publish channel in CI: `release.yml`
   (installers + homebrew), `publish-crates.yml` (crates.io via OIDC), `publish-sdks.yml`
   (breadth SDKs — `@oura-toolkit/api` + `@oura-toolkit/auth` on npm, `oura-toolkit` on
-  PyPI, and the `sdks/go/vX.Y.Z` sub-tag that versions the Go module, #96) and, chained
+  PyPI, `OuraToolkit.Api` + `OuraToolkit.Auth` on NuGet, and the `sdks/go/vX.Y.Z` sub-tag
+  that versions the Go module, #96) and, chained
   off release.yml's completion, `publish-cli-npm.yml` (the CLI's `oura-toolkit` npm launcher,
   OIDC, from the hosted release tarball). Every npm/crates publish is Trusted Publishing — the
   only stored publish secret is the Homebrew tap token.
