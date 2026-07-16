@@ -315,10 +315,12 @@ that orphaned it.
   EVERY publish channel is tag-driven (#91): the pushed tag fans out to `release.yml`
   (installers + homebrew), `.github/workflows/publish-crates.yml` (crates.io via
   **Trusted Publishing / OIDC** — no stored registry token),
-  `.github/workflows/publish-sdks.yml` (the breadth SDKs, #96 — today the npm leg,
+  `.github/workflows/publish-sdks.yml` (the breadth SDKs, #96 — the npm leg,
   `just sdk-publish-ts` → `@oura-toolkit/api` + `@oura-toolkit/auth`, and the PyPI leg,
   `just sdk-build-py` + the official pypa publish action → `oura-toolkit`, both via
-  **Trusted Publishing / OIDC** with automatic provenance/attestations — no stored token;
+  **Trusted Publishing / OIDC** with automatic provenance/attestations — no stored token —
+  plus the Go leg, `just sdk-publish-go`, which pushes the `sdks/go/vX.Y.Z` sub-tag that
+  makes the nested Go module resolvable, via GITHUB_TOKEN so the push stays inert;
   more ecosystems join as their registry prerequisites land) **and** — once release.yml
   completes —
   `.github/workflows/publish-cli-npm.yml` (`just publish-cli-npm` — the CLI's `oura-toolkit`
@@ -353,9 +355,10 @@ that orphaned it.
   (owner `spxrogers`, repo `oura-toolkit`, no environment, allowed action `npm publish`).
   **PyPI needs NO token either** — a one-time PENDING trusted publisher on pypi.org (project
   `oura-toolkit`, owner `spxrogers`, repo `oura-toolkit`, workflow `publish-sdks.yml`, no
-  environment; PyPI creates the project on first publish). Breadth-SDK publishing (#96) ships
-  one ecosystem at a time (npm + PyPI are live); before the remaining SDKs publish: verify
-  `com.ouratoolkit` on Maven Central, register the NuGet names.
+  environment; PyPI creates the project on first publish). **Go needs NO setup at all** (no
+  registry — the release-tagged sub-tag is the publish). Breadth-SDK publishing (#96) ships
+  one ecosystem at a time (npm + PyPI + Go are live); before the remaining SDKs publish:
+  verify `com.ouratoolkit` on Maven Central, register the NuGet names.
 
 ---
 

@@ -4,12 +4,15 @@ description: The Go SDK — an openapi-generator client under sdks/go with a com
 ---
 
 The Go SDK is the generated client under `sdks/go` (module
-`github.com/spxrogers/oura-toolkit/sdks/go`) plus the companion auth package at `sdks/go/auth`.
+`github.com/spxrogers/oura-toolkit/sdks/go`) plus the companion auth package at `sdks/go/auth`
+— versioned in lockstep with the toolkit: every release tags `sdks/go/vX.Y.Z`, so the module
+resolves real versions (not pseudo-versions).
 
-:::caution[Consume from source]
-The module is versioned in the repository and not yet tagged for independent release. Pull it
-from source, and supply your own access token until the companion is published.
-:::
+## Install
+
+```sh
+go get github.com/spxrogers/oura-toolkit/sdks/go
+```
 
 ## Usage sketch
 

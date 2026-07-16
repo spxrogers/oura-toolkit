@@ -127,6 +127,18 @@ token exchange and default PEP 740 attestation signing are implemented inside th
 (the same reason publish-crates.yml uses crates-io-auth-action), and `skip-existing: true`
 keeps re-runs idempotent like the npm leg's skip-if-published.
 
+The **Go leg** has no registry: publishing IS pushing the `sdks/go/vX.Y.Z` sub-tag Go
+requires to resolve a nested module's versions (the root `vX.Y.Z` tag only versions a root
+module, which this repo doesn't have). The sub-tag is deliberately pushed from CI
+(`just sdk-publish-go`, the `go` job in publish-sdks.yml) rather than from `release-tag`:
+its name matches release.yml's `**`-glob and cargo-dist cannot parse it, so a
+personal-credential push (laptop or the Cut-release Action's RELEASE_TOKEN) would trigger a
+doomed release.yml run — while a GITHUB_TOKEN push triggers nothing (the recursion guard
+working FOR us; the same property publish-cli-npm.yml routes around via workflow_run). The
+sub-tag anchors to the exact commit the root tag names, so both tags describe one release.
+Our hand-written tag workflows (publish-crates, publish-sdks) also tightened their globs to
+`v`-anchored as defense in depth; release.yml's dist-generated glob stays as generated.
+
 ### CLI npm launcher: OIDC via a workflow_run-chained standalone workflow
 The CLI's `oura-toolkit` npm package completes the no-stored-npm-token story, but dist 0.32's
 built-in npm publish job is token-only (Node 20 / npm 10.x + `NODE_AUTH_TOKEN`) and release.yml
