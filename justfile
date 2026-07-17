@@ -315,7 +315,10 @@ gen-csharp: spec-overlay
     # Pin LangVersion to 13.0 (not `latest`): `latest` floats with the installed SDK, so codegen
     # output would drift under gen-check as CI's dotnet updates. A fixed version is deterministic
     # and still >= the C# 9 the netstandard2.0 <Nullable>annotations</Nullable> leg needs.
-    sed -i 's|<TargetFramework>netstandard2.0</TargetFramework>|<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>\n    <LangVersion>13.0</LangVersion>|' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
+    # (perl -pi, not `sed -i`: BSD sed on macOS needs `-i ''` and reads `\n` in the replacement
+    # differently — a laptop `just release` runs this via set-version's `just gen`. perl is
+    # already this recipe's post-patch tool and behaves identically on both platforms.)
+    perl -pi -e 's{<TargetFramework>netstandard2\.0</TargetFramework>}{<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>\n    <LangVersion>13.0</LangVersion>}' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj
     @grep -q '<TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: multi-target post-patch did not apply — generator csproj shape changed?"; exit 1; }
     @grep -q '<LangVersion>13.0</LangVersion>' sdks/csharp/api/src/OuraToolkit.Api/OuraToolkit.Api.csproj || { echo "gen-csharp: LangVersion post-patch did not apply (needed for <Nullable>annotations</Nullable> on the netstandard2.0 leg, whose default is C# 7.3)"; exit 1; }
     # Strip the generator's bogus System.Web ItemGroups (a .NET-Framework-only assembly the code
