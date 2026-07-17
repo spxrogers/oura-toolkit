@@ -13,7 +13,7 @@
     <Description>Generated client for the Oura Ring API v2 — part of oura-toolkit. Auth-agnostic: bring a Bearer token, or pair with OuraToolkit.Auth.</Description>
     <Copyright>Copyright (c) spxrogers. MIT license.</Copyright>
     <RootNamespace>OuraToolkit.Api</RootNamespace>
-    <Version>0.2.2</Version>
+    <Version>0.3.0</Version>
     <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\OuraToolkit.Api.xml</DocumentationFile>
     <RepositoryUrl>https://github.com/spxrogers/oura-toolkit</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
