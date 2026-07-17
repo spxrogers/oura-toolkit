@@ -85,6 +85,7 @@ setup: install-nightly-rustfmt install-progenitor
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
+    @command -v java >/dev/null || echo "!! install a Java runtime (e.g. brew install --cask temurin) -- openapi-generator is a jar: needed by breadth-SDK codegen ('just gen', and every release via set-version)"
     # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an
     # 8.x/9.x SDK cannot build the net10.0 leg). Only relevant to the C# breadth-SDK recipes.
     @dotnet --list-sdks 2>/dev/null | grep -q '^10\.' || echo "!! install the .NET 10 SDK -- needed by 'just sdk-check-csharp' / 'just sdk-test-csharp' (net10.0 target)"
@@ -726,6 +727,21 @@ release new_version:
     git fetch --quiet origin main
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
       || { echo "release: local main has diverged from origin/main — sync first"; exit 1; }
+
+    # Codegen-toolchain PREFLIGHT: set-version regenerates every SDK client mid-flow
+    # (`just gen`), so a missing tool aborts the release with a half-bumped working tree.
+    # Both real cases so far were laptop-only gaps CI never sees (the bash-3.2 shim, then a
+    # missing Java runtime — openapi-generator is a jar). Verify BEFORE the gate so nothing
+    # has been mutated when this fails; the fix is `just setup` (java: brew install --cask
+    # temurin).
+    for tool in jq npx java perl; do
+      command -v "$tool" >/dev/null \
+        || { echo "release: '$tool' not found — the version bump regenerates every SDK client and needs it (run 'just setup'; for java: brew install --cask temurin)"; exit 1; }
+    done
+    command -v cargo-progenitor >/dev/null \
+      || { echo "release: cargo-progenitor not installed — run 'just install-progenitor' (or 'just setup')"; exit 1; }
+    rustup which --toolchain "{{nightly_rustfmt}}" rustfmt >/dev/null 2>&1 \
+      || { echo "release: pinned nightly rustfmt ({{nightly_rustfmt}}) unavailable — run 'just install-nightly-rustfmt' (or 'just setup')"; exit 1; }
 
     # Shared choreography: gate → set-version → guards → commit → tag → push (triggers CI).
     just release-tag "${ver}"
