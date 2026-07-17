@@ -20,4 +20,10 @@ done
 
 # Which nightly to format through — `just gen-rust` pins this to the dated `nightly_rustfmt`
 # toolchain (single source in the justfile); default to plain `nightly` for a manual invocation.
-exec "$(rustup which --toolchain "${RUSTFMT_TOOLCHAIN:-nightly}" rustfmt)" --edition 2021 "${args[@]}"
+#
+# `${args[@]+"${args[@]}"}` (not plain "${args[@]}"): rustfmt-wrapper invokes this shim with
+# ONLY the two args the loop strips, so `args` is routinely EMPTY — and macOS ships bash 3.2,
+# where expanding an empty array under `set -u` is an "unbound variable" ERROR (fixed in bash
+# 4.4, which is why Linux CI never saw it). This broke the first laptop `just release` on a
+# Mac; the +-expansion idiom is the portable form.
+exec "$(rustup which --toolchain "${RUSTFMT_TOOLCHAIN:-nightly}" rustfmt)" --edition 2021 ${args[@]+"${args[@]}"}
