@@ -224,17 +224,17 @@ companion (token store + refresh). What exists today:
 | TypeScript | `sdks/typescript/api` | `@oura-toolkit/auth` ✅ | `@oura-toolkit/api` / `@oura-toolkit/auth` — published (npm) |
 | Python | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` ✅ | `oura-toolkit` — published (PyPI) |
 | Go | `sdks/go` | `sdks/go/auth` ✅ | module `github.com/spxrogers/oura-toolkit/sdks/go` — published (release-tagged) |
-| Java | `sdks/java/api` | `com.ouratoolkit:auth` ✅ | `com.ouratoolkit:api` (Maven Central, reserved) |
+| Java | `sdks/java/api` | `com.ouratoolkit:auth` ✅ | `com.ouratoolkit:api` / `com.ouratoolkit:auth` — published (Maven Central) |
 | C# | `sdks/csharp/api` | `OuraToolkit.Auth` ✅ | `OuraToolkit.Api` / `OuraToolkit.Auth` — published (NuGet) |
 
 Every breadth client is compile-checked and drift-checked in CI, and smoke-tested against
-Oura's live sandbox. The Rust crates, the TypeScript packages
-(`npm install @oura-toolkit/api @oura-toolkit/auth`), the Python dist
+Oura's live sandbox — and **all six languages are published**: the Rust crates (crates.io),
+the TypeScript packages (`npm install @oura-toolkit/api @oura-toolkit/auth`), the Python dist
 (`pip install oura-toolkit`), the Go module
-(`go get github.com/spxrogers/oura-toolkit/sdks/go`) and the C# packages
-(`dotnet add package OuraToolkit.Api` + `dotnet add package OuraToolkit.Auth`) are published;
-the Java client is **not yet published** to Maven Central (#96) — consume it from source for
-now, and supply your own access token.
+(`go get github.com/spxrogers/oura-toolkit/sdks/go`), the C# packages
+(`dotnet add package OuraToolkit.Api` + `dotnet add package OuraToolkit.Auth`) and the Java
+artifacts (`com.ouratoolkit:api` + `com.ouratoolkit:auth` on Maven Central) — every one
+versioned in lockstep with each release.
 
 ## Developing
 

@@ -12,3 +12,19 @@ additionalProperties:
   apiPackage: com.ouratoolkit.api.client
   modelPackage: com.ouratoolkit.api.model
   hideGenerationTimestamp: true
+  # Maven Central publish metadata (#96) — the generator's own options fill the pom's
+  # name/description/url/licenses/developers/scm slots, so the Central Portal's pom
+  # validation passes without post-patching XML. (The two things the generator has NO
+  # options for — the central-publishing-maven-plugin and the maven-gpg-plugin version —
+  # are post-patched by `just gen-java`.)
+  artifactDescription: "Generated client for the Oura Ring API v2 — part of oura-toolkit. Auth-agnostic: bring a Bearer token, or pair with com.ouratoolkit:auth."
+  artifactUrl: https://ouratoolkit.com
+  licenseName: MIT License
+  licenseUrl: https://github.com/spxrogers/oura-toolkit/blob/main/LICENSE
+  developerName: spxrogers
+  developerEmail: contact@spxrogers.com
+  developerOrganization: oura-toolkit
+  developerOrganizationUrl: https://ouratoolkit.com
+  scmConnection: scm:git:https://github.com/spxrogers/oura-toolkit.git
+  scmDeveloperConnection: scm:git:https://github.com/spxrogers/oura-toolkit.git
+  scmUrl: https://github.com/spxrogers/oura-toolkit

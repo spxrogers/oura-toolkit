@@ -6,28 +6,28 @@
     <packaging>jar</packaging>
     <name>api</name>
     <version>0.2.2</version>
-    <url>https://github.com/openapitools/openapi-generator</url>
-    <description>OpenAPI Java</description>
+    <url>https://ouratoolkit.com</url>
+    <description>Generated client for the Oura Ring API v2 — part of oura-toolkit. Auth-agnostic: bring a Bearer token, or pair with com.ouratoolkit:auth.</description>
     <scm>
-        <connection>scm:git:git@github.com:openapitools/openapi-generator.git</connection>
-        <developerConnection>scm:git:git@github.com:openapitools/openapi-generator.git</developerConnection>
-        <url>https://github.com/openapitools/openapi-generator</url>
+        <connection>scm:git:https://github.com/spxrogers/oura-toolkit.git</connection>
+        <developerConnection>scm:git:https://github.com/spxrogers/oura-toolkit.git</developerConnection>
+        <url>https://github.com/spxrogers/oura-toolkit</url>
     </scm>
 
     <licenses>
         <license>
-            <name>Unlicense</name>
-            <url>http://unlicense.org</url>
+            <name>MIT License</name>
+            <url>https://github.com/spxrogers/oura-toolkit/blob/main/LICENSE</url>
             <distribution>repo</distribution>
         </license>
     </licenses>
 
     <developers>
         <developer>
-            <name>OpenAPI-Generator Contributors</name>
-            <email>team@openapitools.org</email>
-            <organization>OpenAPITools.org</organization>
-            <organizationUrl>http://openapitools.org</organizationUrl>
+            <name>spxrogers</name>
+            <email>contact@spxrogers.com</email>
+            <organization>oura-toolkit</organization>
+            <organizationUrl>https://ouratoolkit.com</organizationUrl>
         </developer>
     </developers>
 
@@ -96,6 +96,17 @@
                     </execution>
                 </executions>
                 <configuration>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.11.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
                 </configuration>
             </plugin>
             <plugin>
@@ -177,7 +188,7 @@
                 <plugins>
                     <plugin>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.0.1</version>
+                        <version>3.2.8</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>

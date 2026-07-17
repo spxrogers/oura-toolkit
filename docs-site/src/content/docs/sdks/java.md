@@ -3,13 +3,29 @@ title: Java
 description: The Java SDK — an openapi-generator client (com.ouratoolkit:api) plus the com.ouratoolkit:auth companion.
 ---
 
-The Java SDK is the generated client at `sdks/java/api` (reserved as `com.ouratoolkit:api` on
-Maven Central) plus the `com.ouratoolkit:auth` companion.
+The Java SDK is the generated client published as
+[`com.ouratoolkit:api`](https://central.sonatype.com/artifact/com.ouratoolkit/api) on Maven
+Central plus the
+[`com.ouratoolkit:auth`](https://central.sonatype.com/artifact/com.ouratoolkit/auth)
+companion — versioned in lockstep with the toolkit and published (signed, with sources and
+javadoc) on every release tag.
 
-:::caution[Consume from source]
-Not yet published to Maven Central. Build it from the repository for now, and supply your own
-access token until the companion is published.
-:::
+## Install
+
+Replace `$PREFERRED_VERSION` with the [latest release](https://github.com/spxrogers/oura-toolkit/releases):
+
+```xml
+<dependency>
+    <groupId>com.ouratoolkit</groupId>
+    <artifactId>api</artifactId>
+    <version>$PREFERRED_VERSION</version>
+</dependency>
+<dependency>
+    <groupId>com.ouratoolkit</groupId>
+    <artifactId>auth</artifactId>
+    <version>$PREFERRED_VERSION</version>
+</dependency>
+```
 
 ## Usage sketch
 

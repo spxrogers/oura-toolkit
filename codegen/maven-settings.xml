@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Maven settings for `just sdk-publish-maven` (#96, Maven Central leg). NO secrets live
+     here: the `central` server (the Central Portal token pair, consumed by
+     central-publishing-maven-plugin via publishingServerId) resolves from the environment —
+     CI injects the MAVEN_CENTRAL_* repo secrets; locally export them yourself. The GPG
+     passphrase is NOT here either: maven-gpg-plugin 3.2.x reads MAVEN_GPG_PASSPHRASE from
+     the environment directly. -->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+    <servers>
+        <server>
+            <id>central</id>
+            <username>${env.MAVEN_CENTRAL_USERNAME}</username>
+            <password>${env.MAVEN_CENTRAL_PASSWORD}</password>
+        </server>
+    </servers>
+</settings>

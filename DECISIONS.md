@@ -136,6 +136,18 @@ stays a recipe. The generated csproj needed a publish-metadata post-patch in `ge
 (placeholder Authors/Description/RepositoryUrl, no license — same doctrine as
 ts-package-postpatch, pre/post-guarded), and both packages pack a README for nuget.org.
 
+The **Maven Central leg** (the last of the six) is the one channel with stored secrets —
+Central has no OIDC, so the four `MAVEN_*` repo secrets carry the Portal token pair and the
+GPG signing key/passphrase. The pom metadata Central validates comes from generator OPTIONS
+in codegen/java.yaml (licenseName/developer*/scm* — no XML post-patch needed for metadata);
+`just gen-java` post-patches only what the generator has no option for: injecting the pinned
+central-publishing-maven-plugin (0.11.0, `autoPublish` + `waitUntil=published`, so Portal
+validation FAILS the build on missing sources/javadoc/signatures/metadata — that validation
+is the enforcing gate) and bumping maven-gpg-plugin to 3.2.x, which signs non-interactively
+from the `MAVEN_GPG_PASSPHRASE` env var (verified). `codegen/maven-settings.xml` resolves
+the `central` server from the environment, so no secret ever lands in the repo; the recipe
+probes repo1.maven.org to skip already-published versions, like every other leg.
+
 The **Go leg** has no registry: publishing IS pushing the `sdks/go/vX.Y.Z` sub-tag Go
 requires to resolve a nested module's versions (the root `vX.Y.Z` tag only versions a root
 module, which this repo doesn't have). The sub-tag is deliberately pushed from CI
