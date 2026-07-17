@@ -760,8 +760,13 @@ release new_version:
     if [ -n "$jmaj" ] && { [ "$jmaj" = "1" ] || [ "$jmaj" -lt 11 ]; }; then
       echo "release: java is major version ${jmaj}, but openapi-generator needs 11+ (brew install --cask temurin)"; exit 1
     fi
-    command -v cargo-progenitor >/dev/null \
-      || { echo "release: cargo-progenitor not installed — run 'just install-progenitor' (or 'just setup')"; exit 1; }
+    # Version-pinned, not just present: a different progenitor would silently REGENERATE
+    # DIFFERENT client code mid-bump and commit it straight to the tag, bypassing PR
+    # gen-check (the same silent-drift class dist's pin check guards against). No --version
+    # flag, so ask cargo's install registry — the sanctioned install path (install-progenitor)
+    # is a cargo install, so this is authoritative.
+    cargo install --list 2>/dev/null | grep -q "^cargo-progenitor v{{progenitor_version}}:" \
+      || { echo "release: cargo-progenitor {{progenitor_version}} (the pin) is not the installed version — run 'just install-progenitor' (or 'just setup')"; exit 1; }
     rustup which --toolchain "{{nightly_rustfmt}}" rustfmt >/dev/null 2>&1 \
       || { echo "release: pinned nightly rustfmt ({{nightly_rustfmt}}) unavailable — run 'just install-nightly-rustfmt' (or 'just setup')"; exit 1; }
     # The post-bump release-config gate needs these too (a failure there also strands a
