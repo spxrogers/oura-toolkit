@@ -1,10 +1,3 @@
-<!-- agentsync:managed memory-banner -->
-> **Managed by [agentsync](https://agentsync.cc) — do not edit `CLAUDE.md` directly.**
-> To change it, edit `.agentsync/memory/AGENTS.md` (or the relevant
-> `.agentsync/memory/fragments/*.md` fragment) and run `agentsync apply`.
-> Direct edits here are reported as drift and overwritten on the next apply.
-<!-- /agentsync:managed memory-banner -->
-
 # Claude/Agent memory instructions — oura-toolkit
 
 This file is the **law**: the hard constraints every change must satisfy. Two companion docs
