@@ -4,10 +4,11 @@
 # publish/build commands live in `just sdk-*` recipes (raw npm/python stay inside recipes, per
 # CLAUDE.md → TASK RUNNER).
 #
-# One job per ecosystem — npm (TypeScript), PyPI (Python), Go and NuGet (C#) so far; Maven
-# Central lands here as its own job once its registry prerequisites are done (#96).
-# Everything is Trusted Publishing (OIDC) — NO stored token anywhere, same model as
-# publish-crates.yml.
+# One job per ecosystem — npm (TypeScript), PyPI (Python), Go, NuGet (C#) and Maven Central
+# (Java): every breadth SDK publishes from here (#96, complete). npm/PyPI/NuGet are Trusted
+# Publishing (OIDC) — no stored token, same model as publish-crates.yml. Maven Central has
+# NO OIDC: its job consumes the four MAVEN_* repo secrets (Portal token pair + GPG signing
+# key + passphrase) — the only registry channel with stored secrets.
 #
 # Go has no registry: its job "publishes" by pushing the `sdks/go/vX.Y.Z` sub-tag that makes
 # the nested module resolvable (`just sdk-publish-go`). That push MUST come from GITHUB_TOKEN:
@@ -44,8 +45,13 @@
 # ONE-TIME SETUP (NuGet, on nuget.org → username menu → Trusted Publishing → add policy):
 # repository owner `spxrogers`, repository `oura-toolkit`, workflow file `publish-sdks.yml`
 # (filename only), environment (none). The `user:` input on the login step below must equal
-# the nuget.org PROFILE NAME that owns the policy. Until configured, the nuget job fails at
-# login — the tag and every other channel still succeed.
+# the nuget.org PROFILE NAME that owns the policy. (DONE.)
+# ONE-TIME SETUP (Maven Central): verify the `com.ouratoolkit` namespace on
+# central.sonatype.com (DNS TXT on ouratoolkit.com), publish the GPG public key to
+# keyserver.ubuntu.com, and set four repo secrets — MAVEN_CENTRAL_USERNAME +
+# MAVEN_CENTRAL_PASSWORD (Portal user token pair) and MAVEN_GPG_PRIVATE_KEY (armored
+# secret key) + MAVEN_GPG_PASSPHRASE. Until set, the maven job fails at deploy — the tag
+# and every other channel still succeed.
 
 name: Publish SDKs
 
@@ -149,6 +155,29 @@ jobs:
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: just sdk-publish-nuget
+
+  maven:
+    name: publish Maven Central SDKs (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    # Same prerelease skip as the other jobs.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v4
+        with:
+          # Same pin as CI's sdk job; also imports the signing key into the runner's gpg
+          # keyring (the passphrase isn't needed for import — the key stays encrypted, and
+          # maven-gpg-plugin unlocks it at sign time from MAVEN_GPG_PASSPHRASE).
+          distribution: temurin
+          java-version: '17'
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+      - uses: extractions/setup-just@v4
+      - name: Deploy com.ouratoolkit:api + :auth (signed; Portal validates + auto-publishes)
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: just sdk-publish-maven
 
   go:
     name: publish Go SDK (${{ github.ref_name }})

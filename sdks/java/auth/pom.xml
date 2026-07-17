@@ -25,6 +25,28 @@
     <description>Oura OAuth2 auth companion for the oura-toolkit Java SDK: token store, refresh with rotation, Bearer interceptor.</description>
     <url>https://github.com/spxrogers/oura-toolkit</url>
 
+    <!-- Central Portal publish metadata (#96) — mirrors the generated api pom's (which comes
+         from codegen/java.yaml's generator options). The Portal validates all three blocks. -->
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://github.com/spxrogers/oura-toolkit/blob/main/LICENSE</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>spxrogers</name>
+            <email>contact@spxrogers.com</email>
+            <organization>oura-toolkit</organization>
+            <organizationUrl>https://ouratoolkit.com</organizationUrl>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:https://github.com/spxrogers/oura-toolkit.git</connection>
+        <developerConnection>scm:git:https://github.com/spxrogers/oura-toolkit.git</developerConnection>
+        <url>https://github.com/spxrogers/oura-toolkit</url>
+    </scm>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>11</maven.compiler.source>
@@ -52,6 +74,46 @@
 
     <build>
         <plugins>
+            <!-- Central publishing (#96): same pinned plugin + config as the generated api pom
+                 (there it's post-patched in by `just gen-java`). `mvn deploy` bundles, uploads
+                 and auto-publishes via the Central Portal (settings server id `central`). -->
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.11.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
+                </configuration>
+            </plugin>
+            <!-- Central requires sources + javadoc jars — same plugins/goals as the api pom. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.4.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.2.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.10.1</version>
@@ -67,4 +129,30 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- Same opt-in signing profile as the generated api pom (Central requires .asc
+         signatures). maven-gpg-plugin 3.2.x reads the passphrase from MAVEN_GPG_PASSPHRASE
+         and signs non-interactively in CI; locally it defers to your gpg agent. -->
+    <profiles>
+        <profile>
+            <id>sign-artifacts</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.8</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

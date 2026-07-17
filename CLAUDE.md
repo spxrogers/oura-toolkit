@@ -322,8 +322,9 @@ that orphaned it.
   plus the Go leg, `just sdk-publish-go`, which pushes the `sdks/go/vX.Y.Z` sub-tag that
   makes the nested Go module resolvable, via GITHUB_TOKEN so the push stays inert, and the
   NuGet leg, `just sdk-publish-nuget` → `OuraToolkit.Api` + `OuraToolkit.Auth`, keyed by the
-  NuGet/login OIDC exchange; Maven Central joins once its registry prerequisites land)
-  **and** — once release.yml completes —
+  NuGet/login OIDC exchange, and the Maven Central leg, `just sdk-publish-maven` →
+  `com.ouratoolkit:api` + `:auth`, signed + Portal-auto-published — ALL SIX SDKs publish on
+  the tag) **and** — once release.yml completes —
   `.github/workflows/publish-cli-npm.yml` (`just publish-cli-npm` — the CLI's `oura-toolkit`
   npm launcher, published via the same **OIDC** from the tarball hosted on the GitHub
   Release; `workflow_run`-chained because dist 0.32's own npm job is token-only and
@@ -342,7 +343,8 @@ that orphaned it.
   speed-path alternatives. Known accepted risk: cargo-dist 0.32's npm installer does not
   checksum-verify the binary it downloads (shell + homebrew do).
 - **One-time prerequisites before the first real release:** `spxrogers/homebrew-tap` +
-  `HOMEBREW_TAP_TOKEN` (the ONLY stored publish secret — no npm token anywhere). Until then
+  `HOMEBREW_TAP_TOKEN`, plus the four `MAVEN_*` secrets below — no npm/PyPI/NuGet/crates
+  token anywhere. Until then
   tag pushes still build every artifact — only the publish jobs fail. The **Cut-release
   Action** additionally needs a `RELEASE_TOKEN`
   PAT (Contents: read/write) so its pushed tag triggers `release.yml`; the laptop `just
@@ -361,9 +363,11 @@ that orphaned it.
   one-time Trusted Publishing POLICY on nuget.org (owner-scoped, so it covers the
   first-publish of new package IDs: repository owner `spxrogers`, repo `oura-toolkit`,
   workflow `publish-sdks.yml`, no environment; the login step's `user:` must equal the
-  nuget.org profile name). Breadth-SDK publishing (#96) ships one ecosystem at a time
-  (npm + PyPI + Go + NuGet are live); before the last SDK publishes: verify `com.ouratoolkit`
-  on Maven Central.
+  nuget.org profile name). **Maven Central is the ONE channel with stored secrets** (it has
+  no OIDC): the verified `com.ouratoolkit` namespace on central.sonatype.com (DNS TXT), the
+  GPG public key on keyserver.ubuntu.com, and four repo secrets — `MAVEN_CENTRAL_USERNAME` +
+  `MAVEN_CENTRAL_PASSWORD` (Portal token pair) and `MAVEN_GPG_PRIVATE_KEY` +
+  `MAVEN_GPG_PASSPHRASE` (signing key). All six SDK ecosystems publish on the tag (#96).
 
 ---
 

@@ -1108,3 +1108,51 @@ fn documented_nuget_install_matches_package_ids() {
          silently stop publishing"
     );
 }
+
+/// The documented Maven coordinates ⟷ the real pom groupId/artifactIds (#96, the final
+/// sibling of the npm/PyPI/Go/NuGet tripwires above). Both artifacts are NAMING-locked to
+/// `com.ouratoolkit:{api,auth}`; the install docs must carry exactly those coordinates, and
+/// the publish workflow must keep running the recipe that ships them.
+#[test]
+fn documented_maven_coordinates_match_the_poms() {
+    let root = repo_root();
+    for (pom, artifact) in [
+        ("sdks/java/api/pom.xml", "api"),
+        ("sdks/java/auth/pom.xml", "auth"),
+    ] {
+        let content = read(&root.join(pom));
+        assert!(
+            content.contains("<groupId>com.ouratoolkit</groupId>"),
+            "{pom} lost the NAMING-locked groupId com.ouratoolkit"
+        );
+        assert!(
+            content.contains(&format!("<artifactId>{artifact}</artifactId>")),
+            "{pom} lost the NAMING-locked artifactId {artifact}"
+        );
+    }
+    // The java SDK page's install snippet: a <dependency> block per artifact, exact ids.
+    let java_page = read(&docs_site_page("sdks/java.md"));
+    for artifact in ["api", "auth"] {
+        assert!(
+            java_page.contains(&format!("<artifactId>{artifact}</artifactId>")),
+            "docs-site sdks/java.md install snippet lost the {artifact} dependency \
+             (DOCS STAY TRUE TO THE CODE)"
+        );
+    }
+    assert!(
+        java_page.contains("<groupId>com.ouratoolkit</groupId>"),
+        "docs-site sdks/java.md install snippet lost the com.ouratoolkit groupId"
+    );
+    for doc in [root.join("README.md"), docs_site_page("sdks/index.md")] {
+        assert!(
+            read(&doc).contains("com.ouratoolkit:api"),
+            "{doc:?} no longer names the com.ouratoolkit:api coordinate"
+        );
+    }
+    let workflow = read(&root.join(".github/workflows/publish-sdks.yml"));
+    assert!(
+        workflow.contains("run: just sdk-publish-maven"),
+        "publish-sdks.yml no longer runs `just sdk-publish-maven` — Maven Central releases \
+         would silently stop publishing"
+    );
+}

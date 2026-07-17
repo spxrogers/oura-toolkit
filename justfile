@@ -285,7 +285,20 @@ gen-java: spec-overlay
     {{oag}} generate {{oag_skip_docs}} -c codegen/java.yaml -i {{overlaid_spec}} -o sdks/java/api --additional-properties=artifactVersion={{version}}
     rm -f sdks/java/api/git_push.sh sdks/java/api/.travis.yml sdks/java/api/gradlew sdks/java/api/gradlew.bat
     rm -rf sdks/java/api/gradle
-    @echo "Generated sdks/java/api (com.ouratoolkit:api {{version}})"
+    # Publish post-patch (#96, Maven Central leg — the metadata itself comes from generator
+    # options in codegen/java.yaml; these two have no generator option):
+    #  1. maven-gpg-plugin 3.0.1 -> 3.2.8: 3.2.x reads the passphrase from the
+    #     MAVEN_GPG_PASSPHRASE env var by default and handles non-interactive (loopback)
+    #     pinentry, which CI signing needs.
+    #  2. Inject central-publishing-maven-plugin (pinned 0.11.0) so `mvn deploy` bundles,
+    #     uploads and auto-publishes via the Central Portal (settings server id `central`).
+    @grep -q '<version>3.0.1</version>' sdks/java/api/pom.xml || { echo "gen-java: generator gpg-plugin version changed — update the publish post-patch"; exit 1; }
+    perl -0pi -e 's{(<artifactId>maven-gpg-plugin</artifactId>\s*<version>)3\.0\.1(</version>)}{${1}3.2.8${2}}' sdks/java/api/pom.xml
+    perl -0pi -e 's{(            <plugin>\n                <artifactId>maven-compiler-plugin</artifactId>)}{            <plugin>\n                <groupId>org.sonatype.central</groupId>\n                <artifactId>central-publishing-maven-plugin</artifactId>\n                <version>0.11.0</version>\n                <extensions>true</extensions>\n                <configuration>\n                    <publishingServerId>central</publishingServerId>\n                    <autoPublish>true</autoPublish>\n                    <waitUntil>published</waitUntil>\n                </configuration>\n            </plugin>\n$1}' sdks/java/api/pom.xml
+    @grep -q '<artifactId>central-publishing-maven-plugin</artifactId>' sdks/java/api/pom.xml || { echo "gen-java: central-publishing plugin injection did not apply — generator pom shape changed?"; exit 1; }
+    @grep -q '3.2.8' sdks/java/api/pom.xml || { echo "gen-java: gpg-plugin version bump did not apply"; exit 1; }
+    @! grep -Eq 'openapitools/openapi-generator|Unlicense' sdks/java/api/pom.xml || { echo "gen-java: placeholder pom metadata survived — codegen/java.yaml publish options broken?"; exit 1; }
+    @echo "Generated sdks/java/api (com.ouratoolkit:api {{version}}; Central-publishable pom)"
 
 # Generate the C# SDK client (openapi-generator) -> sdks/csharp/api (OuraToolkit.Api).
 [group('codegen')]
@@ -911,6 +924,32 @@ sdk-publish-nuget:
     for pkg_id in OuraToolkit.Api OuraToolkit.Auth; do
       echo "==> pushing ${pkg_id} {{version}}"
       dotnet nuget push "$out/${pkg_id}.{{version}}.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+    done
+
+# Publish the Java SDK (com.ouratoolkit:api + :auth) to Maven Central (#96, Maven leg).
+# `mvn deploy` under the sign-artifacts profile builds main+sources+javadoc jars, signs
+# everything (maven-gpg-plugin 3.2.x reads MAVEN_GPG_PASSPHRASE from the env — verified
+# non-interactive), and central-publishing-maven-plugin bundles, uploads and AUTO-PUBLISHES
+# via the Central Portal, whose validation is the enforcing gate here (it rejects missing
+# sources/javadoc/signatures/pom metadata, and waitUntil=published fails the build on any of
+# it). Auth: the `central` server in codegen/maven-settings.xml resolves the Portal token
+# pair from the environment — Maven Central has NO OIDC, so these are real stored secrets
+# (the only registry channel left with any). Skip-if-published (repo1 probe) keeps re-runs
+# idempotent like every other leg. -DskipTests: the suites gate PRs/CI, not the publish.
+[group('release')]
+sdk-publish-maven:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${MAVEN_CENTRAL_USERNAME:?sdk-publish-maven: MAVEN_CENTRAL_USERNAME is not set (Central Portal token username)}"
+    : "${MAVEN_CENTRAL_PASSWORD:?sdk-publish-maven: MAVEN_CENTRAL_PASSWORD is not set (Central Portal token password)}"
+    : "${MAVEN_GPG_PASSPHRASE:?sdk-publish-maven: MAVEN_GPG_PASSPHRASE is not set (signing key passphrase; the key itself must be in the local gpg keyring)}"
+    for mod in api auth; do
+      if curl -sfI -o /dev/null "https://repo1.maven.org/maven2/com/ouratoolkit/${mod}/{{version}}/${mod}-{{version}}.pom"; then
+        echo "==> com.ouratoolkit:${mod}:{{version}} already on Maven Central — skipping"
+        continue
+      fi
+      echo "==> deploying com.ouratoolkit:${mod}:{{version}} (signed; Portal validates + auto-publishes)"
+      mvn -B -DskipTests -P sign-artifacts -s codegen/maven-settings.xml deploy -f "sdks/java/${mod}/pom.xml"
     done
 
 # "Publish" the Go SDK for the current workspace version (#96) — Go has no registry to upload

@@ -121,12 +121,13 @@ for why):
 - **Releases are tag-driven**: `just set-version X.Y.Z` (the single version writer) → commit
   → tag `vX.Y.Z` → push. The one tag fans out to every publish channel in CI: `release.yml`
   (installers + homebrew), `publish-crates.yml` (crates.io via OIDC), `publish-sdks.yml`
-  (breadth SDKs — `@oura-toolkit/api` + `@oura-toolkit/auth` on npm, `oura-toolkit` on
-  PyPI, `OuraToolkit.Api` + `OuraToolkit.Auth` on NuGet, and the `sdks/go/vX.Y.Z` sub-tag
-  that versions the Go module, #96) and, chained
-  off release.yml's completion, `publish-cli-npm.yml` (the CLI's `oura-toolkit` npm launcher,
-  OIDC, from the hosted release tarball). Every npm/crates publish is Trusted Publishing — the
-  only stored publish secret is the Homebrew tap token.
+  (ALL the breadth SDKs — `@oura-toolkit/api` + `@oura-toolkit/auth` on npm, `oura-toolkit`
+  on PyPI, `OuraToolkit.Api` + `OuraToolkit.Auth` on NuGet, `com.ouratoolkit:api` + `:auth`
+  on Maven Central, and the `sdks/go/vX.Y.Z` sub-tag that versions the Go module, #96) and,
+  chained off release.yml's completion, `publish-cli-npm.yml` (the CLI's `oura-toolkit` npm
+  launcher, OIDC, from the hosted release tarball). npm/PyPI/NuGet/crates publishes are all
+  Trusted Publishing; the stored publish secrets are the Homebrew tap token and Maven
+  Central's four (Portal token pair + GPG key/passphrase — Central has no OIDC).
 - **Launch is NPX-first**: `npx -y oura-toolkit ...`; brew / bun are speed-path alternatives.
 - **One Claude plugin** (`plugins/oura-toolkit/`) ships both the MCP server config
   (`npx -y oura-toolkit@<version> mcp`) and skills (`morning-checkin`, `wellness-report`).

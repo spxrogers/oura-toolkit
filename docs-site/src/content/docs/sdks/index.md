@@ -17,14 +17,13 @@ to end.
 | [TypeScript](/sdks/typescript/) | `sdks/typescript/api` | `@oura-toolkit/auth` | `@oura-toolkit/api` / `@oura-toolkit/auth` — published ([npm](https://www.npmjs.com/package/@oura-toolkit/api)) |
 | [Python](/sdks/python/) | `sdks/python` (`oura_toolkit.api`) | `oura_toolkit.auth` | `oura-toolkit` — published ([PyPI](https://pypi.org/project/oura-toolkit/)) |
 | [Go](/sdks/go/) | `sdks/go` | `sdks/go/auth` | `github.com/spxrogers/oura-toolkit/sdks/go` — published (release-tagged) |
-| [Java](/sdks/java/) | `sdks/java/api` | `com.ouratoolkit:auth` | `com.ouratoolkit:api` (Maven Central, reserved) |
+| [Java](/sdks/java/) | `sdks/java/api` | `com.ouratoolkit:auth` | `com.ouratoolkit:api` / `com.ouratoolkit:auth` — published ([Maven Central](https://central.sonatype.com/artifact/com.ouratoolkit/api)) |
 | [C#](/sdks/csharp/) | `sdks/csharp/api` | `OuraToolkit.Auth` | `OuraToolkit.Api` / `OuraToolkit.Auth` — published ([NuGet](https://www.nuget.org/packages/OuraToolkit.Api)) |
 
-:::caution[Publishing in progress]
-Every breadth client is compile-checked and drift-checked in CI, and smoke-tested against
-Oura's live sandbox. Rust (crates.io), TypeScript (npm), Python (PyPI), Go (release-tagged
-for `go get`) and C# (NuGet) are published; the Java client is **not yet published** to
-Maven Central. Consume it from source for now, and supply your own access token.
+:::note[All six published]
+Every SDK is compile-checked, drift-checked and sandbox smoke-tested in CI — and published:
+Rust (crates.io), TypeScript (npm), Python (PyPI), Go (release-tagged for `go get`), C#
+(NuGet) and Java (Maven Central), all versioned in lockstep with each toolkit release.
 :::
 
 ## What each client does — and doesn't
