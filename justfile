@@ -69,6 +69,11 @@ generated_dirs := "sdks/rust/oura-toolkit-api sdks/typescript/api sdks/python/ou
 # TESTING & VERIFICATION.
 coverage_floor := "85"
 
+# The cargo-dist pin, read from its single source (dist-workspace.toml's cargo-dist-version).
+# `setup` installs exactly this version and the release preflight asserts it: a different
+# local dist fails `dist generate --check` (release.yml drift) — post-bump, without this.
+dist_version := `sed -nE 's/^cargo-dist-version = "([^"]+)"$/\1/p' dist-workspace.toml`
+
 # Show available recipes (default recipe).
 default:
     @just --list --unsorted
@@ -92,8 +97,11 @@ setup: install-nightly-rustfmt install-progenitor
     # The netstandard2.0/Mono leg (`just sdk-test-csharp-netstandard`, #61) runs the C# suite
     # under Mono against the net472-resolved netstandard2.0 asset; only that recipe needs it.
     @command -v mono >/dev/null || echo "!! install mono (apt: mono-devel) -- needed by 'just sdk-test-csharp-netstandard' (#61 netstandard2.0 leg)"
-    # Release tooling (`just dist-check` / `just dist-build` / `just release`).
-    command -v dist >/dev/null || cargo install cargo-dist --locked
+    # Release tooling (`just dist-check` / `just dist-build` / `just release`) — installed at
+    # the PIN from dist-workspace.toml, and re-pinned if a different version is on PATH (a
+    # floating `latest` would fail dist-check's `dist generate --check` drift guard).
+    dist --version 2>/dev/null | grep -qx "cargo-dist {{dist_version}}" || cargo install cargo-dist --version {{dist_version}} --locked --force
+    @command -v claude >/dev/null || echo "!! install the claude CLI (npm i -g @anthropic-ai/claude-code) -- needed by 'just plugin-check' (and every release via the gate)"
 
 # Install the pinned nightly rustfmt (`nightly_rustfmt`) that `just gen-rust` formats through.
 # Its own recipe so CI's gen-drift job installs the SAME dated toolchain without duplicating the
@@ -738,10 +746,23 @@ release new_version:
       command -v "$tool" >/dev/null \
         || { echo "release: '$tool' not found — the version bump regenerates every SDK client and needs it (run 'just setup'; for java: brew install --cask temurin)"; exit 1; }
     done
+    # openapi-generator's jar needs Java 11+ (an ancient JRE fails mid-gen with a
+    # class-file-version error). Lenient parse: unparseable output passes presence-only.
+    jmaj="$(java -version 2>&1 | sed -nE 's/.*version "([0-9]+)[.0-9]*.*/\1/p' | head -n1)"
+    if [ -n "$jmaj" ] && { [ "$jmaj" = "1" ] || [ "$jmaj" -lt 11 ]; }; then
+      echo "release: java is major version ${jmaj}, but openapi-generator needs 11+ (brew install --cask temurin)"; exit 1
+    fi
     command -v cargo-progenitor >/dev/null \
       || { echo "release: cargo-progenitor not installed — run 'just install-progenitor' (or 'just setup')"; exit 1; }
     rustup which --toolchain "{{nightly_rustfmt}}" rustfmt >/dev/null 2>&1 \
       || { echo "release: pinned nightly rustfmt ({{nightly_rustfmt}}) unavailable — run 'just install-nightly-rustfmt' (or 'just setup')"; exit 1; }
+    # The post-bump release-config gate needs these too (a failure there also strands a
+    # half-bumped tree): dist at EXACTLY the dist-workspace.toml pin (any other version fails
+    # dist-check's `dist generate --check` drift guard), and the claude CLI for plugin-check.
+    dist --version 2>/dev/null | grep -qx "cargo-dist {{dist_version}}" \
+      || { echo "release: dist is '$(dist --version 2>/dev/null || echo not installed)' but dist-workspace.toml pins {{dist_version}} — run 'just setup' (it re-pins)"; exit 1; }
+    command -v claude >/dev/null \
+      || { echo "release: claude CLI not installed — 'just plugin-check' needs it (npm i -g @anthropic-ai/claude-code)"; exit 1; }
 
     # Shared choreography: gate → set-version → guards → commit → tag → push (triggers CI).
     just release-tag "${ver}"
