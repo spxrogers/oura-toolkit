@@ -90,7 +90,8 @@ setup: install-nightly-rustfmt install-progenitor
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
-    @command -v java >/dev/null || echo "!! install a Java runtime (e.g. brew install --cask temurin) -- openapi-generator is a jar: needed by breadth-SDK codegen ('just gen', and every release via set-version)"
+    # (Runs java rather than `command -v`: a JDK-less macOS still has a /usr/bin/java stub.)
+    @java -version >/dev/null 2>&1 || echo "!! install a Java runtime (e.g. brew install --cask temurin) -- openapi-generator is a jar: needed by breadth-SDK codegen ('just gen', and every release via set-version)"
     # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an
     # 8.x/9.x SDK cannot build the net10.0 leg). Only relevant to the C# breadth-SDK recipes.
     @dotnet --list-sdks 2>/dev/null | grep -q '^10\.' || echo "!! install the .NET 10 SDK -- needed by 'just sdk-check-csharp' / 'just sdk-test-csharp' (net10.0 target)"
@@ -746,9 +747,16 @@ release new_version:
       command -v "$tool" >/dev/null \
         || { echo "release: '$tool' not found — the version bump regenerates every SDK client and needs it (run 'just setup'; for java: brew install --cask temurin)"; exit 1; }
     done
+    # `command -v java` is NOT enough on macOS: a JDK-less Mac still has a /usr/bin/java STUB
+    # that only prints "install Java" and exits 1 — so actually RUN it. The capture sits in an
+    # `if !` guard deliberately: a bare `var="$(java …)"` failing under set -e would abort the
+    # preflight SILENTLY before any diagnostic could print (exactly the bad UX this replaced).
+    if ! jout="$(java -version 2>&1)"; then
+      echo "release: 'java' exists but cannot run — on macOS that's the JDK-less stub. Install one: brew install --cask temurin"; exit 1
+    fi
     # openapi-generator's jar needs Java 11+ (an ancient JRE fails mid-gen with a
-    # class-file-version error). Lenient parse: unparseable output passes presence-only.
-    jmaj="$(java -version 2>&1 | sed -nE 's/.*version "([0-9]+)[.0-9]*.*/\1/p' | head -n1)"
+    # class-file-version error). Lenient parse: unparseable output passes the runnable check.
+    jmaj="$(printf '%s\n' "$jout" | sed -nE 's/.*version "([0-9]+)[.0-9]*.*/\1/p' | head -n1)"
     if [ -n "$jmaj" ] && { [ "$jmaj" = "1" ] || [ "$jmaj" -lt 11 ]; }; then
       echo "release: java is major version ${jmaj}, but openapi-generator needs 11+ (brew install --cask temurin)"; exit 1
     fi
