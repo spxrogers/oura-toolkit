@@ -1156,3 +1156,41 @@ fn documented_maven_coordinates_match_the_poms() {
          would silently stop publishing"
     );
 }
+
+/// The docs-site analytics guard stays WIRED INTO the docs CI gate. `just docs-analytics-check`
+/// verifies the built pages carry the Google Analytics tag, but a guard nothing invokes guards
+/// nothing: `docs-check` (the single recipe the docs CI job runs) must keep depending on it, and
+/// the workflow must keep running `docs-check`. Break-verified by dropping the dependency.
+#[test]
+fn docs_check_runs_the_analytics_guard() {
+    let root = repo_root();
+    let justfile = read(&root.join("justfile"));
+    let header = justfile
+        .lines()
+        .find(|l| l.starts_with("docs-check:") || l.starts_with("docs-check "))
+        .expect("justfile lost its docs-check recipe (the docs CI gate)");
+    let deps = header
+        .split_once(':')
+        .map(|(_, deps)| deps)
+        .unwrap_or_default();
+    assert!(
+        deps.split_whitespace()
+            .any(|dep| dep == "docs-analytics-check"),
+        "`just docs-check` no longer depends on docs-analytics-check — the docs-site \
+         Google Analytics tag would stop being verified and could vanish unnoticed \
+         (deps: {deps:?})"
+    );
+    assert!(
+        justfile
+            .lines()
+            .any(|l| l.starts_with("docs-analytics-check:")
+                || l.starts_with("docs-analytics-check ")),
+        "justfile references docs-analytics-check but no longer defines it"
+    );
+    let ci = read(&root.join(".github/workflows/ci.yml"));
+    assert!(
+        ci.contains("run: just docs-check"),
+        "ci.yml's docs job no longer runs `just docs-check` — the docs build, CLI-reference \
+         drift guard, and analytics guard would all stop gating PRs"
+    );
+}

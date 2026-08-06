@@ -162,6 +162,12 @@ the rest of the repo, so the docs can't drift from the code:
   paths, MCP tool names, env overrides, rate-limit numbers, the SDK language set) pinned to
   source by the docs-site tripwires in `cli/oura-toolkit-cli/tests/docs_tripwire.rs`.
 
+- **Analytics** — Google Analytics 4 (property `G-TGEWR7137V`), added as two Starlight `head`
+  entries in `docs-site/astro.config.mjs` (async `gtag.js` loader + Google's bootstrap snippet)
+  off a single `GA_MEASUREMENT_ID` constant. It is the site's only third-party request — fonts
+  and search stay self-hosted. `just docs-analytics-check` greps the *built* pages for the
+  loader and the `config` call, so the tag can't silently vanish.
+
 Everything goes through `just docs-*` recipes (a `[group('docs')]`); a PR build gate
 (`just docs-check`) runs in CI. Built-in Pagefind search, dark mode, and versioned nav come
 from Starlight. The page footer's "Last updated" line also carries the **deployed commit's

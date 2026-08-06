@@ -5,6 +5,13 @@ import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 
 const GITHUB_URL = "https://github.com/spxrogers/oura-toolkit";
 
+// The Google Analytics 4 property for ouratoolkit.com. Single-sourced here: the gtag.js loader
+// URL and the `config` call in the head entries below both interpolate this constant, so the
+// two can never name different properties. `just docs-analytics-check` greps the BUILT pages
+// (not this file) for both, so a dropped head entry or a Starlight head-handling change fails
+// the docs CI job instead of silently zeroing the site's traffic data.
+const GA_MEASUREMENT_ID = "G-TGEWR7137V";
+
 // The commit the live site was built from — surfaced in the footer as a "what's currently
 // live" breadcrumb (see src/components/LastUpdated.astro). Prefer the CI-provided SHA (GitHub
 // Actions sets GITHUB_SHA; other hosts set their own), then fall back to the local git HEAD for
@@ -69,6 +76,25 @@ export default defineConfig({
           // from the site's own self-hosted fonts.
           tag: "meta",
           attrs: { property: "og:image", content: "https://ouratoolkit.com/og.png" },
+        },
+        {
+          // Google Analytics (gtag.js). `async` so the third-party request never blocks first
+          // paint; the bootstrap below is the snippet Google hands out, verbatim apart from
+          // reading the property id from GA_MEASUREMENT_ID.
+          tag: "script",
+          attrs: {
+            async: true,
+            src: `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`,
+          },
+        },
+        {
+          tag: "script",
+          content: [
+            "window.dataLayer = window.dataLayer || [];",
+            "function gtag(){dataLayer.push(arguments);}",
+            "gtag('js', new Date());",
+            `gtag('config', '${GA_MEASUREMENT_ID}');`,
+          ].join("\n"),
         },
         {
           // Dark is the flagship ("Midnight"): seed the theme choice to dark for

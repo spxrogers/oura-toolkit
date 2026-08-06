@@ -104,7 +104,7 @@ same sources as the code so it can't drift.
 just docs-dev       # local dev server (overlaid spec + fresh CLI reference first)
 just docs-build     # production build to docs-site/dist/ (Pagefind search index)
 just docs-gen-cli   # regenerate the committed CLI reference from the `oura` binary
-just docs-check     # the docs CI gate: CLI-reference drift check + full build
+just docs-check     # the docs CI gate: CLI-reference drift check + build + analytics guard
 ```
 
 Two things are generated, never hand-edited: the **API reference** is built from the overlaid
@@ -116,6 +116,13 @@ ports, store paths, tool names, env vars, rate-limit numbers, the SDK language s
 to source by the docs-site tripwires in `cli/oura-toolkit-cli/tests/docs_tripwire.rs`, so a code
 change that orphans the site fails `just ci`. Deploy is automatic: pushing to `main` runs
 `.github/workflows/docs-deploy.yml` (GitHub Pages).
+
+The site loads **Google Analytics** (GA4 property `G-TGEWR7137V`): two `head` entries in
+`docs-site/astro.config.mjs` — the async `gtag.js` loader and Google's bootstrap snippet — both
+interpolating one `GA_MEASUREMENT_ID` constant, so the loader and the `config` call can't name
+different properties. `just docs-analytics-check` (a dependency of `docs-check`, so CI runs it)
+greps the *built* pages for both, meaning a dropped head entry or a Starlight change that stops
+emitting it fails a PR instead of silently zeroing the traffic data.
 
 Each page's footer shows the **deployed commit's short SHA**, linked to the commit on GitHub —
 a "what's currently live" breadcrumb. It comes from CI's `GITHUB_SHA` (or your local `git` HEAD

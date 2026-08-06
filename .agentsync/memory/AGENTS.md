@@ -407,7 +407,8 @@ that orphaned it.
   - **Guides + SDK pages** — hand-written; enumerable claims pinned by the docs-site tripwires
     in `docs_tripwire.rs`.
 - **Everything is a `just docs-*` recipe** (`[group('docs')]`); raw npm/astro/jq stay inside
-  them. `just docs-check` (drift + build) is the CI gate — a broken build or stale CLI reference
+  them. `just docs-check` (drift + build + the `docs-analytics-check` guard over the built
+  pages' Google Analytics tag) is the CI gate — a broken build or stale CLI reference
   fails a PR (green CI is releasable covers the docs too).
 
 ---
