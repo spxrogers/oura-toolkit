@@ -215,6 +215,19 @@ docs can't drift, matching the repo's law:
 - **Guides + SDK pages** hand-written; their enumerable claims are pinned by docs-site tripwires
   in `docs_tripwire.rs` (the #45 pattern extended to `docs-site/`). A PR build gate
   (`just docs-check`) is a CI job, so "green CI is releasable" covers the docs too.
+- **Analytics: Google Analytics 4 via Starlight's `head` config**, not a `Head` component
+  override and not `@astrojs/partytown`. The `head` array is Starlight's sanctioned hook, is
+  already used here (og:image, the dark-theme seed), and applies to every page including the
+  generated API reference — an override would have to re-render Starlight's own head to add two
+  tags. Partytown buys a web-worker relay at the cost of a proxying service worker and a
+  documented pile of GA caveats, for a static docs site whose measurable cost is one `async`
+  script. The measurement id is a single constant interpolated into both the loader URL and the
+  `config` call, so those cannot drift apart. **Verified where it matters**: `just
+  docs-analytics-check` (a `docs-check` dependency) greps the BUILT html, not the config —
+  configuring analytics that never render is the actual failure mode, and it fails CI. A
+  `docs_tripwire.rs` test keeps that guard wired into the gate. Accepted: GA is the site's one
+  third-party request; the "no external font requests" property of the Midnight theme is
+  unaffected (fonts remain self-hosted via `@fontsource`).
 Everything is a `just docs-*` recipe (`[group('docs')]`); raw npm/astro/jq stay inside them.
 
 ---

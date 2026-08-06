@@ -1142,7 +1142,45 @@ docs-build: docs-spec docs-gen-cli docs-install
 docs-preview: docs-build
     cd {{docs_dir}} && npm run preview
 
-# The docs CI gate (one recipe, like every other CI job): the CLI-reference drift check, then a
-# full production build — a broken Astro/API build or a stale CLI reference fails here.
+# Analytics guard, END-TO-END: every BUILT page carries the gtag.js loader AND the `config`
+# call, both naming the one property id read out of astro.config.mjs (its single source). It
+# greps the RENDERED html rather than the config, so a dropped head entry, a Starlight
+# head-handling change, or a mismatched id fails the docs CI job instead of silently zeroing the
+# site's traffic data. Break-verified by deleting the head entries (all pages -> flagged).
 [group('docs')]
-docs-check: docs-gen-cli-check docs-build
+docs-analytics-check: docs-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # `|| true`: no match is a real (reported) failure below, not an opaque pipefail abort.
+    ids=$(grep -oE 'G-[A-Z0-9]{6,}' {{docs_dir}}/astro.config.mjs | sort -u || true)
+    if [ -z "$ids" ]; then
+      echo "docs-analytics-check: no GA measurement id (G-XXXXXXX) in {{docs_dir}}/astro.config.mjs"
+      exit 1
+    fi
+    if [ "$(printf '%s\n' "$ids" | wc -l)" -ne 1 ]; then
+      echo "docs-analytics-check: astro.config.mjs names more than one GA property:"; printf '%s\n' "$ids"
+      exit 1
+    fi
+    id="$ids"
+    pages=$(find {{docs_dir}}/dist -name '*.html' | sort)
+    count=$(printf '%s\n' "$pages" | grep -c . || true)
+    if [ "$count" -lt 10 ]; then
+      echo "docs-analytics-check: only $count built pages under {{docs_dir}}/dist — did docs-build produce a site?"
+      exit 1
+    fi
+    fail=0
+    while IFS= read -r page; do
+      grep -Fq "googletagmanager.com/gtag/js?id=$id" "$page" || { echo "  no gtag.js loader: $page"; fail=1; }
+      grep -Fq "gtag('config', '$id')" "$page" || { echo "  no gtag config call: $page"; fail=1; }
+    done <<< "$pages"
+    if [ "$fail" -ne 0 ]; then
+      echo "docs-analytics-check: the Google Analytics tag is missing from built pages (above) — check the head entries in {{docs_dir}}/astro.config.mjs"
+      exit 1
+    fi
+    echo "docs-analytics-check: $id present on all $count built pages"
+
+# The docs CI gate (one recipe, like every other CI job): the CLI-reference drift check, a full
+# production build — a broken Astro/API build or a stale CLI reference fails here — and the
+# analytics guard over what that build actually rendered.
+[group('docs')]
+docs-check: docs-gen-cli-check docs-build docs-analytics-check
