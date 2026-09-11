@@ -80,7 +80,7 @@ Vendor Oura's OpenAPI **v3.1** spec (title "Oura API Documentation", version **2
 it at `spec/openapi.json` from the versioned export:
 
 ```
-https://api.ouraring.com/v2/static/json/openapi-1.35.json
+https://api.ouraring.com/v2/static/json/openapi-1.37.json
 ```
 
 - Fetched via `just spec-fetch`. The spec drives **EVERYTHING** downstream — the Rust client,

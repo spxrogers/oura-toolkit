@@ -5532,6 +5532,13 @@ pub mod types {
     #[doc = "    \"type\""]
     #[doc = "  ],"]
     #[doc = "  \"properties\": {"]
+    #[doc = "    \"ctx\": {"]
+    #[doc = "      \"title\": \"Context\","]
+    #[doc = "      \"type\": \"object\""]
+    #[doc = "    },"]
+    #[doc = "    \"input\": {"]
+    #[doc = "      \"title\": \"Input\""]
+    #[doc = "    },"]
     #[doc = "    \"loc\": {"]
     #[doc = "      \"title\": \"Location\","]
     #[doc = "      \"type\": \"array\","]
@@ -5560,6 +5567,10 @@ pub mod types {
     #[doc = r" </details>"]
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ValidationError {
+        #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+        pub ctx: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub input: ::std::option::Option<::serde_json::Value>,
         pub loc: ::std::vec::Vec<LocationItem>,
         pub msg: ::std::string::String,
         #[serde(rename = "type")]

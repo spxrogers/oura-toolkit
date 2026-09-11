@@ -12,7 +12,7 @@
 # exercised hermetically by `just spec-drift-selftest` through the env hooks below (no network).
 #
 # Usage: spec-drift.sh <spec_version> <spec_url> <spec_file>
-#   e.g. spec-drift.sh openapi-1.35 https://api.ouraring.com/v2/static/json/openapi-1.35.json spec/openapi.json
+#   e.g. spec-drift.sh openapi-1.37 https://api.ouraring.com/v2/static/json/openapi-1.37.json spec/openapi.json
 #
 # Test hooks (UNSET in production — the selftest sets them to avoid the network):
 #   OURA_SPEC_DRIFT_UPSTREAM_FILE   use this local file as "upstream content" instead of curl
@@ -36,7 +36,7 @@ if [[ ! "$spec_version" =~ ^openapi-([0-9]+)\.([0-9]+)$ ]]; then
 fi
 major="${BASH_REMATCH[1]}"
 minor="${BASH_REMATCH[2]}"
-# ".../json/openapi-1.35.json" -> ".../json/openapi-" so we can probe "<root><maj>.<min>.json".
+# ".../json/openapi-1.37.json" -> ".../json/openapi-" so we can probe "<root><maj>.<min>.json".
 url_root="${spec_url%"${major}.${minor}.json"}"
 
 report=""
