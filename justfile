@@ -503,7 +503,15 @@ sdk-test-csharp:
 sdk-test-csharp-netstandard:
     command -v mono >/dev/null || { echo "!! install mono (apt: mono-devel) -- needed by 'just sdk-test-csharp-netstandard' to run the net472/netstandard2.0 leg"; exit 1; }
     dotnet build --nologo -v quiet -c Release -f net472 -p:NetFxTest=true sdks/csharp/auth/tests/OuraToolkit.Auth.Tests
-    mono sdks/csharp/auth/tests/OuraToolkit.Auth.Tests/bin/Release/net472/xunit-runner/xunit.console.exe sdks/csharp/auth/tests/OuraToolkit.Auth.Tests/bin/Release/net472/OuraToolkit.Auth.Tests.dll
+    # -noappdomain is LOAD-BEARING, not tidying (see DECISIONS #61): xunit.console defaults to
+    # running the tests in a separate AppDomain with shadow copying, and Mono's AppDomain
+    # implementation is the flaky part of this leg — a CI run on #114 had all 85 tests fail with
+    # "Could not load file or assembly 'xunit.assert'" (resolution fell back to the RUNNER's
+    # directory, which holds no xunit.assert) and then SIGSEGV'd in the runtime. Without an
+    # AppDomain the runner loads the suite in the default domain, resolving from the test
+    # assembly's own directory. It does not weaken the leg: the net472 build still resolves the
+    # library's netstandard2.0 asset, and BuildInfoTests asserts exactly that.
+    mono sdks/csharp/auth/tests/OuraToolkit.Auth.Tests/bin/Release/net472/xunit-runner/xunit.console.exe sdks/csharp/auth/tests/OuraToolkit.Auth.Tests/bin/Release/net472/OuraToolkit.Auth.Tests.dll -noappdomain
 
 # ---------------------------------------------------------------------------------------------
 # Build / test / quality

@@ -288,6 +288,18 @@ for net472 and runs it under **Mono** (its own `csharp-netstandard` CI job), so 
 branches actually run — TESTING rule 6 ("platform code runs on its platform"). A
 `BuildInfoTests` marker fails the leg if it ever loads the wrong asset.
 
+The runner invocation passes **`-noappdomain`**, and that flag is load-bearing. xunit.console
+defaults to executing the suite in a separate AppDomain with shadow copying; Mono's AppDomain
+implementation is the fragile part of this leg. A CI run on #114 failed all 85 tests with
+`Could not load file or assembly 'xunit.assert'` — assembly resolution had fallen back to the
+RUNNER's directory, which ships no `xunit.assert` — and then SIGSEGV'd in the runtime, on a
+commit that touched no C# and that reproduced green locally on the same Mono (6.8.0.105) and
+.NET SDK (10.0.401). In the default domain the runner resolves from the test assembly's own
+directory instead, which removes both the shadow copy and the domain unload. The leg's purpose
+survives untouched — net472 still resolves the library's netstandard2.0 asset, which is exactly
+what `BuildInfoTests` asserts — and a docs_tripwire test pins the flag so it cannot be dropped
+as tidying.
+
 ---
 
 ## Lessons from the review loops (bugs the process caught)
