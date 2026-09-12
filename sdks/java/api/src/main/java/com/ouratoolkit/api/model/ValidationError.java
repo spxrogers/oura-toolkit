@@ -28,6 +28,10 @@ import com.ouratoolkit.api.model.ValidationErrorLocInner;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.openapitools.jackson.nullable.JsonNullable;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.openapitools.jackson.nullable.JsonNullable;
+import java.util.NoSuchElementException;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 
@@ -38,7 +42,9 @@ import com.ouratoolkit.api.ApiClient;
 @JsonPropertyOrder({
   ValidationError.JSON_PROPERTY_LOC,
   ValidationError.JSON_PROPERTY_MSG,
-  ValidationError.JSON_PROPERTY_TYPE
+  ValidationError.JSON_PROPERTY_TYPE,
+  ValidationError.JSON_PROPERTY_INPUT,
+  ValidationError.JSON_PROPERTY_CTX
 })
 @javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.14.0")
 public class ValidationError {
@@ -53,6 +59,13 @@ public class ValidationError {
   public static final String JSON_PROPERTY_TYPE = "type";
   @javax.annotation.Nonnull
   private String type;
+
+  public static final String JSON_PROPERTY_INPUT = "input";
+  private JsonNullable<Object> input = JsonNullable.<Object>of(null);
+
+  public static final String JSON_PROPERTY_CTX = "ctx";
+  @javax.annotation.Nullable
+  private Object ctx;
 
   public ValidationError() { 
   }
@@ -137,6 +150,62 @@ public class ValidationError {
   }
 
 
+  public ValidationError input(@javax.annotation.Nullable Object input) {
+    this.input = JsonNullable.<Object>of(input);
+    return this;
+  }
+
+  /**
+   * Get input
+   * @return input
+   */
+  @javax.annotation.Nullable
+  @JsonIgnore
+  public Object getInput() {
+        return input.orElse(null);
+  }
+
+  @JsonProperty(JSON_PROPERTY_INPUT)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+
+  public JsonNullable<Object> getInput_JsonNullable() {
+    return input;
+  }
+  
+  @JsonProperty(JSON_PROPERTY_INPUT)
+  public void setInput_JsonNullable(JsonNullable<Object> input) {
+    this.input = input;
+  }
+
+  public void setInput(@javax.annotation.Nullable Object input) {
+    this.input = JsonNullable.<Object>of(input);
+  }
+
+
+  public ValidationError ctx(@javax.annotation.Nullable Object ctx) {
+    this.ctx = ctx;
+    return this;
+  }
+
+  /**
+   * Get ctx
+   * @return ctx
+   */
+  @javax.annotation.Nullable
+  @JsonProperty(JSON_PROPERTY_CTX)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public Object getCtx() {
+    return ctx;
+  }
+
+
+  @JsonProperty(JSON_PROPERTY_CTX)
+  @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
+  public void setCtx(@javax.annotation.Nullable Object ctx) {
+    this.ctx = ctx;
+  }
+
+
   /**
    * Return true if this ValidationError object is equal to o.
    */
@@ -151,12 +220,25 @@ public class ValidationError {
     ValidationError validationError = (ValidationError) o;
     return Objects.equals(this.loc, validationError.loc) &&
         Objects.equals(this.msg, validationError.msg) &&
-        Objects.equals(this.type, validationError.type);
+        Objects.equals(this.type, validationError.type) &&
+        equalsNullable(this.input, validationError.input) &&
+        Objects.equals(this.ctx, validationError.ctx);
+  }
+
+  private static <T> boolean equalsNullable(JsonNullable<T> a, JsonNullable<T> b) {
+    return a == b || (a != null && b != null && a.isPresent() && b.isPresent() && Objects.deepEquals(a.get(), b.get()));
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(loc, msg, type);
+    return Objects.hash(loc, msg, type, hashCodeNullable(input), ctx);
+  }
+
+  private static <T> int hashCodeNullable(JsonNullable<T> a) {
+    if (a == null) {
+      return 1;
+    }
+    return a.isPresent() ? Arrays.deepHashCode(new Object[]{a.get()}) : 31;
   }
 
   @Override
@@ -166,6 +248,8 @@ public class ValidationError {
     sb.append("    loc: ").append(toIndentedString(loc)).append("\n");
     sb.append("    msg: ").append(toIndentedString(msg)).append("\n");
     sb.append("    type: ").append(toIndentedString(type)).append("\n");
+    sb.append("    input: ").append(toIndentedString(input)).append("\n");
+    sb.append("    ctx: ").append(toIndentedString(ctx)).append("\n");
     sb.append("}");
     return sb.toString();
   }
@@ -231,6 +315,16 @@ public class ValidationError {
     // add `type` to the URL query string
     if (getType() != null) {
       joiner.add(String.format("%stype%s=%s", prefix, suffix, ApiClient.urlEncode(ApiClient.valueToString(getType()))));
+    }
+
+    // add `input` to the URL query string
+    if (getInput() != null) {
+      joiner.add(String.format("%sinput%s=%s", prefix, suffix, ApiClient.urlEncode(ApiClient.valueToString(getInput()))));
+    }
+
+    // add `ctx` to the URL query string
+    if (getCtx() != null) {
+      joiner.add(String.format("%sctx%s=%s", prefix, suffix, ApiClient.urlEncode(ApiClient.valueToString(getCtx()))));
     }
 
     return joiner.toString();

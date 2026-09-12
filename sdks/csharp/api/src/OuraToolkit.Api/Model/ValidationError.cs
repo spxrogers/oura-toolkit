@@ -43,7 +43,9 @@ namespace OuraToolkit.Api.Model
         /// <param name="loc">loc (required).</param>
         /// <param name="msg">msg (required).</param>
         /// <param name="type">type (required).</param>
-        public ValidationError(List<ValidationErrorLocInner> loc = default, string msg = default, string type = default)
+        /// <param name="input">input.</param>
+        /// <param name="ctx">ctx.</param>
+        public ValidationError(List<ValidationErrorLocInner> loc = default, string msg = default, string type = default, Object input = default, Object ctx = default)
         {
             // to ensure "loc" is required (not null)
             if (loc == null)
@@ -63,6 +65,8 @@ namespace OuraToolkit.Api.Model
                 throw new ArgumentNullException("type is a required property for ValidationError and cannot be null");
             }
             this.Type = type;
+            this.Input = input;
+            this.Ctx = ctx;
         }
 
         /// <summary>
@@ -84,6 +88,18 @@ namespace OuraToolkit.Api.Model
         public string Type { get; set; }
 
         /// <summary>
+        /// Gets or Sets Input
+        /// </summary>
+        [DataMember(Name = "input", EmitDefaultValue = true)]
+        public Object Input { get; set; }
+
+        /// <summary>
+        /// Gets or Sets Ctx
+        /// </summary>
+        [DataMember(Name = "ctx", EmitDefaultValue = false)]
+        public Object Ctx { get; set; }
+
+        /// <summary>
         /// Returns the string presentation of the object
         /// </summary>
         /// <returns>String presentation of the object</returns>
@@ -94,6 +110,8 @@ namespace OuraToolkit.Api.Model
             sb.Append("  Loc: ").Append(Loc).Append("\n");
             sb.Append("  Msg: ").Append(Msg).Append("\n");
             sb.Append("  Type: ").Append(Type).Append("\n");
+            sb.Append("  Input: ").Append(Input).Append("\n");
+            sb.Append("  Ctx: ").Append(Ctx).Append("\n");
             sb.Append("}\n");
             return sb.ToString();
         }
