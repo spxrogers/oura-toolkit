@@ -1157,6 +1157,36 @@ fn documented_maven_coordinates_match_the_poms() {
     );
 }
 
+/// The Mono leg keeps running WITHOUT AppDomains (#61). xunit.console's default AppDomain +
+/// shadow-copy path is Mono's flaky part — it failed every test on a #114 CI run with an
+/// "xunit.assert" load error, then SIGSEGV'd — so `just sdk-test-csharp-netstandard` passes
+/// `-noappdomain`. A silent removal would restore an intermittently-red job that looks like a
+/// code failure, and the job must keep running the recipe at all. Break-verified by dropping
+/// the flag and by deleting the job's run step.
+#[test]
+fn netstandard_leg_runs_the_suite_without_app_domains() {
+    let root = repo_root();
+    let justfile = read(&root.join("justfile"));
+    let mono_line = justfile
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("mono ") && l.contains("xunit.console.exe"))
+        .expect("justfile lost the Mono xunit.console invocation (the #61 netstandard2.0 leg)");
+    assert!(
+        mono_line
+            .split_whitespace()
+            .any(|arg| arg == "-noappdomain"),
+        "the Mono leg's xunit.console run dropped -noappdomain — Mono's AppDomain + shadow-copy \
+         path makes the whole suite fail to load xunit.assert intermittently (line: {mono_line:?})"
+    );
+    let ci = read(&root.join(".github/workflows/ci.yml"));
+    assert!(
+        ci.contains("run: just sdk-test-csharp-netstandard"),
+        "ci.yml's csharp-netstandard job no longer runs `just sdk-test-csharp-netstandard` — \
+         the netstandard2.0 branches would stop executing on any CI leg (#61)"
+    );
+}
+
 /// The docs-site analytics guard stays WIRED INTO the docs CI gate. `just docs-analytics-check`
 /// verifies the built pages carry the Google Analytics tag, but a guard nothing invokes guards
 /// nothing: `docs-check` (the single recipe the docs CI job runs) must keep depending on it, and
