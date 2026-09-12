@@ -1,6 +1,6 @@
 {
   "name": "@oura-toolkit/api",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Generated typescript-fetch client for the Oura Ring API v2 — part of oura-toolkit",
   "repository": {
     "type": "git",
