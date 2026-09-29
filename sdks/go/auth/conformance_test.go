@@ -308,7 +308,7 @@ func TestConformanceCanonicalValidRecordsLoadAndRoundTrip(t *testing.T) {
 // scope keeps the prior grant (persisting a blank would erase what the re-consent check
 // reads, #116) and must not fail the refresh (that would burn the rotated refresh token);
 // a real scope string replaces it.
-func TestRefreshScopeCasesPersistExpectedScope(t *testing.T) {
+func TestConformanceRefreshScopeCasesPersistExpectedScope(t *testing.T) {
 	fixture := loadConformanceFixture(t)
 	table := fixture.RefreshScopeCases
 	if table.PriorScope == "" {

@@ -245,10 +245,11 @@ public class ConformanceTests
 
     /// <summary>
     /// A SUCCESSFUL refresh starting from a stored grant of <c>prior_scope</c> must persist
-    /// exactly <c>expected_scope</c>: an omitted, null, empty, whitespace-only (incl. U+00A0),
-    /// or non-string scope keeps the prior grant — and a non-string scope must not fail the
-    /// refresh, which would burn the rotated refresh token — (RFC 6749 §5.1 lets the server omit an unchanged scope; persisting a
-    /// blank would erase the grant the CLI's re-consent check reads), a real one replaces it.
+    /// exactly <c>expected_scope</c>. An omitted, null, empty, whitespace-only (incl. U+00A0),
+    /// or non-string scope keeps the prior grant, and a non-string scope must not fail the
+    /// refresh (which would burn the rotated refresh token). RFC 6749 §5.1 lets the server omit
+    /// an unchanged scope, and persisting a blank would erase the grant the CLI's re-consent
+    /// check reads. A real scope replaces it.
     /// The PERSISTED record is asserted (not just the returned value), and the access token
     /// must have become the fixture's rotated one — proving the refresh really happened.
     /// </summary>

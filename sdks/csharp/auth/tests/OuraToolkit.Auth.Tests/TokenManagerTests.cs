@@ -418,4 +418,38 @@ public class TokenManagerTests
         // The store is untouched — a timed-out refresh persists nothing.
         Assert.Equal("r1", temp.Store.LoadTokens()!.RefreshToken);
     }
+
+    /// <summary>
+    /// A refresh whose <c>scope</c> is a lone-surrogate escape (not valid UTF-16) must neither
+    /// escape as an untyped exception (System.Text.Json's GetString throws
+    /// InvalidOperationException on it) nor fail the refresh. It reads as absent, so the prior
+    /// grant is kept. C#-local, NOT a shared conformance case: the six JSON parsers already
+    /// disagree on invalid UTF-16 at the document level (Rust's serde rejects the whole
+    /// response), so no single cross-language contract exists (see DECISIONS.md, #116).
+    /// </summary>
+    [Fact]
+    public async Task ALoneSurrogateScopeKeepsThePriorGrantInsteadOfThrowingUntyped()
+    {
+        using var temp = new TempStore();
+        var prior = new Tokens
+        {
+            AccessToken = "at-original",
+            RefreshToken = "rt-original",
+            ExpiresAt = 0,
+            Scope = "personal daily",
+        };
+        temp.Store.SaveTokens(prior);
+        const string body =
+            "{\"access_token\":\"at-refreshed\",\"refresh_token\":\"rt-refreshed\"," +
+            "\"expires_in\":3600,\"scope\":\"\\ud800\"}";
+        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK, body));
+        using var manager = Manager(temp, endpoint, prior);
+
+        await manager.ForceRefreshAsync();
+
+        var persisted = temp.Store.LoadTokens();
+        Assert.NotNull(persisted);
+        Assert.Equal("at-refreshed", persisted!.AccessToken);
+        Assert.Equal("personal daily", persisted.Scope);
+    }
 }

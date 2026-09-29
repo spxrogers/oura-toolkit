@@ -291,7 +291,7 @@ public final class TokenManager {
      * True when every code point is whitespace. {@link String#isBlank()} is not enough: it
      * uses {@link Character#isWhitespace}, which excludes U+00A0 and the other no-break
      * Unicode space separators, so {@code "\u00a0"} would be persisted as a real grant while
-     * Rust/Python/Go/C# (and the fixture's {@code scope_nbsp} case) keep the prior one.
+     * Rust/Python/Go/C#/TypeScript (and the fixture's {@code scope_nbsp} case) keep the prior one.
      */
     private static boolean isBlankScope(String s) {
         return s.codePoints().allMatch(cp -> Character.isWhitespace(cp) || Character.isSpaceChar(cp));

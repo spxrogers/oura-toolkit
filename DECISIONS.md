@@ -381,11 +381,17 @@ The bookkeeping is a CLI-only `scope-notice.json`, not a
 `tokens.json` field, so the six-language store record format is untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
 §5.1), so the check can tell a current grant from a stale one. For the same reason every
 companion's REFRESH keeps the recorded grant when the response's `scope` is omitted, null,
-empty, whitespace-only (Unicode, incl. U+00A0), or not a string, and the refresh still
-succeeds: `scope` is informational, and failing would burn the rotated refresh token. The six
-had drifted. All six let a whitespace-only scope replace the grant, three also let `""` do it,
-and three failed the whole refresh on a non-string scope. That's pinned for all six by the
-shared conformance table `refresh_scope_cases`.
+empty, whitespace-only (ASCII space/tab and U+00A0 are pinned; rarer code points like U+0085
+are implementation-defined), or not a string, and the refresh still succeeds: `scope` is
+informational, and failing would burn the rotated refresh token. The six had drifted. All six
+let a whitespace-only scope replace the grant, and three also let `""` do it. On a non-string
+scope, Rust/Go/C# failed the whole refresh, Java persisted it as text (`"42"`), Python
+persisted the raw number, and only TypeScript kept the prior grant. That's pinned for all six
+by the shared conformance table `refresh_scope_cases`. One accepted gap: a scope that isn't
+valid UTF-16 (a lone-surrogate escape) has no shared case, because the six JSON parsers
+disagree at the document level (Rust's serde rejects the whole response). Each companion
+only has to fail typed or keep the prior grant, never crash untyped; C# pins its own
+behavior with a local test.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

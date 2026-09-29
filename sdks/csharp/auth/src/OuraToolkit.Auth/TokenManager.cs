@@ -372,7 +372,11 @@ public sealed class TokenManager : IDisposable
 
         /// <summary>
         /// The scope when it is a JSON string with non-whitespace content (U+00A0 counts as
-        /// whitespace); otherwise null, meaning "keep the prior grant".
+        /// whitespace); otherwise null, meaning "keep the prior grant". Never throws: a string
+        /// that isn't valid UTF-16 (a lone surrogate escape like <c>"\ud800"</c>) makes
+        /// <see cref="JsonElement.GetString"/> throw an untyped InvalidOperationException,
+        /// and an unusable informational field must neither escape untyped nor fail the
+        /// refresh, so it reads as absent too.
         /// </summary>
         public string? ScopeString()
         {
@@ -380,7 +384,15 @@ public sealed class TokenManager : IDisposable
             {
                 return null;
             }
-            var value = element.GetString();
+            string? value;
+            try
+            {
+                value = element.GetString();
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
             return string.IsNullOrWhiteSpace(value) ? null : value;
         }
 

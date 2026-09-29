@@ -19,8 +19,9 @@
     "   record that makes is-authenticated lie, and never an untyped crash.",
     " - refresh_scope_cases: a SUCCESSFUL refresh (valid 2xx, this JSON body) starting",
     "   from a stored grant of `prior_scope` must persist exactly `expected_scope`. An",
-    "   omitted, null, empty, whitespace-only (Unicode whitespace, incl. U+00A0), or",
-    "   non-string `scope` keeps the prior grant, and the refresh still SUCCEEDS: RFC",
+    "   omitted, null, empty, whitespace-only (ASCII space/tab and U+00A0; rarer",
+    "   code points are implementation-defined), or non-string (number, object, …)",
+    "   `scope` keeps the prior grant, and the refresh still SUCCEEDS: RFC",
     "   6749 §5.1 lets the server omit an unchanged scope, and `scope` is informational,",
     "   so failing the refresh would burn the rotated refresh token over it; persisting a",
     "   blank would erase the grant the CLI's re-consent check (#116) reads, making a",
@@ -64,6 +65,7 @@
       { "name": "scope_whitespace", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": " \t " }, "expected_scope": "personal daily" },
       { "name": "scope_nbsp", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": "\u00a0" }, "expected_scope": "personal daily" },
       { "name": "scope_wrong_type", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": 42 }, "expected_scope": "personal daily" },
+      { "name": "scope_object", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": { "a": 1 } }, "expected_scope": "personal daily" },
       { "name": "scope_returned", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": "personal" }, "expected_scope": "personal" }
     ]
   },
