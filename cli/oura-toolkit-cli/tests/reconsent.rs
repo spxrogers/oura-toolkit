@@ -327,6 +327,38 @@ fn a_bad_argument_fails_before_the_check_runs() {
     assert!(!fx.state_file().exists(), "the check never ran");
 }
 
+#[test]
+fn a_piped_body_with_body_fields_fails_before_the_check_runs() {
+    // `oura api`'s body conflict (a stdin body AND -f fields on a body method) is only
+    // reachable with a real piped stdin, which `run_args` (null stdin) can't give.
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let _guard = fx.rt.enter();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
+    fx.isolate(&mut cmd);
+    let mut child = cmd
+        .args(["api", "/v2/x", "-X", "POST", "-f", "a=b"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn oura");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"body":"too"}"#)
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stderr = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "a usage error: {stderr}");
+    assert!(
+        stderr.contains("cannot combine"),
+        "the body conflict itself: {stderr}"
+    );
+    assert!(!stderr.contains(NOTICE_PREFIX), "{stderr}");
+    assert!(!fx.state_file().exists(), "the check never ran");
+}
+
 /// Run `command` (a shell line) under `script(1)`, which gives it a real pseudo-terminal for
 /// stdin/stdout/stderr, feeding `input` as the user's keystrokes. The line reaches the binary
 /// and any output files through `$OURA_BIN` / `$OUT` (quoted in the line; nothing is

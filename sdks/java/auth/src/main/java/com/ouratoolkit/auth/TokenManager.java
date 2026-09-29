@@ -268,12 +268,12 @@ public final class TokenManager {
         String rotatedRefresh = node.hasNonNull("refresh_token")
                 ? node.get("refresh_token").asText()
                 : current.getRefreshToken(); // server omitted rotation; keep the old one
-        // An omitted, null, empty, or whitespace-only scope keeps the prior grant (RFC 6749
-        // §5.1 lets the server omit an unchanged scope); persisting a blank would erase the
-        // grant the CLI's re-consent check reads. Pinned by the shared conformance fixture's
-        // refresh_scope_cases table.
+        // An omitted, null, non-string, empty, or whitespace-only scope keeps the prior grant
+        // (RFC 6749 §5.1 lets the server omit an unchanged scope); persisting a blank would
+        // erase the grant the CLI's re-consent check reads. Pinned by the shared conformance
+        // fixture's refresh_scope_cases table.
         JsonNode scopeNode = node.get("scope");
-        String scope = scopeNode != null && scopeNode.isTextual() && !scopeNode.asText().isBlank()
+        String scope = scopeNode != null && scopeNode.isTextual() && !isBlankScope(scopeNode.asText())
                 ? scopeNode.asText()
                 : current.getScope();
         String tokenType = node.hasNonNull("token_type")
@@ -285,6 +285,16 @@ public final class TokenManager {
                 Instant.now().getEpochSecond() + expiresIn.asLong(),
                 scope,
                 tokenType);
+    }
+
+    /**
+     * True when every code point is whitespace. {@link String#isBlank()} is not enough: it
+     * uses {@link Character#isWhitespace}, which excludes U+00A0 and the other no-break
+     * Unicode space separators, so {@code "\u00a0"} would be persisted as a real grant while
+     * Rust/Python/Go/C# (and the fixture's {@code scope_nbsp} case) keep the prior one.
+     */
+    private static boolean isBlankScope(String s) {
+        return s.codePoints().allMatch(cp -> Character.isWhitespace(cp) || Character.isSpaceChar(cp));
     }
 
     private static String encodeForm(Map<String, String> form) {

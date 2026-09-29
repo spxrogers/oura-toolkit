@@ -83,6 +83,11 @@ def test_fixture_has_not_shrunk() -> None:
     assert len(HOSTILE_STORE_FILES) >= 8, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
     )
+    # pytest SKIPS a parametrize over an empty list, so an emptied refresh_scope_cases
+    # table would pass silently without this guard.
+    assert len(REFRESH_SCOPE_CASES) >= 7, (
+        f"fixture shrank? {len(REFRESH_SCOPE_CASES)} refresh_scope_cases cases"
+    )
 
 
 @pytest.mark.parametrize(
@@ -141,7 +146,7 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
 @pytest.mark.parametrize(
     "case", REFRESH_SCOPE_CASES, ids=[c["name"] for c in REFRESH_SCOPE_CASES]
 )
-def test_refresh_persists_the_fixture_expected_scope(
+def test_refresh_scope_cases_persist_expected_scope(
     token_endpoint, tmp_path: Path, case: dict
 ) -> None:
     body = case["body"]

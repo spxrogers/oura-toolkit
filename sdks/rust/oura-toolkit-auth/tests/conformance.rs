@@ -117,16 +117,17 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
 }
 
 /// A successful refresh keeps the recorded grant when the response's `scope` is omitted, null,
-/// empty, or whitespace-only, and adopts a real one (conformance `refresh_scope_cases`).
+/// empty, whitespace-only, or not a string, and adopts a real one (conformance
+/// `refresh_scope_cases`).
 #[tokio::test]
-async fn refresh_keeps_the_recorded_scope_unless_a_real_one_is_returned() {
+async fn refresh_scope_cases_persist_expected_scope() {
     let table = fixture()["refresh_scope_cases"].clone();
     let prior = table["prior_scope"]
         .as_str()
         .expect("prior_scope")
         .to_string();
     let cases = table["cases"].as_array().expect("cases").clone();
-    assert!(cases.len() >= 5, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 7, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -134,6 +135,7 @@ async fn refresh_keeps_the_recorded_scope_unless_a_real_one_is_returned() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_json(case["body"].clone()))
+            .named(name) // a failed `.expect(1)` (checked on drop) then names the case
             .expect(1)
             .mount(&server)
             .await;

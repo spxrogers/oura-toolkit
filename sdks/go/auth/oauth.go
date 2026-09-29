@@ -18,7 +18,24 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
 	TokenType    string `json:"token_type"`
-	Scope        string `json:"scope"`
+	// Scope is decoded leniently: it is informational only, so a non-string value (a
+	// number, object, array…) must NOT fail the refresh — that would burn the rotated
+	// refresh token the server just issued. See grantedScope.
+	Scope json.RawMessage `json:"scope"`
+}
+
+// grantedScope returns the scope string the server granted, or "" when the field is
+// omitted, null, not a JSON string, or blank after strings.TrimSpace (which also strips
+// Unicode spaces such as U+00A0). "" means "unchanged: keep the prior grant".
+func (tr *tokenResponse) grantedScope() string {
+	var s string
+	if len(tr.Scope) == 0 || json.Unmarshal(tr.Scope, &s) != nil {
+		return ""
+	}
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	return s
 }
 
 // refreshTokens refreshes at the token endpoint using the stored refresh token.
@@ -83,17 +100,17 @@ func refreshTokens(
 		// Persist the rotated token; fall back to the old one only if the server omits it.
 		RefreshToken: tr.RefreshToken,
 		ExpiresAt:    time.Now().Unix() + tr.ExpiresIn,
-		Scope:        tr.Scope,
+		Scope:        tr.grantedScope(),
 		TokenType:    tr.TokenType,
 	}
 	if refreshed.RefreshToken == "" {
 		refreshed.RefreshToken = current.RefreshToken
 	}
-	// An omitted, null, empty, or whitespace-only scope means "unchanged" (RFC 6749 §5.1
-	// lets the server omit it): keep the prior grant rather than persisting a blank that
-	// would erase it (#116's re-consent check reads it). Pinned by the shared
-	// refresh_scope_cases conformance table.
-	if strings.TrimSpace(refreshed.Scope) == "" {
+	// An omitted, null, empty, whitespace-only (incl. U+00A0), or non-string scope means
+	// "unchanged" (RFC 6749 §5.1 lets the server omit it): keep the prior grant rather than
+	// persisting a blank that would erase it (#116's re-consent check reads it). Pinned by
+	// the shared refresh_scope_cases conformance table.
+	if refreshed.Scope == "" {
 		refreshed.Scope = current.Scope
 	}
 	if refreshed.TokenType == "" {

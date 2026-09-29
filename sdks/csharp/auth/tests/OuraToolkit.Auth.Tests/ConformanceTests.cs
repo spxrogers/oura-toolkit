@@ -24,8 +24,9 @@ namespace OuraToolkit.Auth.Tests;
 /// round-trip through this companion's own persist path (the cross-language store
 /// compatibility check — field names are the shared wire format, #54);</item>
 /// <item>refresh scope cases → a SUCCESSFUL refresh from a stored grant of
-/// <c>prior_scope</c> persists exactly <c>expected_scope</c>: an omitted, null, empty, or
-/// whitespace-only <c>scope</c> keeps the prior grant; a real scope string replaces it.</item>
+/// <c>prior_scope</c> persists exactly <c>expected_scope</c>: an omitted, null, empty,
+/// whitespace-only (incl. U+00A0), or non-string <c>scope</c> keeps the prior grant (and a
+/// non-string one must not fail the refresh); a real scope string replaces it.</item>
 /// </list>
 ///
 /// Mirrors the Rust reference leg (<c>sdks/rust/oura-toolkit-auth/tests/conformance.rs</c>)
@@ -80,7 +81,8 @@ public class ConformanceTests
 
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
-    /// fixture shrank, so the table sizes are pinned here (>= 8 each, matching the other legs).
+    /// fixture shrank, so the table sizes are pinned here: >= 8 each for the hostile-response
+    /// and hostile-store tables (matching the other legs), >= 7 for refresh_scope_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -97,8 +99,8 @@ public class ConformanceTests
         Assert.True(fixture.TryGetProperty("refresh_scope_cases", out var scopeTable),
             "fixture lost its refresh_scope_cases table");
         var scopeCases = scopeTable.GetProperty("cases").GetArrayLength();
-        Assert.True(scopeCases >= 5,
-            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 5");
+        Assert.True(scopeCases >= 7,
+            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 7");
     }
 
     /// <summary>
@@ -243,15 +245,16 @@ public class ConformanceTests
 
     /// <summary>
     /// A SUCCESSFUL refresh starting from a stored grant of <c>prior_scope</c> must persist
-    /// exactly <c>expected_scope</c>: an omitted, null, empty, or whitespace-only scope keeps
-    /// the prior grant (RFC 6749 §5.1 lets the server omit an unchanged scope; persisting a
+    /// exactly <c>expected_scope</c>: an omitted, null, empty, whitespace-only (incl. U+00A0),
+    /// or non-string scope keeps the prior grant — and a non-string scope must not fail the
+    /// refresh, which would burn the rotated refresh token — (RFC 6749 §5.1 lets the server omit an unchanged scope; persisting a
     /// blank would erase the grant the CLI's re-consent check reads), a real one replaces it.
     /// The PERSISTED record is asserted (not just the returned value), and the access token
     /// must have become the fixture's rotated one — proving the refresh really happened.
     /// </summary>
     [Theory]
     [MemberData(nameof(RefreshScopeCases))]
-    public async Task RefreshPersistsTheFixtureScope(string name, string body, string expectedScope)
+    public async Task RefreshScopeCasesPersistExpectedScope(string name, string body, string expectedScope)
     {
         var prior = OriginalTokens() with { Scope = PriorScope() };
         using var temp = new TempStore();
@@ -271,7 +274,7 @@ public class ConformanceTests
             $"case {name}: the refresh must persist the new access token, got {persisted.AccessToken}");
         Assert.True(persisted.Scope == expectedScope,
             $"case {name}: a refresh from prior grant \"{PriorScope()}\" must persist scope "
-            + $"\"{expectedScope}\" (omitted/null/empty/whitespace keeps the prior grant), "
+            + $"\"{expectedScope}\" (omitted/null/empty/whitespace/non-string keeps the prior grant), "
             + $"got \"{persisted.Scope}\"");
     }
 

@@ -112,7 +112,7 @@ test("conformance: hostile 2xx token responses fail typed and leave the store un
   }
 });
 
-test("conformance: a successful refresh with a blank scope keeps the prior grant", async (t) => {
+test("conformance: refresh_scope_cases persist expected_scope", async (t) => {
   const table = fixture.refresh_scope_cases;
   assert.ok(table && typeof table === "object", "refresh_scope_cases table");
   const prior = table.prior_scope;
@@ -120,7 +120,7 @@ test("conformance: a successful refresh with a blank scope keeps the prior grant
   assert.notEqual(prior.trim(), "", "refresh_scope_cases.prior_scope must be a real grant");
   const cases = table.cases;
   assert.ok(Array.isArray(cases), "refresh_scope_cases.cases");
-  assert.ok(cases.length >= 5, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 7, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;

@@ -149,7 +149,8 @@ short version reviewers will hold you to:
   (ubuntu / macos / windows all run `just ci`).
 - Auth companions (all six languages) iterate the shared conformance fixture
   `codegen/conformance/auth-cases.json` — hostile token responses, hostile store files,
-  canonical store records. Add new hostile cases there, never to one language's suite.
+  refresh scope handling, canonical store records. Add new cases there, never to one
+  language's suite.
 
 ## Releases (maintainers)
 

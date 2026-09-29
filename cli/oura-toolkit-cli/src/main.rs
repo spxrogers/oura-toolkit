@@ -232,7 +232,7 @@ async fn run() -> anyhow::Result<()> {
     if let Some(range) = cli.command.as_ref().and_then(Command::range_args) {
         range.resolve()?;
     }
-    let mut api_request = match &cli.command {
+    let api_request = match &cli.command {
         Some(Command::Api {
             path,
             method,
@@ -332,9 +332,7 @@ async fn run() -> anyhow::Result<()> {
             // The authenticated escape hatch (#19): same auth layer + base URL as the data
             // commands, but a raw request to an arbitrary path — validated (and its stdin
             // body read) in the preflight above.
-            let request = api_request
-                .take()
-                .expect("the preflight prepares every `oura api` invocation");
+            let request = api_request.expect("the preflight prepares every `oura api` invocation");
             let manager = api::manager_from_env(env)?;
             let out = oura_toolkit_cli::passthrough::execute(&manager, request).await?;
             contract::emit(&out)?;

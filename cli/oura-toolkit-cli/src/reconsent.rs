@@ -75,7 +75,7 @@ pub(crate) fn missing_default_scopes(granted: Option<&str>) -> Vec<&'static str>
 }
 
 /// How a saved grant compares to the current default scopes.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ScopeGap {
     /// The default scopes the grant doesn't (or can't be shown to) cover.
     pub(crate) missing: Vec<&'static str>,
@@ -121,10 +121,10 @@ struct NoticeState {
 enum Action {
     /// The grant is current, there are no tokens, or the user was already told.
     Nothing,
-    /// Ask to re-authorize; carries the missing default scopes.
-    Prompt(Vec<&'static str>),
-    /// Print the one-line notice; carries the missing default scopes.
-    Notify(Vec<&'static str>),
+    /// Ask to re-authorize; carries the gap (missing scopes + how sure we are).
+    Prompt(ScopeGap),
+    /// Print the one-line notice; carries the gap.
+    Notify(ScopeGap),
 }
 
 /// The key a [`NoticeState`] entry is recorded under: the current default scope set, sorted,
@@ -141,8 +141,8 @@ fn decide(tokens: Option<&Tokens>, state: &NoticeState, interactive: bool) -> Ac
     let Some(tokens) = tokens else {
         return Action::Nothing;
     };
-    let missing = scope_gap(tokens).missing;
-    if missing.is_empty() {
+    let gap = scope_gap(tokens);
+    if gap.missing.is_empty() {
         return Action::Nothing;
     }
     let key = scope_set_key();
@@ -152,8 +152,8 @@ fn decide(tokens: Option<&Tokens>, state: &NoticeState, interactive: bool) -> Ac
         // A human who said "no" to this exact set isn't asked again, and scripts don't
         // re-announce what the human already declined.
         (_, true, _) => Action::Nothing,
-        (true, false, _) => Action::Prompt(missing),
-        (false, false, false) => Action::Notify(missing),
+        (true, false, _) => Action::Prompt(gap),
+        (false, false, false) => Action::Notify(gap),
         (false, false, true) => Action::Nothing,
     }
 }
@@ -240,22 +240,20 @@ async fn check<L, Fut>(
         return;
     };
     let mut state = load_state(store);
-    let coverage = tokens
-        .as_ref()
-        .map_or("doesn't cover", |t| scope_gap(t).coverage());
     match decide(tokens.as_ref(), &state, interactive) {
         Action::Nothing => {}
-        Action::Notify(missing) => {
+        Action::Notify(gap) => {
             let _ = writeln!(
                 out,
-                "{NOTICE_PREFIX} your saved login {coverage} this version's Oura permissions: \
-                 {} — run `oura auth login` to re-authorize (shown once).",
-                missing.join(" ")
+                "{NOTICE_PREFIX} your saved login {} this version's Oura permissions: {} — run \
+                 `oura auth login` to re-authorize (shown once).",
+                gap.coverage(),
+                gap.missing.join(" ")
             );
             state.notified = Some(scope_set_key());
             save_state(store, &state);
         }
-        Action::Prompt(missing) => {
+        Action::Prompt(gap) => {
             let how = if headless {
                 "the paste-back flow, since this looks like an SSH session"
             } else {
@@ -263,14 +261,15 @@ async fn check<L, Fut>(
             };
             let _ = write!(
                 out,
-                "{PROMPT_LEAD}, and your saved login {coverage}: {}\n\
+                "{PROMPT_LEAD}, and your saved login {}: {}\n\
                  A token refresh can't add scopes; a new login (consent) can.\n\
                  If your Oura app doesn't list them yet, add them first at \
                  {APP_REGISTRATION_URL}\n\
                  (Logs in via {how} on port {DEFAULT_LOGIN_PORT}. If your app is registered on \
                  another port, answer n and run `oura auth login --port <n>`.)\n\
                  {PROMPT_QUESTION} ",
-                missing.join(" ")
+                gap.coverage(),
+                gap.missing.join(" ")
             );
             let _ = out.flush();
             let mut line = String::new();
@@ -330,17 +329,17 @@ async fn check<L, Fut>(
 /// server.
 pub(crate) fn mcp_notice(store: &TokenStore) -> Option<String> {
     let tokens = store.load_tokens().ok()??;
-    let Action::Prompt(missing) = decide(Some(&tokens), &load_state(store), true) else {
+    let Action::Prompt(gap) = decide(Some(&tokens), &load_state(store), true) else {
         return None;
     };
-    let coverage = scope_gap(&tokens).coverage();
     Some(format!(
-        "{MCP_NOTICE_LEAD}, and the user's saved login {coverage} them: {}. The data above is \
+        "{MCP_NOTICE_LEAD}, and the user's saved login {} them: {}. The data above is \
          still valid. Tell the user once: to grant them, run `oura auth login` in a terminal. \
          If their Oura app doesn't list these scopes yet, they add them first at \
          {APP_REGISTRATION_URL}. To silence this without re-authorizing, they can answer `n` \
          when any `oura` data command asks in a terminal.",
-        missing.join(" ")
+        gap.coverage(),
+        gap.missing.join(" ")
     ))
 }
 
@@ -392,15 +391,15 @@ mod tests {
     }
 
     /// What a scripted `check` run did: stderr text, whether login was invoked, and with
-    /// which `no_browser` flag.
+    /// which `headless` (paste-back) flag.
     struct Ran {
         out: String,
         logged_in: bool,
-        no_browser: Option<bool>,
+        headless: Option<bool>,
     }
 
-    /// Run `check` with a scripted stdin. `login` is `Ok(Some(grant))` to simulate a
-    /// successful re-consent persisting `grant`, or `Err(msg)` to simulate a failed login.
+    /// Run `check` with a scripted stdin. `login` is `Ok(grant)` to simulate a successful
+    /// re-consent persisting `grant`, or `Err(msg)` to simulate a failed login.
     async fn run_with(
         store: &TokenStore,
         interactive: bool,
@@ -417,8 +416,8 @@ mod tests {
             headless,
             &mut |buf| std::io::BufRead::read_line(&mut input, buf),
             &mut out,
-            |no_browser| {
-                called.set(Some(no_browser));
+            |headless| {
+                called.set(Some(headless));
                 async move {
                     match login {
                         Ok(grant) => {
@@ -434,7 +433,7 @@ mod tests {
         Ran {
             out: String::from_utf8(out).unwrap(),
             logged_in: called.get().is_some(),
-            no_browser: called.get(),
+            headless: called.get(),
         }
     }
 
@@ -513,14 +512,17 @@ mod tests {
     #[test]
     fn a_stale_grant_prompts_interactively_and_notifies_otherwise() {
         let t = tokens(Some(PRE_1_41));
-        let missing = vec!["spo2", "heart_health"];
+        let gap = ScopeGap {
+            missing: vec!["spo2", "heart_health"],
+            recorded: true,
+        };
         assert_eq!(
             decide(Some(&t), &NoticeState::default(), true),
-            Action::Prompt(missing.clone())
+            Action::Prompt(gap.clone())
         );
         assert_eq!(
             decide(Some(&t), &NoticeState::default(), false),
-            Action::Notify(missing)
+            Action::Notify(gap)
         );
     }
 
@@ -605,7 +607,7 @@ mod tests {
         let ran = run_with(&store, true, true, "y\n", Ok(&grant)).await;
         assert!(ran.out.contains("paste-back"), "{}", ran.out);
         assert_eq!(
-            ran.no_browser,
+            ran.headless,
             Some(true),
             "a loopback can't be reached over SSH"
         );
@@ -613,7 +615,7 @@ mod tests {
         let ran = run_with(&store, true, false, "y\n", Ok(&grant)).await;
         assert!(ran.out.contains("your browser"), "{}", ran.out);
         assert_eq!(
-            ran.no_browser,
+            ran.headless,
             Some(false),
             "locally, the browser + loopback flow"
         );
@@ -797,6 +799,13 @@ mod tests {
             .join(format!(".{STATE_FILE}.{}.tmp", std::process::id()));
         std::fs::write(&tmp, "someone else's").unwrap();
         run_check(&store, false, "").await;
+        // Proves the planted path IS the one save_state uses (else this test is vacuous):
+        // the write was refused, so no record was created…
+        assert!(
+            !state_path(&store).exists(),
+            "the planted temp must have blocked the write"
+        );
+        // …and the file that blocked it is untouched.
         assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "someone else's");
     }
 

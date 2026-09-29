@@ -11,8 +11,9 @@
 //   - canonical valid records → load with exactly the fixture's field values and
 //     round-trip through this package's own persist path (the cross-language store
 //     compatibility check — field names are the shared wire format, #54);
-//   - successful refreshes whose scope is omitted/null/empty/whitespace → the prior
-//     grant is persisted unchanged; a real scope string replaces it.
+//   - successful refreshes whose scope is omitted/null/empty/whitespace (incl. U+00A0)
+//     or not a JSON string → the refresh SUCCEEDS and the prior grant is persisted
+//     unchanged; a real scope string replaces it.
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs).
 package auth
@@ -303,17 +304,18 @@ func TestConformanceCanonicalValidRecordsLoadAndRoundTrip(t *testing.T) {
 }
 
 // A SUCCESSFUL refresh starting from a stored grant of prior_scope must persist exactly
-// expected_scope: an omitted, null, empty, or whitespace-only scope keeps the prior grant
-// (persisting a blank would erase what the re-consent check reads, #116); a real scope
-// string replaces it.
-func TestConformanceRefreshScopeKeepsPriorGrantOnBlank(t *testing.T) {
+// expected_scope: an omitted, null, empty, whitespace-only (incl. U+00A0), or non-string
+// scope keeps the prior grant (persisting a blank would erase what the re-consent check
+// reads, #116) and must not fail the refresh (that would burn the rotated refresh token);
+// a real scope string replaces it.
+func TestRefreshScopeCasesPersistExpectedScope(t *testing.T) {
 	fixture := loadConformanceFixture(t)
 	table := fixture.RefreshScopeCases
 	if table.PriorScope == "" {
 		t.Fatal("fixture is missing refresh_scope_cases.prior_scope")
 	}
-	if n := len(table.Cases); n < 5 {
-		t.Fatalf("fixture shrank? refresh_scope_cases has %d cases, want >= 5", n)
+	if n := len(table.Cases); n < 7 {
+		t.Fatalf("fixture shrank? refresh_scope_cases has %d cases, want >= 7", n)
 	}
 
 	for _, tc := range table.Cases {

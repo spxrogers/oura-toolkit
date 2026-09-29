@@ -25,8 +25,19 @@ struct TokenResponse {
     expires_in: i64,
     #[serde(default)]
     token_type: Option<String>,
-    #[serde(default)]
+    /// Informational, so lenient: a non-string `scope` reads as absent (keep the prior grant)
+    /// rather than failing a refresh whose rotated refresh token would then be burned
+    /// (conformance `refresh_scope_cases`: `scope_wrong_type`).
+    #[serde(default, deserialize_with = "string_or_absent")]
     scope: Option<String>,
+}
+
+/// `Some` for a JSON string, `None` for anything else (null, a number, an object, …).
+fn string_or_absent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Ok(match serde_json::Value::deserialize(d)? {
+        serde_json::Value::String(s) => Some(s),
+        _ => None,
+    })
 }
 
 impl std::fmt::Debug for TokenResponse {

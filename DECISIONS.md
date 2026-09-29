@@ -307,7 +307,8 @@ as tidying.
 ### Cross-language auth conformance is one fixture (#58)
 Four independent companion review loops found the **same two bug families**.
 `codegen/conformance/auth-cases.json` is now the SINGLE SOURCE for hostile token-endpoint
-responses, hostile store files, and canonical store records — all six companion suites
+responses, hostile store files, refresh scope handling (`refresh_scope_cases`, #116), and
+canonical store records — all six companion suites
 (Rust reference included) iterate it from the file. A new hostile case goes in the fixture,
 never one language's suite; a failing companion gets fixed, the fixture is never weakened.
 
@@ -377,12 +378,14 @@ the note is a `content` block, not part of `structured_content` (which stays pur
 client that feeds the model only `structured_content` won't relay it; `oura auth status`
 still shows the gap.
 The bookkeeping is a CLI-only `scope-notice.json`, not a
-`tokens.json` field, so the six-language store records and their conformance fixture are
-untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
+`tokens.json` field, so the six-language store record format is untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
 §5.1), so the check can tell a current grant from a stale one. For the same reason every
 companion's REFRESH keeps the recorded grant when the response's `scope` is omitted, null,
-empty, or whitespace-only (the six had drifted: three let a blank replace it). That's pinned
-for all six by the shared conformance table `refresh_scope_cases`.
+empty, whitespace-only (Unicode, incl. U+00A0), or not a string, and the refresh still
+succeeds: `scope` is informational, and failing would burn the rotated refresh token. The six
+had drifted. All six let a whitespace-only scope replace the grant, three also let `""` do it,
+and three failed the whole refresh on a non-string scope. That's pinned for all six by the
+shared conformance table `refresh_scope_cases`.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

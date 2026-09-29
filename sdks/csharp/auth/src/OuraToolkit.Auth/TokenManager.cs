@@ -328,11 +328,13 @@ public sealed class TokenManager : IDisposable
                 // good one and 400 every future refresh.
                 RefreshToken = string.IsNullOrEmpty(parsed.RefreshToken) ? current.RefreshToken : parsed.RefreshToken!,
                 ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + parsed.ExpiresIn,
-                // An omitted, null, empty, or whitespace-only scope keeps the prior grant
-                // (RFC 6749 §5.1 lets the server omit an unchanged scope); persisting a blank
-                // would erase the grant the CLI's re-consent check reads. Pinned by the shared
-                // fixture's refresh_scope_cases (ConformanceTests).
-                Scope = string.IsNullOrWhiteSpace(parsed.Scope) ? current.Scope : parsed.Scope,
+                // An omitted, null, empty, whitespace-only (incl. U+00A0), or non-string scope
+                // keeps the prior grant (RFC 6749 §5.1 lets the server omit an unchanged scope);
+                // persisting a blank would erase the grant the CLI's re-consent check reads, and
+                // failing on a wrong-typed scope would burn the rotated refresh token over
+                // informational junk. Pinned by the shared fixture's refresh_scope_cases
+                // (ConformanceTests).
+                Scope = parsed.ScopeString() ?? current.Scope,
                 TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
             };
         }
@@ -360,8 +362,27 @@ public sealed class TokenManager : IDisposable
         [JsonPropertyName("token_type")]
         public string? TokenType { get; init; }
 
+        /// <summary>
+        /// Deliberately untyped: <c>scope</c> is informational, so a non-string value (e.g. a
+        /// number) must NOT fail deserialization and burn the rotated refresh token. Every
+        /// other field keeps its strict type. Read it only via <see cref="ScopeString"/>.
+        /// </summary>
         [JsonPropertyName("scope")]
-        public string? Scope { get; init; }
+        public JsonElement? Scope { get; init; }
+
+        /// <summary>
+        /// The scope when it is a JSON string with non-whitespace content (U+00A0 counts as
+        /// whitespace); otherwise null, meaning "keep the prior grant".
+        /// </summary>
+        public string? ScopeString()
+        {
+            if (Scope is not { ValueKind: JsonValueKind.String } element)
+            {
+                return null;
+            }
+            var value = element.GetString();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
 
         /// <summary>
         /// Redacts both token fields (parity with <see cref="Tokens"/> / <see cref="ClientCredentials"/>):
@@ -370,6 +391,6 @@ public sealed class TokenManager : IDisposable
         /// </summary>
         public override string ToString() =>
             "TokenResponse { access_token = [REDACTED], refresh_token = [REDACTED], " +
-            $"expires_in = {ExpiresIn}, token_type = {TokenType ?? "null"}, scope = {Scope ?? "null"} }}";
+            $"expires_in = {ExpiresIn}, token_type = {TokenType ?? "null"}, scope = {ScopeString() ?? "null"} }}";
     }
 }

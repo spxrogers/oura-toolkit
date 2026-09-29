@@ -263,8 +263,8 @@ class ConformanceTest {
 
     /**
      * A SUCCESSFUL refresh starting from a stored grant of {@code prior_scope} must persist
-     * exactly each case's {@code expected_scope}: an omitted/null/empty/whitespace-only
-     * {@code scope} keeps the prior grant, a real scope string replaces it.
+     * exactly each case's {@code expected_scope}: an omitted/null/non-string/empty/
+     * whitespace-only (incl. U+00A0) {@code scope} keeps the prior grant, a real scope string replaces it.
      */
     @TestFactory
     Stream<DynamicTest> refreshScopeCasesPersistExpectedScope() throws IOException {
@@ -275,9 +275,9 @@ class ConformanceTest {
         String priorScope = prior.asText();
         JsonNode cases = table.get("cases");
         assertNotNull(cases, "fixture's refresh_scope_cases lost its cases");
-        assertTrue(cases.size() >= 5,
+        assertTrue(cases.size() >= 7,
                 "fixture shrank? refresh_scope_cases has " + cases.size()
-                        + " cases, want >= 5");
+                        + " cases, want >= 7");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(),
