@@ -146,6 +146,11 @@ fn status_json_when_unauthenticated_still_emits_json_and_exits_4() {
     assert_eq!(v["authenticated"], false);
     assert_eq!(v["credentials"]["present"], false);
     assert_eq!(v["tokens"]["present"], false);
+    // #116 contract: `missing_scopes` is absent (not `[]`) when there are no tokens.
+    assert!(
+        v["tokens"].get("missing_scopes").is_none(),
+        "no tokens, so no missing_scopes field: {v}"
+    );
 }
 
 // --- token -----------------------------------------------------------------------------

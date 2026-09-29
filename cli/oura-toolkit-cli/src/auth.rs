@@ -236,15 +236,18 @@ fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<Stat
             "Scope",
             t.scope.clone().unwrap_or_else(|| "(not recorded)".into()),
         ));
-        let (missing, coverage) = crate::reconsent::scope_gap(t);
-        if !missing.is_empty() {
+        let gap = crate::reconsent::scope_gap(t);
+        if !gap.missing.is_empty() {
             // An unrecorded grant can't be shown to cover them: hedge, like the prompt does.
-            let why = if coverage == "may not cover" {
+            let why = if !gap.recorded {
                 "grant not recorded, so these may be missing; run `oura auth login` to be sure"
             } else {
                 "run `oura auth login` to grant"
             };
-            fields.push(("Missing scopes", format!("{} ({why})", missing.join(" "))));
+            fields.push((
+                "Missing scopes",
+                format!("{} ({why})", gap.missing.join(" ")),
+            ));
         }
         fields.push((
             "Access token",
@@ -266,7 +269,9 @@ fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<Stat
         tokens: TokensStatus {
             present: tokens.is_some(),
             scope: tokens.as_ref().and_then(|t| t.scope.clone()),
-            missing_scopes: tokens.as_ref().map(|t| crate::reconsent::scope_gap(t).0),
+            missing_scopes: tokens
+                .as_ref()
+                .map(|t| crate::reconsent::scope_gap(t).missing),
             expires_at: tokens.as_ref().map(|t| t.expires_at),
             expired,
         },
@@ -297,8 +302,9 @@ pub fn logout(store: &TokenStore, all: bool) -> Result<String> {
     let removed_tokens = store.delete_tokens()?;
     let removed_credentials = all && store.delete_credentials()?;
     if all {
-        // A full reset also forgets what the re-consent check told the user (#116).
-        crate::reconsent::forget(store)?;
+        // A full reset also forgets what the re-consent check told the user (#116). Best-effort:
+        // the reset itself already happened above.
+        crate::reconsent::forget(store);
     }
 
     let mut out = String::new();
@@ -1129,6 +1135,18 @@ mod tests {
             !record.exists(),
             "--all is a full reset: the notice re-arms"
         );
+    }
+
+    #[test]
+    fn logout_all_still_succeeds_when_the_reconsent_record_cannot_be_removed() {
+        // Bookkeeping is best-effort: a record that can't be removed (here a DIRECTORY at its
+        // path, which defeats even root) must not fail a reset that already happened.
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(2_000)));
+        std::fs::create_dir(store.dir().join(crate::reconsent::STATE_FILE)).unwrap();
+        let out = logout(&store, true).expect("the reset must still report success");
+        assert!(out.contains("Removed client credentials"), "{out}");
+        assert!(store.load_tokens().unwrap().is_none());
     }
 
     #[test]

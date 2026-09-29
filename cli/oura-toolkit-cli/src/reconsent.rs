@@ -4,7 +4,7 @@
 //! `spo2`, plus a new `heart_health`). A token refresh can't add scopes; only a new consent
 //! can. So a login from before such a change quietly lacks them. Detection is
 //! **data-driven**: the grant recorded in `tokens.json` vs the spec-validated
-//! [`metadata::default_scopes`] ([`missing_default_scopes`]). A scope change needs no
+//! [`metadata::default_scopes`] (`missing_default_scopes`). A scope change needs no
 //! migration code, only the spec bump (whose tests force the default list to follow).
 //!
 //! It fires **once per scope-set change**, before a store-backed command (the data commands
@@ -18,7 +18,7 @@
 //!   separately, so a script running first doesn't use up the human's prompt.
 //!
 //! `oura mcp` can't prompt (stdout is its transport, and stdio MCP auth is out of band), so
-//! it gets the MCP flavour, [`mcp_notice`]: a note on the first successful tool result of each
+//! it gets the MCP flavour, `mcp_notice`: a note on the first successful tool result of each
 //! session, for the model to relay. An `OURA_ACCESS_TOKEN` run (no store) sees neither.
 //!
 //! The bookkeeping lives in [`STATE_FILE`] next to the token records (0600, atomic, removed by
@@ -26,7 +26,7 @@
 //! companion API, so the six-language store records and conformance fixture are untouched.
 
 use std::future::Future;
-use std::io::{BufRead, Write};
+use std::io::Write;
 
 use oura_toolkit_auth::{metadata, TokenStore, Tokens};
 use serde::{Deserialize, Serialize};
@@ -74,15 +74,34 @@ pub(crate) fn missing_default_scopes(granted: Option<&str>) -> Vec<&'static str>
         .collect()
 }
 
-/// The default scopes `tokens` lacks, plus the wording for how sure we are about it.
-pub(crate) fn scope_gap(tokens: &Tokens) -> (Vec<&'static str>, &'static str) {
+/// How a saved grant compares to the current default scopes.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ScopeGap {
+    /// The default scopes the grant doesn't (or can't be shown to) cover.
+    pub(crate) missing: Vec<&'static str>,
+    /// Whether a grant was recorded at all. Unrecorded = every default is "missing", but
+    /// only possibly, so the wording hedges.
+    pub(crate) recorded: bool,
+}
+
+impl ScopeGap {
+    /// The verb phrase for messages: definite for a recorded grant, hedged otherwise.
+    pub(crate) fn coverage(&self) -> &'static str {
+        if self.recorded {
+            "doesn't cover"
+        } else {
+            "may not cover"
+        }
+    }
+}
+
+/// The default scopes `tokens` lacks, and whether we can be sure of it.
+pub(crate) fn scope_gap(tokens: &Tokens) -> ScopeGap {
     let grant = recorded_grant(tokens);
-    let coverage = if grant.is_some() {
-        "doesn't cover"
-    } else {
-        "may not cover"
-    };
-    (missing_default_scopes(grant), coverage)
+    ScopeGap {
+        missing: missing_default_scopes(grant),
+        recorded: grant.is_some(),
+    }
 }
 
 /// What the user has already been told, keyed by the default scope set it was told about, so
@@ -122,7 +141,7 @@ fn decide(tokens: Option<&Tokens>, state: &NoticeState, interactive: bool) -> Ac
     let Some(tokens) = tokens else {
         return Action::Nothing;
     };
-    let (missing, _) = scope_gap(tokens);
+    let missing = scope_gap(tokens).missing;
     if missing.is_empty() {
         return Action::Nothing;
     }
@@ -160,6 +179,8 @@ fn load_state(store: &TokenStore) -> NoticeState {
 /// Persist `state` like the store's own records: owner-only (0600 on Unix) and atomic (a
 /// fresh temp file renamed over the target, so a symlink planted at the target is replaced,
 /// not followed). Best-effort, like [`load_state`]: failing only means the notice may repeat.
+/// Not under the store lock: two concurrent `oura` runs can race the read-modify-write, and
+/// the worst case is one extra notice, not worth serializing every data command on.
 fn save_state(store: &TokenStore, state: &NoticeState) {
     let Ok(data) = serde_json::to_vec_pretty(state) else {
         return;
@@ -168,42 +189,46 @@ fn save_state(store: &TokenStore, state: &NoticeState) {
     let tmp = store
         .dir()
         .join(format!(".{STATE_FILE}.{}.tmp", std::process::id()));
-    let write = || -> std::io::Result<()> {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt as _;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&tmp)?;
-        file.write_all(&data)?;
-        file.sync_all()?;
-        std::fs::rename(&tmp, &target)
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    // `create_new` refuses an existing path (never following a planted symlink). If it fails,
+    // the temp file isn't ours, so leave it alone.
+    let Ok(mut file) = options.open(&tmp) else {
+        return;
     };
-    if write().is_err() {
+    let written = file
+        .write_all(&data)
+        .and_then(|()| file.sync_all())
+        .and_then(|()| std::fs::rename(&tmp, &target));
+    if written.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
 }
 
 /// Forget everything the user was told (`oura auth logout --all`: a full reset re-arms the
-/// notice). Idempotent.
-pub(crate) fn forget(store: &TokenStore) -> std::io::Result<()> {
-    match std::fs::remove_file(state_path(store)) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        other => other,
-    }
+/// notice). Idempotent and best-effort, like the rest of the bookkeeping: a record that
+/// can't be removed must never fail the logout it rides along with.
+pub(crate) fn forget(store: &TokenStore) {
+    let _ = std::fs::remove_file(state_path(store));
 }
 
-/// Run the check against `store`: decide, then prompt/notify through the injected `input` /
-/// `out` (stderr in production), invoking `login(headless)` on a yes (`headless` = use the
-/// paste-back flow). Never fails the command: a login that errors is reported and remembered,
-/// and the command continues on the existing login.
+/// Run the check against `store`: decide, then prompt/notify through the injected
+/// `read_line` / `out` (stdin/stderr in production), invoking `login(headless)` on a yes
+/// (`headless` = the paste-back flow). Never fails the command: a login that errors is
+/// reported and remembered, and the command continues on the existing login.
+///
+/// `read_line` is a per-call reader, NOT a held `StdinLock`: the paste-back login reads stdin
+/// itself, and `Stdin`'s lock isn't reentrant, so holding one across `login` deadlocks.
 async fn check<L, Fut>(
     store: &TokenStore,
     interactive: bool,
     headless: bool,
-    input: &mut dyn BufRead,
+    read_line: &mut dyn FnMut(&mut String) -> std::io::Result<usize>,
     out: &mut dyn Write,
     login: L,
 ) where
@@ -215,7 +240,9 @@ async fn check<L, Fut>(
         return;
     };
     let mut state = load_state(store);
-    let coverage = tokens.as_ref().map_or("doesn't cover", |t| scope_gap(t).1);
+    let coverage = tokens
+        .as_ref()
+        .map_or("doesn't cover", |t| scope_gap(t).coverage());
     match decide(tokens.as_ref(), &state, interactive) {
         Action::Nothing => {}
         Action::Notify(missing) => {
@@ -248,8 +275,7 @@ async fn check<L, Fut>(
             let _ = out.flush();
             let mut line = String::new();
             // EOF (0 bytes) declines: only an actual Enter is the default yes.
-            let accepted =
-                matches!(input.read_line(&mut line), Ok(n) if n > 0) && parse_answer(&line);
+            let accepted = matches!(read_line(&mut line), Ok(n) if n > 0) && parse_answer(&line);
             if !accepted {
                 let _ = writeln!(
                     out,
@@ -273,7 +299,7 @@ async fn check<L, Fut>(
                     .load_tokens()
                     .ok()
                     .flatten()
-                    .map(|t| scope_gap(&t).0)
+                    .map(|t| scope_gap(&t).missing)
                     .unwrap_or_default();
                 if still.is_empty() {
                     let _ = writeln!(out, "Continuing…");
@@ -307,7 +333,7 @@ pub(crate) fn mcp_notice(store: &TokenStore) -> Option<String> {
     let Action::Prompt(missing) = decide(Some(&tokens), &load_state(store), true) else {
         return None;
     };
-    let (_, coverage) = scope_gap(&tokens);
+    let coverage = scope_gap(&tokens).coverage();
     Some(format!(
         "{MCP_NOTICE_LEAD}, and the user's saved login {coverage} them: {}. The data above is \
          still valid. Tell the user once: to grant them, run `oura auth login` in a terminal. \
@@ -325,14 +351,14 @@ pub async fn run(store: &TokenStore) {
     use std::io::IsTerminal as _;
     let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
     let headless = crate::auth::looks_headless(|k| std::env::var(k).ok());
-    let stdin = std::io::stdin();
     check(
         store,
         interactive,
         headless,
-        &mut stdin.lock(),
+        // Locks stdin for this one read only (see `check`: never hold it across the login).
+        &mut |buf| std::io::stdin().read_line(buf),
         &mut std::io::stderr(),
-        |no_browser| crate::auth::login(DEFAULT_LOGIN_PORT, no_browser),
+        |headless| crate::auth::login(DEFAULT_LOGIN_PORT, headless),
     )
     .await;
 }
@@ -384,11 +410,12 @@ mod tests {
     ) -> Ran {
         let called = Cell::new(None);
         let mut out = Vec::new();
+        let mut input = std::io::Cursor::new(stdin.as_bytes().to_vec());
         check(
             store,
             interactive,
             headless,
-            &mut stdin.as_bytes(),
+            &mut |buf| std::io::BufRead::read_line(&mut input, buf),
             &mut out,
             |no_browser| {
                 called.set(Some(no_browser));
@@ -449,14 +476,18 @@ mod tests {
     #[test]
     fn an_unrecorded_or_blank_grant_is_missing_everything_and_hedged() {
         for scope in [None, Some(""), Some("  \t")] {
-            let (missing, coverage) = scope_gap(&tokens(scope));
-            assert_eq!(missing, metadata::default_scopes(), "{scope:?}");
+            let gap = scope_gap(&tokens(scope));
+            assert_eq!(gap.missing, metadata::default_scopes(), "{scope:?}");
+            assert!(!gap.recorded, "{scope:?} is not a recorded grant");
             assert_eq!(
-                coverage, "may not cover",
+                gap.coverage(),
+                "may not cover",
                 "{scope:?} must hedge, not assert"
             );
         }
-        assert_eq!(scope_gap(&tokens(Some(PRE_1_41))).1, "doesn't cover");
+        let stale = scope_gap(&tokens(Some(PRE_1_41)));
+        assert!(stale.recorded);
+        assert_eq!(stale.coverage(), "doesn't cover");
     }
 
     // --- decide (pure) ---------------------------------------------------------------------
@@ -530,13 +561,12 @@ mod tests {
     #[test]
     fn the_state_key_is_the_default_set_independent_of_list_order() {
         let key = scope_set_key();
-        let mut words: Vec<&str> = key.split(' ').collect();
-        assert_eq!(words.len(), metadata::default_scopes().len());
-        let before = words.clone();
-        words.sort_unstable();
+        let words: Vec<&str> = key.split(' ').collect();
+        let mut expected = metadata::default_scopes();
+        expected.sort_unstable();
         assert_eq!(
-            words, before,
-            "the key must be sorted, not list-ordered: {key}"
+            words, expected,
+            "the key is exactly the default set, sorted: {key}"
         );
     }
 
@@ -753,9 +783,21 @@ mod tests {
         let (store, _dir) = store_with(Some(PRE_1_41));
         run_check(&store, true, "n\n").await;
         assert!(state_path(&store).exists());
-        forget(&store).unwrap();
+        forget(&store);
         assert!(!state_path(&store).exists());
-        forget(&store).unwrap();
+        forget(&store); // nothing there: still fine
+    }
+
+    #[tokio::test]
+    async fn a_planted_temp_file_is_left_alone_not_deleted() {
+        // `create_new` refusing an existing temp path means it isn't ours: never remove it.
+        let (store, _dir) = store_with(Some(PRE_1_41));
+        let tmp = store
+            .dir()
+            .join(format!(".{STATE_FILE}.{}.tmp", std::process::id()));
+        std::fs::write(&tmp, "someone else's").unwrap();
+        run_check(&store, false, "").await;
+        assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "someone else's");
     }
 
     // --- mcp_notice ------------------------------------------------------------------------

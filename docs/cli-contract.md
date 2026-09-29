@@ -118,8 +118,9 @@ scope-set change, never for a current grant:
   times out, and a login that is still granted less (e.g. the Oura app doesn't list a new
   scope) all say so, carry on with the existing login, and are remembered for this scope set,
   so none of them loops.
-- **Ordering**: the command's own arguments are validated first, so a usage error never
-  follows a prompt.
+- **Ordering**: the command's own arguments are validated first (a data command's date
+  window; `oura api`'s method, `-f` fields, body, and `--paginate`), so a usage error
+  (exit `2`) never follows a notice, a prompt, or a login.
 - **Non-interactive**: exactly one stderr line, starting `oura: note:`, that names the missing
   scopes and the fix (`oura auth login`). The command proceeds normally (stdout and exit code
   are unchanged). It's shown once, and tracked separately from the prompt, so a script

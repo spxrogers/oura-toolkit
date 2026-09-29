@@ -108,6 +108,39 @@ enum Command {
     Man,
 }
 
+impl Command {
+    /// Reads the saved login (so the re-consent check, #116, applies): the data commands and
+    /// `oura api`. THE list — `main`'s preflight and check both go through it.
+    fn is_store_backed(&self) -> bool {
+        matches!(
+            self,
+            Command::Sleep(_)
+                | Command::Readiness(_)
+                | Command::Activity(_)
+                | Command::Stress(_)
+                | Command::Heartrate(_)
+                | Command::Sessions(_)
+                | Command::Workouts(_)
+                | Command::PersonalInfo
+                | Command::Api { .. }
+        )
+    }
+
+    /// The date-window flags of a windowed data command, for the preflight.
+    fn range_args(&self) -> Option<&RangeArgs> {
+        match self {
+            Command::Sleep(r)
+            | Command::Readiness(r)
+            | Command::Activity(r)
+            | Command::Stress(r)
+            | Command::Heartrate(r)
+            | Command::Sessions(r)
+            | Command::Workouts(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum AuthAction {
     /// Guided Oura OAuth app registration (terminal prompts), then login.
@@ -192,40 +225,37 @@ async fn run() -> anyhow::Result<()> {
         })
     };
 
+    // Preflight: every store-backed command's own inputs are validated FIRST (date ranges,
+    // and `oura api`'s method/fields/body/--paginate, with its stdin body read now), so a
+    // usage error always fails as exactly that — never after a re-consent prompt or a
+    // browser login the user didn't need (#116, docs/cli-contract.md → Scope changes).
+    if let Some(range) = cli.command.as_ref().and_then(Command::range_args) {
+        range.resolve()?;
+    }
+    let mut api_request = match &cli.command {
+        Some(Command::Api {
+            path,
+            method,
+            field,
+            paginate,
+        }) => Some(oura_toolkit_cli::passthrough::prepare(
+            &base_url,
+            path,
+            method,
+            field,
+            read_stdin_body()?,
+            *paginate,
+        )?),
+        _ => None,
+    };
+
     // Re-consent check (#116): before a STORE-backed command, a saved login that predates a
     // change to the default scopes gets one prompt (interactive) or one notice (scripts).
     // Not for `auth *` (account commands act on the store directly), the pure generators, or
     // an OURA_ACCESS_TOKEN run (no store involved). `mcp` can't prompt (stdout is the
     // transport), so it carries its own out-of-band note on a tool result (`mcp.rs`).
-    let store_backed = matches!(
-        cli.command,
-        Some(
-            Command::Sleep(_)
-                | Command::Readiness(_)
-                | Command::Activity(_)
-                | Command::Stress(_)
-                | Command::Heartrate(_)
-                | Command::Sessions(_)
-                | Command::Workouts(_)
-                | Command::PersonalInfo
-                | Command::Api { .. }
-        )
-    );
+    let store_backed = cli.command.as_ref().is_some_and(Command::is_store_backed);
     if store_backed && api::access_token_override(env).is_none() {
-        // Validate the command's own arguments FIRST: a bad date range must fail as the usage
-        // error it is, never after a prompt (or a browser login) the user didn't need.
-        if let Some(
-            Command::Sleep(range)
-            | Command::Readiness(range)
-            | Command::Activity(range)
-            | Command::Stress(range)
-            | Command::Heartrate(range)
-            | Command::Sessions(range)
-            | Command::Workouts(range),
-        ) = &cli.command
-        {
-            range.resolve()?;
-        }
         // No resolvable store dir is the command's own error to report (via its manager).
         if let Ok(store) = oura_toolkit_auth::TokenStore::new() {
             oura_toolkit_cli::reconsent::run(&store).await;
@@ -298,21 +328,15 @@ async fn run() -> anyhow::Result<()> {
             contract::emit(&commands::personal_info(&data_ctx()?).await?)?;
             Ok(())
         }
-        Some(Command::Api {
-            path,
-            method,
-            field,
-            paginate,
-        }) => {
+        Some(Command::Api { .. }) => {
             // The authenticated escape hatch (#19): same auth layer + base URL as the data
-            // commands, but a raw request to an arbitrary path. A request body may be piped
-            // on stdin (used only when stdin is a non-empty non-TTY stream).
-            let stdin_body = read_stdin_body()?;
+            // commands, but a raw request to an arbitrary path — validated (and its stdin
+            // body read) in the preflight above.
+            let request = api_request
+                .take()
+                .expect("the preflight prepares every `oura api` invocation");
             let manager = api::manager_from_env(env)?;
-            let out = oura_toolkit_cli::passthrough::run(
-                &manager, &base_url, &path, &method, &field, stdin_body, paginate,
-            )
-            .await?;
+            let out = oura_toolkit_cli::passthrough::execute(&manager, request).await?;
             contract::emit(&out)?;
             Ok(())
         }

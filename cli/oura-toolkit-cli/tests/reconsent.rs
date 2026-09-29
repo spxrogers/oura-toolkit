@@ -83,16 +83,24 @@ impl Fixture {
         self.dir.path().join("oura-toolkit").join(STATE_FILE)
     }
 
-    fn run_args(&self, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
-        let _guard = self.rt.enter();
-        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
+    /// Point `cmd` at this fixture: the isolated store, the mock Oura, no color, and no
+    /// ambient `OURA_ACCESS_TOKEN` or SSH markers leaking in from the test runner.
+    fn isolate(&self, cmd: &mut Command) {
         cmd.env("XDG_CONFIG_HOME", self.dir.path())
             .env("HOME", self.dir.path())
             .env("LOCALAPPDATA", self.dir.path())
             .env("NO_COLOR", "1")
             .env_remove("OURA_ACCESS_TOKEN")
-            .env("OURA_API_BASE_URL", self.server.uri())
-            .args(args);
+            .env_remove("SSH_CONNECTION")
+            .env_remove("SSH_TTY")
+            .env("OURA_API_BASE_URL", self.server.uri());
+    }
+
+    fn run_args(&self, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
+        let _guard = self.rt.enter();
+        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
+        self.isolate(&mut cmd);
+        cmd.args(args);
         for (k, v) in extra_env {
             cmd.env(k, v);
         }
@@ -106,12 +114,8 @@ impl Fixture {
     fn mcp_tool_call(&self, extra_env: &[(&str, &str)]) -> serde_json::Value {
         let _guard = self.rt.enter();
         let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
-        cmd.env("XDG_CONFIG_HOME", self.dir.path())
-            .env("HOME", self.dir.path())
-            .env("LOCALAPPDATA", self.dir.path())
-            .env_remove("OURA_ACCESS_TOKEN")
-            .env("OURA_API_BASE_URL", self.server.uri())
-            .arg("mcp")
+        self.isolate(&mut cmd);
+        cmd.arg("mcp")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -291,34 +295,58 @@ fn account_commands_and_generators_never_run_the_check() {
 
 #[test]
 fn a_bad_argument_fails_before_the_check_runs() {
-    // A usage error must be exactly that — never preceded by a notice (or, on a TTY, a prompt
-    // and a browser login) the user didn't need.
+    // A usage error must be exactly that (exit 2) — never preceded by a notice (or, on a TTY,
+    // a prompt and a browser login) the user didn't need. Covers both preflights: a data
+    // command's date window and each of `oura api`'s own usage checks.
     let fx = Fixture::new(Some(PRE_1_41_GRANT));
-    let out = fx.run_args(&["sleep", "--date", "not-a-date"], &[]);
-    assert!(!out.status.success());
-    let stderr = text(&out.stderr);
-    assert!(!stderr.contains(NOTICE_PREFIX), "{stderr}");
+    for args in [
+        &["sleep", "--date", "not-a-date"][..],
+        &[
+            "api",
+            "/v2/usercollection/daily_sleep",
+            "-f",
+            "no-equals-sign",
+        ],
+        &[
+            "api",
+            "/v2/usercollection/daily_sleep",
+            "-X",
+            "NOT A METHOD",
+        ],
+        &["api", "/v2/x", "-X", "POST", "--paginate"],
+    ] {
+        let out = fx.run_args(args, &[]);
+        let stderr = text(&out.stderr);
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{args:?} is a usage error: {stderr}"
+        );
+        assert!(!stderr.contains(NOTICE_PREFIX), "{args:?}: {stderr}");
+    }
     assert!(!fx.state_file().exists(), "the check never ran");
 }
 
 /// Run `command` (a shell line) under `script(1)`, which gives it a real pseudo-terminal for
-/// stdin/stdout/stderr, feeding `input` as the user's keystrokes. Returns the terminal
-/// transcript. Linux-only: util-linux `script` (on every CI Linux runner).
+/// stdin/stdout/stderr, feeding `input` as the user's keystrokes. The line reaches the binary
+/// and any output files through `$OURA_BIN` / `$OUT` (quoted in the line; nothing is
+/// interpolated), so unusual temp paths can't break it. Returns the terminal transcript.
+/// Linux-only: util-linux `script` (on every CI Linux runner).
 #[cfg(target_os = "linux")]
-fn on_a_terminal(fx: &Fixture, command: &str, input: &str) -> String {
+fn on_a_terminal(fx: &Fixture, command: &str, input: &str, extra_env: &[(&str, &str)]) -> String {
     let _guard = fx.rt.enter();
-    let mut child = Command::new("script")
-        .args(["-qec", command, "/dev/null"])
-        .env("XDG_CONFIG_HOME", fx.dir.path())
-        .env("HOME", fx.dir.path())
-        .env("NO_COLOR", "1")
-        .env_remove("OURA_ACCESS_TOKEN")
-        .env_remove("SSH_CONNECTION")
-        .env_remove("SSH_TTY")
-        .env("OURA_API_BASE_URL", fx.server.uri())
+    let mut cmd = Command::new("script");
+    fx.isolate(&mut cmd);
+    cmd.args(["-qec", command, "/dev/null"])
+        .env("OURA_BIN", assert_cmd::cargo::cargo_bin("oura"))
+        .env("OUT", fx.dir.path().join("captured.txt"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
+    let mut child = cmd
         .spawn()
         .expect("util-linux `script` must be installed to exercise the TTY path");
     child
@@ -331,7 +359,7 @@ fn on_a_terminal(fx: &Fixture, command: &str, input: &str) -> String {
     while child.try_wait().unwrap().is_none() {
         if Instant::now() > deadline {
             let _ = child.kill();
-            panic!("hung on the terminal: a prompt was answered with a login, or never read");
+            panic!("hung on the terminal: a prompt was answered with a login, or deadlocked");
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -340,27 +368,32 @@ fn on_a_terminal(fx: &Fixture, command: &str, input: &str) -> String {
     text(&out.stdout)
 }
 
+/// What the command under `on_a_terminal` redirected into `$OUT`.
+#[cfg(target_os = "linux")]
+fn captured(fx: &Fixture) -> String {
+    std::fs::read_to_string(fx.dir.path().join("captured.txt")).unwrap()
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn on_a_terminal_the_prompt_goes_to_the_terminal_and_the_result_to_stdout() {
     let fx = Fixture::new(Some(PRE_1_41_GRANT));
-    let result = fx.dir.path().join("stdout.txt");
-    let oura = assert_cmd::cargo::cargo_bin("oura");
     let transcript = on_a_terminal(
         &fx,
-        &format!(
-            "{} sleep --date 2026-06-26 > {}",
-            oura.display(),
-            result.display()
-        ),
+        r#""$OURA_BIN" sleep --date 2026-06-26 > "$OUT""#,
         "n\n",
+        &[],
     );
     assert!(
         transcript.contains(PROMPT_LEAD) && transcript.contains(PROMPT_QUESTION),
         "stdin+stderr are TTYs, so the prompt must show on the terminal: {transcript:?}"
     );
+    assert!(
+        transcript.contains("your browser"),
+        "not SSH: {transcript:?}"
+    );
     assert!(transcript.contains("Skipped"), "{transcript:?}");
-    let stdout = std::fs::read_to_string(&result).unwrap();
+    let stdout = captured(&fx);
     assert!(
         stdout.contains("2026-06-26"),
         "the command still ran: {stdout:?}"
@@ -380,18 +413,13 @@ fn a_terminal_stdin_with_redirected_stderr_never_prompts() {
     // see. Both streams must be TTYs; otherwise it's the one-line notice. The keystrokes
     // would ACCEPT a prompt (and hang on a browser login), so a prompt fails this loudly.
     let fx = Fixture::new(Some(PRE_1_41_GRANT));
-    let err = fx.dir.path().join("stderr.txt");
-    let oura = assert_cmd::cargo::cargo_bin("oura");
     let transcript = on_a_terminal(
         &fx,
-        &format!(
-            "{} sleep --date 2026-06-26 2> {}",
-            oura.display(),
-            err.display()
-        ),
+        r#""$OURA_BIN" sleep --date 2026-06-26 2> "$OUT""#,
         "y\n",
+        &[],
     );
-    let stderr = std::fs::read_to_string(&err).unwrap();
+    let stderr = captured(&fx);
     assert!(stderr.starts_with(NOTICE_PREFIX), "{stderr:?}");
     assert!(
         !stderr.contains(PROMPT_QUESTION) && !transcript.contains(PROMPT_QUESTION),
@@ -400,5 +428,55 @@ fn a_terminal_stdin_with_redirected_stderr_never_prompts() {
     assert!(
         transcript.contains("2026-06-26"),
         "the command ran: {transcript:?}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_terminal_stderr_with_redirected_stdin_never_prompts() {
+    // The other half of "both must be TTYs": stdin from /dev/null can't answer a prompt.
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let transcript = on_a_terminal(
+        &fx,
+        r#""$OURA_BIN" sleep --date 2026-06-26 < /dev/null"#,
+        "",
+        &[],
+    );
+    assert!(transcript.contains(NOTICE_PREFIX), "{transcript:?}");
+    assert!(!transcript.contains(PROMPT_QUESTION), "{transcript:?}");
+    assert!(
+        transcript.contains("2026-06-26"),
+        "the command ran: {transcript:?}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn over_ssh_yes_runs_the_paste_back_login_without_deadlocking_and_a_bad_paste_continues() {
+    // The SSH path end to end: the prompt names the paste-back flow, "y" starts it, and its
+    // OWN stdin read must work, which deadlocks if the prompt still holds the stdin lock.
+    // A garbage paste fails the login; the command must then carry on with the old login.
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let transcript = on_a_terminal(
+        &fx,
+        r#""$OURA_BIN" sleep --date 2026-06-26 > "$OUT""#,
+        "y\nnot-a-redirect-url\n",
+        &[("SSH_CONNECTION", "10.0.0.1 5000 10.0.0.2 22")],
+    );
+    assert!(
+        transcript.contains("paste-back"),
+        "SSH is detected: {transcript:?}"
+    );
+    assert!(
+        transcript.contains("Paste the full redirect URL"),
+        "the paste-back login ran (and could read stdin): {transcript:?}"
+    );
+    assert!(
+        transcript.contains("didn't complete") && transcript.contains("Continuing"),
+        "a failed paste reports and carries on: {transcript:?}"
+    );
+    assert!(
+        captured(&fx).contains("2026-06-26"),
+        "the command still ran"
     );
 }
