@@ -28,9 +28,11 @@ use wiremock::{Mock, MockServer};
 
 mod common;
 use common::{current_grant, page, sleep_doc, PRE_1_41_GRANT};
-use oura_toolkit_cli::reconsent::{
-    MCP_NOTICE_LEAD, NOTICE_PREFIX, PROMPT_LEAD, PROMPT_QUESTION, STATE_FILE,
-};
+use oura_toolkit_cli::reconsent::{MCP_NOTICE_LEAD, NOTICE_PREFIX, STATE_FILE};
+// Only the Linux PTY tests read the prompt's strings (rule 6: platform-gated tests must not
+// leave unused imports on the other CI legs).
+#[cfg(target_os = "linux")]
+use oura_toolkit_cli::reconsent::{PROMPT_LEAD, PROMPT_QUESTION};
 
 struct Fixture {
     server: MockServer,
