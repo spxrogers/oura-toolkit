@@ -51,7 +51,7 @@ function withTempStore(t) {
 test("conformance: hostile 2xx token responses fail typed and leave the store untouched", async (t) => {
   const cases = fixture.hostile_token_responses;
   assert.ok(Array.isArray(cases), "hostile_token_responses table");
-  assert.ok(cases.length >= 8, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 11, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;
@@ -120,7 +120,7 @@ test("conformance: refresh_scope_cases persist expected_scope", async (t) => {
   assert.notEqual(prior.trim(), "", "refresh_scope_cases.prior_scope must be a real grant");
   const cases = table.cases;
   assert.ok(Array.isArray(cases), "refresh_scope_cases.cases");
-  assert.ok(cases.length >= 7, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 8, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;

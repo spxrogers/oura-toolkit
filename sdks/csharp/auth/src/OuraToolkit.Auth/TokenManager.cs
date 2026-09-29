@@ -316,6 +316,19 @@ public sealed class TokenManager : IDisposable
             {
                 throw new TokenEndpointException(status, "token-endpoint 2xx response missing or invalid expires_in");
             }
+            // A scope STRING that is not valid Unicode (a lone-surrogate escape like "\ud800")
+            // makes the whole response malformed: fail typed with the store untouched (shared
+            // fixture case scope_lone_surrogate). Distinct from a well-formed but wrong-typed
+            // scope, which ScopeString reads as absent so the prior grant is kept.
+            string? scope;
+            try
+            {
+                scope = parsed.ScopeString();
+            }
+            catch (InvalidOperationException)
+            {
+                throw new TokenEndpointException(status, "token-endpoint 2xx response scope is not valid Unicode");
+            }
 
             return new Tokens
             {
@@ -334,7 +347,7 @@ public sealed class TokenManager : IDisposable
                 // failing on a wrong-typed scope would burn the rotated refresh token over
                 // informational junk. Pinned by the shared fixture's refresh_scope_cases
                 // (ConformanceTests).
-                Scope = parsed.ScopeString() ?? current.Scope,
+                Scope = scope ?? current.Scope,
                 TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
             };
         }
@@ -372,11 +385,12 @@ public sealed class TokenManager : IDisposable
 
         /// <summary>
         /// The scope when it is a JSON string with non-whitespace content (U+00A0 counts as
-        /// whitespace); otherwise null, meaning "keep the prior grant". Never throws: a string
-        /// that isn't valid UTF-16 (a lone surrogate escape like <c>"\ud800"</c>) makes
-        /// <see cref="JsonElement.GetString"/> throw an untyped InvalidOperationException,
-        /// and an unusable informational field must neither escape untyped nor fail the
-        /// refresh, so it reads as absent too.
+        /// whitespace); otherwise null, meaning "keep the prior grant" (this covers a
+        /// well-formed but non-string scope). Throws <see cref="InvalidOperationException"/>
+        /// (from <see cref="JsonElement.GetString"/>) when the string is not valid UTF-16 (a
+        /// lone surrogate escape like <c>"\ud800"</c>): that makes the response malformed, and
+        /// the refresh path maps it to the typed <see cref="TokenEndpointException"/> before
+        /// anything is persisted (shared fixture case <c>scope_lone_surrogate</c>).
         /// </summary>
         public string? ScopeString()
         {
@@ -384,16 +398,21 @@ public sealed class TokenManager : IDisposable
             {
                 return null;
             }
-            string? value;
+            var value = element.GetString();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        /// <summary><see cref="ScopeString"/> for diagnostics only: never throws.</summary>
+        private string DescribeScope()
+        {
             try
             {
-                value = element.GetString();
+                return ScopeString() ?? "null";
             }
             catch (InvalidOperationException)
             {
-                return null;
+                return "[invalid Unicode]";
             }
-            return string.IsNullOrWhiteSpace(value) ? null : value;
         }
 
         /// <summary>
@@ -403,6 +422,6 @@ public sealed class TokenManager : IDisposable
         /// </summary>
         public override string ToString() =>
             "TokenResponse { access_token = [REDACTED], refresh_token = [REDACTED], " +
-            $"expires_in = {ExpiresIn}, token_type = {TokenType ?? "null"}, scope = {ScopeString() ?? "null"} }}";
+            $"expires_in = {ExpiresIn}, token_type = {TokenType ?? "null"}, scope = {DescribeScope()} }}";
     }
 }

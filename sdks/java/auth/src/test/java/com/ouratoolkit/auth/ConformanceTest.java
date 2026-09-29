@@ -42,8 +42,8 @@ import org.junit.jupiter.api.io.TempDir;
  *       {@link Tokens} that would make {@code isAuthenticated} lie, never an unchecked
  *       crash;</li>
  *   <li>refresh scope cases → a successful refresh from a stored {@code prior_scope}
- *       persists exactly {@code expected_scope} (an omitted/null/empty/whitespace-only
- *       scope keeps the prior grant, a real scope string replaces it);</li>
+ *       persists exactly {@code expected_scope} (an omitted/null/non-string/empty/
+ *       whitespace-only scope keeps the prior grant, a real scope string replaces it);</li>
  *   <li>canonical valid records → load with exactly the fixture's field values and
  *       round-trip through this module's own persist path (the cross-language store
  *       compatibility check — field names are the shared wire format, #54).</li>
@@ -106,9 +106,9 @@ class ConformanceTest {
             throws IOException {
         JsonNode cases = fixture().get("hostile_token_responses");
         assertNotNull(cases, "fixture lost its hostile_token_responses table");
-        assertTrue(cases.size() >= 8,
+        assertTrue(cases.size() >= 11,
                 "fixture shrank? hostile_token_responses has " + cases.size()
-                        + " cases, want >= 8");
+                        + " cases, want >= 11");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileTokenResponseRejected(c)));
@@ -263,8 +263,11 @@ class ConformanceTest {
 
     /**
      * A SUCCESSFUL refresh starting from a stored grant of {@code prior_scope} must persist
-     * exactly each case's {@code expected_scope}: an omitted/null/non-string/empty/
-     * whitespace-only (incl. U+00A0) {@code scope} keeps the prior grant, a real scope string replaces it.
+     * exactly each case's {@code expected_scope}: an omitted/null/empty/whitespace-only
+     * (incl. U+00A0) {@code scope} keeps the prior grant, and so does a NON-STRING one
+     * (number, object, …) — the refresh still succeeds; a real scope string replaces it.
+     * (A scope string that isn't valid Unicode is a hostile response instead — see
+     * {@code scope_lone_surrogate} in hostile_token_responses.)
      */
     @TestFactory
     Stream<DynamicTest> refreshScopeCasesPersistExpectedScope() throws IOException {
@@ -275,9 +278,9 @@ class ConformanceTest {
         String priorScope = prior.asText();
         JsonNode cases = table.get("cases");
         assertNotNull(cases, "fixture's refresh_scope_cases lost its cases");
-        assertTrue(cases.size() >= 7,
+        assertTrue(cases.size() >= 8,
                 "fixture shrank? refresh_scope_cases has " + cases.size()
-                        + " cases, want >= 7");
+                        + " cases, want >= 8");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(),

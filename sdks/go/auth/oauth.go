@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // tokenResponse is the raw token-endpoint response (Oura returns a rotated
@@ -22,6 +23,27 @@ type tokenResponse struct {
 	// number, object, array…) must NOT fail the refresh — that would burn the rotated
 	// refresh token the server just issued. See grantedScope.
 	Scope json.RawMessage `json:"scope"`
+}
+
+// hasInvalidUnicode reports whether any decoded string field (including a string-typed
+// scope) was NOT valid Unicode on the wire. encoding/json does not reject a lone
+// surrogate escape such as "\ud800" (or raw invalid UTF-8): it silently substitutes
+// U+FFFD (utf8.RuneError). Checking the DECODED value for U+FFFD catches every such
+// form with one rule, and costs nothing legitimate: no real token or OAuth scope (RFC
+// 6749 §3.3 limits scope-tokens to printable ASCII) contains U+FFFD. A non-string scope
+// is not inspected here — it stays lenient ("keep the prior grant", see grantedScope).
+func (tr *tokenResponse) hasInvalidUnicode() bool {
+	fields := []string{tr.AccessToken, tr.RefreshToken, tr.TokenType}
+	var scope string
+	if len(tr.Scope) != 0 && json.Unmarshal(tr.Scope, &scope) == nil {
+		fields = append(fields, scope)
+	}
+	for _, f := range fields {
+		if strings.ContainsRune(f, utf8.RuneError) {
+			return true
+		}
+	}
+	return false
 }
 
 // grantedScope returns the scope string the server granted, or "" when the field is
@@ -87,6 +109,12 @@ func refreshTokens(
 	var tr tokenResponse
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response was not valid JSON"}
+	}
+	// A malformed string (lone surrogate / invalid UTF-8) makes the whole response
+	// malformed: persisting the U+FFFD-mangled value as the grant would be a silent lie
+	// (shared conformance case hostile_token_responses/scope_lone_surrogate).
+	if tr.hasInvalidUnicode() {
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response contained a string that was not valid Unicode"}
 	}
 	if tr.AccessToken == "" {
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response missing access_token"}

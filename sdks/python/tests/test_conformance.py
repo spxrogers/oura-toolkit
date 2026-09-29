@@ -85,7 +85,7 @@ def test_fixture_has_not_shrunk() -> None:
     )
     # pytest SKIPS a parametrize over an empty list, so an emptied refresh_scope_cases
     # table would pass silently without this guard.
-    assert len(REFRESH_SCOPE_CASES) >= 7, (
+    assert len(REFRESH_SCOPE_CASES) >= 8, (
         f"fixture shrank? {len(REFRESH_SCOPE_CASES)} refresh_scope_cases cases"
     )
 

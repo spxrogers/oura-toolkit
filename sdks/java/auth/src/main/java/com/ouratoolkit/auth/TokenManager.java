@@ -251,6 +251,16 @@ public final class TokenManager {
         // would only resurface as a baffling 400 on the NEXT refresh, long after the cause).
         // Mirrors go/auth/oauth.go:74-79. Messages carry NO token/secret material — the raw
         // body is never echoed, since a partial 2xx payload may contain token material.
+        // A string that isn't valid Unicode (e.g. a lone "\\ud800" escape, which Jackson
+        // decodes into an unpaired UTF-16 surrogate) makes the RESPONSE malformed: it must
+        // fail typed here, before anything is persisted — never be written to the store as
+        // mojibake. Checked over every string (and field name) in the body, not just scope.
+        // Pinned by the shared fixture's hostile_token_responses scope_lone_surrogate case.
+        if (node != null && containsUnpairedSurrogate(node)) {
+            throw new TransportException(
+                    "token endpoint 2xx response contains a string that is not valid Unicode",
+                    null);
+        }
         JsonNode accessToken = node == null ? null : node.get("access_token");
         JsonNode expiresIn = node == null ? null : node.get("expires_in");
         if (accessToken == null || !accessToken.isTextual() || accessToken.asText().isEmpty()) {
@@ -295,6 +305,49 @@ public final class TokenManager {
      */
     private static boolean isBlankScope(String s) {
         return s.codePoints().allMatch(cp -> Character.isWhitespace(cp) || Character.isSpaceChar(cp));
+    }
+
+    /** True when any string value or field name anywhere in {@code node} has an unpaired surrogate. */
+    private static boolean containsUnpairedSurrogate(JsonNode node) {
+        if (node.isTextual()) {
+            return hasUnpairedSurrogate(node.asText());
+        }
+        if (node.isObject()) {
+            var fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> e = fields.next();
+                if (hasUnpairedSurrogate(e.getKey()) || containsUnpairedSurrogate(e.getValue())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                if (containsUnpairedSurrogate(child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** True when {@code s} has a high surrogate not followed by a low one, or a lone low one. */
+    private static boolean hasUnpairedSurrogate(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!Character.isSurrogate(c)) {
+                continue;
+            }
+            if (Character.isHighSurrogate(c)
+                    && i + 1 < s.length()
+                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                i++; // a well-formed pair — skip its low half
+                continue;
+            }
+            return true; // lone high, or a low surrogate with no preceding high
+        }
+        return false;
     }
 
     private static String encodeForm(Map<String, String> form) {

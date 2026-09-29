@@ -82,7 +82,7 @@ public class ConformanceTests
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
     /// fixture shrank, so the table sizes are pinned here: >= 8 each for the hostile-response
-    /// and hostile-store tables (matching the other legs), >= 7 for refresh_scope_cases.
+    /// and hostile-store tables (matching the other legs), >= 8 for refresh_scope_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -99,8 +99,8 @@ public class ConformanceTests
         Assert.True(fixture.TryGetProperty("refresh_scope_cases", out var scopeTable),
             "fixture lost its refresh_scope_cases table");
         var scopeCases = scopeTable.GetProperty("cases").GetArrayLength();
-        Assert.True(scopeCases >= 7,
-            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 7");
+        Assert.True(scopeCases >= 8,
+            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 8");
     }
 
     /// <summary>

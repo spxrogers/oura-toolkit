@@ -25,7 +25,10 @@
     "   6749 §5.1 lets the server omit an unchanged scope, and `scope` is informational,",
     "   so failing the refresh would burn the rotated refresh token over it; persisting a",
     "   blank would erase the grant the CLI's re-consent check (#116) reads, making a",
-    "   current login look stale. A real scope string replaces it. Every body's",
+    "   current login look stale. A real scope string replaces it. (A scope string that",
+    "   isn't valid Unicode, e.g. a lone surrogate escape, makes the RESPONSE malformed:",
+    "   that's hostile_token_responses' scope_lone_surrogate, which must fail typed.)",
+    "   Every body's",
     "   `access_token` is `at-refreshed`, which the refreshed record must also persist.",
     " - valid_records: the canonical on-disk shapes (field names are the wire format",
     "   shared by ALL languages — source of truth: oura-toolkit-auth's store.rs). Every",
@@ -42,7 +45,8 @@
     { "name": "negative_expires_in", "body": { "access_token": "at-hostile-new", "refresh_token": "rt-hostile-new", "expires_in": -300 } },
     { "name": "non_numeric_expires_in", "body": { "access_token": "at-hostile-new", "refresh_token": "rt-hostile-new", "expires_in": "soon" } },
     { "name": "body_not_json", "raw_body": "welcome to the token endpoint" },
-    { "name": "body_json_array", "raw_body": "[]" }
+    { "name": "body_json_array", "raw_body": "[]" },
+    { "name": "scope_lone_surrogate", "raw_body": "{\"access_token\":\"at-hostile-new\",\"refresh_token\":\"rt-hostile-new\",\"expires_in\":3600,\"scope\":\"\\ud800\"}" }
   ],
   "hostile_store_files": [
     { "name": "tokens_literal_null", "file": "tokens.json", "content": "null" },

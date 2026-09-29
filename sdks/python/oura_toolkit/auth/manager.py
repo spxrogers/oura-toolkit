@@ -49,6 +49,17 @@ DEFAULT_SKEW_SECS = 60
 TOKEN_ENDPOINT_TIMEOUT = 30.0
 
 
+def _is_valid_unicode(value: str) -> bool:
+    """False when ``value`` holds a lone surrogate (which ``json.loads`` accepts from a
+    ``\\uD800``-style escape) — i.e. it can't be encoded as UTF-8 and so can't be
+    persisted."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 class TokenManager:
     """Owns the current tokens and the machinery to keep them fresh. Thread-safe
     (an internal mutex serializes token access within the process; the store lock
@@ -270,6 +281,20 @@ class TokenManager:
                 resp.status, "token-endpoint response 'expires_in' was not positive"
             )
         rotated = payload.get("refresh_token")
+        # Malformed-Unicode guard (conformance `scope_lone_surrogate`): json.loads
+        # accepts a lone-surrogate escape like "\ud800", yielding a str that is NOT
+        # valid Unicode — the store writer would then raise an untyped
+        # UnicodeEncodeError AFTER the server already rotated the refresh token. Any
+        # string field we would persist must encode as UTF-8, or the whole RESPONSE is
+        # malformed: fail typed here, before anything is written. (Non-string scopes
+        # stay lenient below; this only rejects strings that aren't valid Unicode.)
+        for field in ("access_token", "refresh_token", "scope", "token_type"):
+            value = payload.get(field)
+            if isinstance(value, str) and not _is_valid_unicode(value):
+                raise TokenEndpointError(
+                    resp.status,
+                    f"token-endpoint response '{field}' was not valid Unicode",
+                )
         # Scope (conformance `refresh_scope_cases`): an omitted, null, non-string,
         # empty, or whitespace-only scope keeps the prior grant (RFC 6749 §5.1 lets
         # the server omit an unchanged scope; persisting a blank would erase the grant

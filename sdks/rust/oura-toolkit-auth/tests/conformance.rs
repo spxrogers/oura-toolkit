@@ -127,7 +127,7 @@ async fn refresh_scope_cases_persist_expected_scope() {
         .expect("prior_scope")
         .to_string();
     let cases = table["cases"].as_array().expect("cases").clone();
-    assert!(cases.len() >= 7, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 8, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();

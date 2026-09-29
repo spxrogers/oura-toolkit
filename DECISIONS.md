@@ -387,11 +387,14 @@ informational, and failing would burn the rotated refresh token. The six had dri
 let a whitespace-only scope replace the grant, and three also let `""` do it. On a non-string
 scope, Rust/Go/C# failed the whole refresh, Java persisted it as text (`"42"`), Python
 persisted the raw number, and only TypeScript kept the prior grant. That's pinned for all six
-by the shared conformance table `refresh_scope_cases`. One accepted gap: a scope that isn't
-valid UTF-16 (a lone-surrogate escape) has no shared case, because the six JSON parsers
-disagree at the document level (Rust's serde rejects the whole response). Each companion
-only has to fail typed or keep the prior grant, never crash untyped; C# pins its own
-behavior with a local test.
+by the shared conformance table `refresh_scope_cases`. A string that isn't valid Unicode (a
+lone-surrogate escape like `"\ud800"`) is different: it makes the response malformed, not
+merely wrong-typed. Before this, Rust failed typed, Python crashed untyped while persisting
+(after the server had rotated the refresh token), and Go/TS/Java persisted a lossy grant.
+TS/Java's escaped surrogate even made Rust reject the shared `tokens.json`, and C# threw
+untyped. So it's a `hostile_token_responses` case (`scope_lone_surrogate`): every companion
+fails typed and leaves the store untouched, the same contract as the other malformed
+responses.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

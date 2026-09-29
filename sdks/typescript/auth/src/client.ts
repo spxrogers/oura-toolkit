@@ -249,6 +249,20 @@ export class TokenManager {
     if (typeof json !== "object" || json === null || Array.isArray(json)) {
       throw new TokenEndpointError(status, "token-endpoint 2xx response was not a JSON object");
     }
+    // A string that isn't valid Unicode (a lone-surrogate `\ud800` escape, which
+    // JSON.parse accepts) makes the RESPONSE malformed: persisting it would write a grant
+    // no other language's companion can read back. Checked over every top-level string
+    // field, before anything is persisted. A regex rather than String.prototype
+    // .isWellFormed because the engine floor is Node 18. Non-string scopes stay lenient
+    // (refresh_scope_cases). Conformance: auth-cases.json scope_lone_surrogate.
+    for (const [field, value] of Object.entries(json)) {
+      if (typeof value === "string" && LONE_SURROGATE.test(value)) {
+        throw new TokenEndpointError(
+          status,
+          `token-endpoint 2xx response field ${field} is not valid Unicode`
+        );
+      }
+    }
     const resp = json as Partial<TokenResponse>;
     if (typeof resp.access_token !== "string" || resp.access_token === "") {
       throw new TokenEndpointError(status, "token-endpoint 2xx response missing access_token");
@@ -278,6 +292,9 @@ export class TokenManager {
     });
   }
 }
+
+/** Matches an unpaired UTF-16 surrogate (a string that is not well-formed Unicode). */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /**
  * A secret-free description of a `fetch` rejection for {@link TokenEndpointTransportError}.
