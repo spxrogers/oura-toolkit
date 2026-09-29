@@ -11,7 +11,9 @@ THERE, never here — its ``$comment`` is the contract):
   ``KeyError``/``TypeError``/``OverflowError``/``json.JSONDecodeError`` escaping), and
   ``tokens.json`` byte-identical afterwards (the rotated refresh token is never burned
   by persisting a blank/expired Bearer); a case's ``must_not_echo`` string appears
-  nowhere in the error's text or any error it chains (``__cause__``/``__context__``);
+  nowhere in the error's text or any error it chains (``__cause__``/``__context__``,
+  ``str()`` and ``repr()``) — and must actually occur in the case's decoded body bytes
+  (a needle absent from its payload would pass vacuously);
 - implementation-defined 2xx token responses (a UTF-8 BOM, duplicate keys, deep
   nesting, an integral float ``expires_in``, an upper-case key) -> EITHER a successful
   refresh that persists ``access_token == "at-refreshed"``, a refresh_token of
@@ -19,9 +21,11 @@ THERE, never here — its ``$comment`` is the contract):
   refresh time + 3600, OR the typed
   :class:`TokenEndpointError` (2xx status) with ``tokens.json`` byte-identical — never
   an untyped exception (e.g. ``RecursionError``) or a half-written store;
-- hostile store files -> the typed :class:`StoreFormatError`, never a default-filled
+- hostile store files (``content`` text or ``content_base64`` raw bytes — exactly one;
+  e.g. invalid UTF-8) -> the typed :class:`StoreFormatError`, never a default-filled
   record that makes ``is_authenticated`` lie, and never an untyped exception (plus the
-  same ``must_not_echo`` rule — the store holds secrets);
+  same ``must_not_echo`` rule, needle-in-payload check included — the store holds
+  secrets);
 - implementation-defined store files (nesting past a parser's depth limit) -> EITHER
   exactly the case's ``expected`` record OR the typed :class:`StoreFormatError` —
   never an untyped exception (e.g. ``RecursionError``);
@@ -35,10 +39,11 @@ THERE, never here — its ``$comment`` is the contract):
   compatibility check — field names are the shared wire format, #54).
 
 Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-same fixture-shrink guards (>= 27 hostile token responses, >= 5 implementation-defined
-token responses, >= 14 hostile store files, >= 1 implementation-defined store file,
->= 18 refresh-success cases) plus an exact top-level table-set guard, so a renamed or
-added table can't be silently skipped.
+same fixture-shrink guards (>= 30 hostile token responses, >= 5 implementation-defined
+token responses, >= 17 hostile store files, >= 1 implementation-defined store file,
+>= 18 refresh-success cases; >= 4 hostile token and >= 5 hostile store cases carrying
+``must_not_echo``) plus an exact top-level table-set guard, so a renamed or added table
+can't be silently skipped.
 Monorepo-only: the fixture is resolved by walking up from ``__file__`` to the repo
 root (nearest ancestor holding the justfile + README), never from the cwd.
 """
@@ -102,6 +107,9 @@ EXPECTED_TABLES = {
 #: The mutually exclusive ways a case gives its token-endpoint response body.
 BODY_COLUMNS = ("body", "raw_body", "raw_body_base64")
 
+#: The mutually exclusive ways a case gives a store file's content.
+STORE_CONTENT_COLUMNS = ("content", "content_base64")
+
 CREDENTIALS = ClientCredentials(client_id="cid", client_secret="cs")
 
 
@@ -127,6 +135,49 @@ def response_body(case: dict) -> object:
     if column == "raw_body_base64":
         return base64.b64decode(case[column], validate=True)
     return case[column]
+
+
+def response_body_bytes(case: dict) -> bytes:
+    """The exact bytes the conftest mock sends for the case (same rule as its handler:
+    bytes verbatim, a str as UTF-8, anything else json.dumps'd) — the payload a
+    ``must_not_echo`` needle is checked against."""
+    body = response_body(case)
+    if isinstance(body, bytes):
+        return body
+    if isinstance(body, str):
+        return body.encode("utf-8")
+    return json.dumps(body).encode("utf-8")
+
+
+def store_file_bytes(case: dict) -> bytes:
+    """The case's raw store-file bytes: ``content`` -> its UTF-8 encoding,
+    ``content_base64`` -> the decoded bytes (bytes JSON can't hold, e.g. invalid
+    UTF-8). Exactly one column must be present — an ambiguous case is a fixture bug."""
+    present = [column for column in STORE_CONTENT_COLUMNS if column in case]
+    assert len(present) == 1, (
+        f"case {case['name']}: expected exactly one of {STORE_CONTENT_COLUMNS}, "
+        f"got {present}"
+    )
+    column = present[0]
+    if column == "content_base64":
+        return base64.b64decode(case[column], validate=True)
+    return case[column].encode("utf-8")
+
+
+def assert_needle_in_payload(case: dict, payload: bytes) -> None:
+    """Vacuity guard for the ``must_not_echo`` rule: the needle must actually occur in
+    the case's payload (decoded body/content bytes). A needle the input never
+    contains can't leak, so the no-echo check would pass whatever the error says."""
+    secret = case.get("must_not_echo")
+    if secret is None:
+        return
+    assert isinstance(secret, str) and secret, (
+        f"case {case['name']}: must_not_echo must be a non-empty string"
+    )
+    assert secret.encode("utf-8") in payload, (
+        f"case {case['name']}: must_not_echo {secret!r} does not occur in the case's "
+        "payload — the no-echo check would be vacuous"
+    )
 
 
 def error_chain(err: BaseException) -> list:
@@ -177,12 +228,12 @@ def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
 
 def test_fixture_has_not_shrunk() -> None:
     """Shrink guard: a fixture edit that drops hostile cases weakens EVERY language's
-    suite at once — fail loudly here (>= 27 hostile token responses, >= 5
-    implementation-defined token responses, >= 14 hostile store files, >= 1
+    suite at once — fail loudly here (>= 30 hostile token responses, >= 5
+    implementation-defined token responses, >= 17 hostile store files, >= 1
     implementation-defined store file, >= 18 refresh-success cases, like the other
     legs). pytest SKIPS a parametrize over an
     empty list, so an emptied table would otherwise pass silently."""
-    assert len(HOSTILE_TOKEN_RESPONSES) >= 27, (
+    assert len(HOSTILE_TOKEN_RESPONSES) >= 30, (
         f"fixture shrank? {len(HOSTILE_TOKEN_RESPONSES)} hostile_token_responses cases"
     )
     assert len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES) >= 5, (
@@ -190,7 +241,7 @@ def test_fixture_has_not_shrunk() -> None:
         f"{len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES)} "
         "implementation_defined_token_responses cases"
     )
-    assert len(HOSTILE_STORE_FILES) >= 14, (
+    assert len(HOSTILE_STORE_FILES) >= 17, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
     )
     assert len(IMPLEMENTATION_DEFINED_STORE_FILES) >= 1, (
@@ -203,6 +254,23 @@ def test_fixture_has_not_shrunk() -> None:
     )
 
 
+def test_must_not_echo_coverage_has_not_shrunk() -> None:
+    """Floor on the no-echo cases: dropping ``must_not_echo`` from a case (or deleting
+    the case) silently retires a leak check in every language at once — at least 4
+    hostile token responses and 5 hostile store files must carry one."""
+    token_needles = [c["name"] for c in HOSTILE_TOKEN_RESPONSES if "must_not_echo" in c]
+    store_needles = [c["name"] for c in HOSTILE_STORE_FILES if "must_not_echo" in c]
+    assert len(token_needles) >= 4, (
+        "fixture shrank? only "
+        f"{len(token_needles)} hostile_token_responses carry must_not_echo: "
+        f"{token_needles}"
+    )
+    assert len(store_needles) >= 5, (
+        "fixture shrank? only "
+        f"{len(store_needles)} hostile_store_files carry must_not_echo: {store_needles}"
+    )
+
+
 @pytest.mark.parametrize(
     "case", HOSTILE_TOKEN_RESPONSES, ids=[c["name"] for c in HOSTILE_TOKEN_RESPONSES]
 )
@@ -212,6 +280,7 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     # raw_body_base64 / raw_body verbatim, else the JSON-encoded body — same rule as
     # the Rust leg's ResponseTemplate selection.
     payload = response_body(case)
+    assert_needle_in_payload(case, response_body_bytes(case))
     token_endpoint.handler = lambda form: (200, payload)
 
     store = TokenStore(tmp_path)
@@ -396,7 +465,9 @@ def test_hostile_store_file_fails_with_the_typed_store_format_error(
     tmp_path: Path, case: dict
 ) -> None:
     store = TokenStore(tmp_path)
-    (tmp_path / case["file"]).write_text(case["content"], encoding="utf-8")
+    content = store_file_bytes(case)
+    assert_needle_in_payload(case, content)
+    (tmp_path / case["file"]).write_bytes(content)
 
     if case["file"] == "tokens.json":
         load = store.load_tokens
@@ -432,7 +503,7 @@ def test_implementation_defined_store_file_loads_exactly_or_fails_typed(
     exception (e.g. the RecursionError json.loads raises past the interpreter's
     recursion limit) or a record with other values fails, naming the case."""
     store = TokenStore(tmp_path)
-    (tmp_path / case["file"]).write_text(case["content"], encoding="utf-8")
+    (tmp_path / case["file"]).write_bytes(store_file_bytes(case))
     assert case["file"] == "tokens.json", (
         f"case {case['name']}: this harness only knows tokens.json, "
         f"got {case['file']!r}"

@@ -44,47 +44,75 @@ fn fixture() -> serde_json::Value {
         .expect("fixture is valid JSON")
 }
 
-/// The mock response for a fixture case: exactly one of `body` (JSON), `raw_body` (sent
-/// verbatim) or `raw_body_base64` (bytes JSON can't hold) — a case naming two would silently
-/// test only one of them.
-fn response_for(case: &serde_json::Value) -> ResponseTemplate {
+/// The payload bytes of a fixture case: exactly one of the given columns, as JSON (`body`),
+/// verbatim text (`raw_body` / `content`) or base64 bytes (`*_base64`) — a case naming two
+/// would silently test only one of them.
+fn payload_of(case: &serde_json::Value, columns: &[&str]) -> Vec<u8> {
     use base64::Engine as _;
     let name = case["name"].as_str().unwrap_or("<unnamed>");
-    let columns: Vec<&str> = ["body", "raw_body", "raw_body_base64"]
-        .into_iter()
+    let present: Vec<&str> = columns
+        .iter()
+        .copied()
         .filter(|k| case.get(*k).is_some())
         .collect();
     assert_eq!(
-        columns.len(),
+        present.len(),
         1,
-        "fixture case {name}: exactly one body column, got {columns:?}"
+        "fixture case {name}: exactly one of {columns:?}, got {present:?}"
     );
-    let raw = |k: &str| {
-        case[k]
+    let column = present[0];
+    let text = || {
+        case[column]
             .as_str()
-            .unwrap_or_else(|| panic!("case {name}: {k} is a string"))
+            .unwrap_or_else(|| panic!("case {name}: {column} is a string"))
     };
-    match columns[0] {
-        "raw_body_base64" => ResponseTemplate::new(200).set_body_raw(
-            base64::engine::general_purpose::STANDARD
-                .decode(raw("raw_body_base64"))
-                .unwrap_or_else(|e| panic!("case {name}: bad base64: {e}")),
-            "application/json",
-        ),
-        "raw_body" => ResponseTemplate::new(200)
-            .set_body_raw(raw("raw_body").as_bytes().to_vec(), "application/json"),
-        _ => ResponseTemplate::new(200).set_body_json(case["body"].clone()),
+    if column.ends_with("_base64") {
+        base64::engine::general_purpose::STANDARD
+            .decode(text())
+            .unwrap_or_else(|e| panic!("case {name}: bad base64: {e}"))
+    } else if column == "body" {
+        serde_json::to_vec(&case["body"]).unwrap()
+    } else {
+        text().as_bytes().to_vec()
     }
+}
+
+const BODY_COLUMNS: &[&str] = &["body", "raw_body", "raw_body_base64"];
+const STORE_COLUMNS: &[&str] = &["content", "content_base64"];
+
+/// A store case's file bytes: `content` (text) or `content_base64` (bytes JSON can't hold).
+fn store_bytes(case: &serde_json::Value) -> Vec<u8> {
+    payload_of(case, STORE_COLUMNS)
+}
+
+/// The mock 200 response carrying a token-endpoint case's body.
+fn response_for(case: &serde_json::Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_raw(payload_of(case, BODY_COLUMNS), "application/json")
 }
 
 /// A case's `must_not_echo` string must appear nowhere in the error: not in its Display or
 /// Debug text, and not in any error it chains (`source()`, recursively) — parser messages can
-/// quote the body/store, which carries token material.
-fn assert_no_echo(case: &serde_json::Value, err: &(dyn std::error::Error + 'static)) {
-    let Some(secret) = case.get("must_not_echo").and_then(|v| v.as_str()) else {
+/// quote the body/store, which carries token material. The secret must occur in the case's own
+/// payload, or the check would pass vacuously.
+fn assert_no_echo(
+    case: &serde_json::Value,
+    payload: &[u8],
+    err: &(dyn std::error::Error + 'static),
+) {
+    let name = case["name"].as_str().unwrap_or("<unnamed>");
+    let Some(secret) = case.get("must_not_echo") else {
         return;
     };
-    let name = case["name"].as_str().unwrap_or("<unnamed>");
+    let secret = secret
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| panic!("case {name}: must_not_echo must be a non-empty string"));
+    assert!(
+        payload
+            .windows(secret.len())
+            .any(|w| w == secret.as_bytes()),
+        "case {name}: must_not_echo {secret:?} doesn't occur in the case's payload (vacuous)"
+    );
     let mut current = Some(err);
     while let Some(e) = current {
         assert!(
@@ -93,6 +121,19 @@ fn assert_no_echo(case: &serde_json::Value, err: &(dyn std::error::Error + 'stat
         );
         current = e.source();
     }
+}
+
+/// The fixture must keep at least `floor` no-echo cases in `table`: dropping the column from a
+/// case would otherwise shrink the leak coverage silently.
+fn assert_no_echo_floor(cases: &[serde_json::Value], table: &str, floor: usize) {
+    let n = cases
+        .iter()
+        .filter(|c| c.get("must_not_echo").is_some())
+        .count();
+    assert!(
+        n >= floor,
+        "fixture shrank? {table} has {n} must_not_echo cases, want >= {floor}"
+    );
 }
 
 fn unix_now() -> i64 {
@@ -128,7 +169,8 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 27, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 30, "fixture shrank? {} cases", cases.len());
+    assert_no_echo_floor(&cases, "hostile_token_responses", 4);
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -161,7 +203,7 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
             matches!(err, AuthError::InvalidTokenResponse(_)),
             "case {name}: expected AuthError::InvalidTokenResponse, got {err:?}"
         );
-        assert_no_echo(&case, &err);
+        assert_no_echo(&case, &payload_of(&case, BODY_COLUMNS), &err);
         assert_eq!(
             std::fs::read(store.tokens_path()).unwrap(),
             bytes_before,
@@ -178,7 +220,7 @@ async fn hostile_2xx_token_responses_fail_the_code_exchange_typed() {
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 27, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 30, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -405,16 +447,17 @@ fn hostile_store_files_fail_typed() {
         .as_array()
         .expect("hostile_store_files table")
         .clone();
-    assert!(cases.len() >= 14, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 17, "fixture shrank? {} cases", cases.len());
+    assert_no_echo_floor(&cases, "hostile_store_files", 5);
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
         let file = case["file"].as_str().unwrap();
-        let content = case["content"].as_str().unwrap();
+        let content = store_bytes(&case);
 
         let dir = tempfile::tempdir().unwrap();
         let store = TokenStore::with_dir(dir.path());
-        std::fs::write(dir.path().join(file), content).unwrap();
+        std::fs::write(dir.path().join(file), &content).unwrap();
 
         match file {
             "tokens.json" => {
@@ -425,7 +468,7 @@ fn hostile_store_files_fail_typed() {
                     matches!(err, AuthError::Serde(_)),
                     "case {name}: expected the typed store-format error, got {err:?}"
                 );
-                assert_no_echo(&case, &err);
+                assert_no_echo(&case, &content, &err);
             }
             "credentials.json" => {
                 let err = store.load_credentials().expect_err(&format!(
@@ -435,7 +478,7 @@ fn hostile_store_files_fail_typed() {
                     matches!(err, AuthError::Serde(_)),
                     "case {name}: expected the typed store-format error, got {err:?}"
                 );
-                assert_no_echo(&case, &err);
+                assert_no_echo(&case, &content, &err);
             }
             other => panic!("fixture names an unknown store file {other:?}"),
         }
@@ -463,7 +506,7 @@ fn implementation_defined_store_files_load_exactly_or_fail_typed() {
         let expected = &case["expected"];
         let dir = tempfile::tempdir().unwrap();
         let store = TokenStore::with_dir(dir.path());
-        std::fs::write(dir.path().join(file), case["content"].as_str().unwrap()).unwrap();
+        std::fs::write(dir.path().join(file), store_bytes(&case)).unwrap();
 
         match store.load_tokens() {
             Ok(tokens) => {

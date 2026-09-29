@@ -19,9 +19,12 @@
 //     "at-refreshed", refresh_token "rt-refreshed" or the prior one (never empty) and
 //     expires_at = refresh time + 3600, OR typed *TokenEndpointError with the store
 //     byte-identical;
-//   - hostile store files → typed *StoreFormatError, never a zero-valued record that
-//     would make IsAuthenticated lie, and never a panic; a case's `must_not_echo`
-//     string appears nowhere in the error chain;
+//   - hostile store files (EXACTLY ONE of `content` or decoded `content_base64` bytes;
+//     a file that isn't valid UTF-8 fails) → typed *StoreFormatError, never a
+//     zero-valued record that would make IsAuthenticated lie, and never a panic; a
+//     case's `must_not_echo` string appears nowhere in the error chain;
+//   - every `must_not_echo` must occur in its case's payload (else the check is
+//     vacuous), and at least 4 hostile token / 5 hostile store cases carry one;
 //   - implementation-defined store files (deep nesting in an unknown field) → EITHER
 //     exactly the fixture's `expected` record OR the typed *StoreFormatError;
 //   - canonical valid records → load with exactly the fixture's field values and
@@ -112,6 +115,48 @@ func serveConformanceBody(w http.ResponseWriter, payload []byte, verbatim bool) 
 	_, _ = w.Write(payload)
 }
 
+// conformanceStoreContent is how a store-file case gives the file: EXACTLY ONE of
+// `content` (text) or `content_base64` (raw bytes JSON can't hold, e.g. invalid UTF-8).
+// Shared by both store-file harnesses.
+type conformanceStoreContent struct {
+	Content       *string `json:"content"`
+	ContentBase64 *string `json:"content_base64"`
+}
+
+// fileContent resolves the case's file content, failing the test (naming the case) unless
+// exactly one of content / content_base64 is present.
+func (c conformanceStoreContent) fileContent(t *testing.T, name string) []byte {
+	t.Helper()
+	switch {
+	case c.Content != nil && c.ContentBase64 == nil:
+		return []byte(*c.Content)
+	case c.ContentBase64 != nil && c.Content == nil:
+		decoded, err := base64.StdEncoding.DecodeString(*c.ContentBase64)
+		if err != nil {
+			t.Fatalf("case %s: content_base64 is not valid base64: %v", name, err)
+		}
+		return decoded
+	default:
+		t.Fatalf("case %s: must give EXACTLY ONE of content / content_base64", name)
+		return nil
+	}
+}
+
+// requireNoEchoFloor fails unless at least `floor` of a hostile table's cases carry
+// `must_not_echo` — the no-echo checks can't silently vanish from the fixture.
+func requireNoEchoFloor(t *testing.T, table string, needles []*string, floor int) {
+	t.Helper()
+	n := 0
+	for _, needle := range needles {
+		if needle != nil {
+			n++
+		}
+	}
+	if n < floor {
+		t.Fatalf("fixture shrank? %s has %d cases with must_not_echo, want >= %d", table, n, floor)
+	}
+}
+
 // conformanceFixture is the decoded shape of codegen/conformance/auth-cases.json.
 type conformanceFixture struct {
 	HostileTokenResponses []struct {
@@ -124,15 +169,15 @@ type conformanceFixture struct {
 		conformanceBody
 	} `json:"implementation_defined_token_responses"`
 	HostileStoreFiles []struct {
-		Name        string  `json:"name"`
-		File        string  `json:"file"`
-		Content     string  `json:"content"`
+		Name string `json:"name"`
+		File string `json:"file"`
+		conformanceStoreContent
 		MustNotEcho *string `json:"must_not_echo"`
 	} `json:"hostile_store_files"`
 	ImplementationDefinedStoreFiles []struct {
-		Name     string          `json:"name"`
-		File     string          `json:"file"`
-		Content  string          `json:"content"`
+		Name string `json:"name"`
+		File string `json:"file"`
+		conformanceStoreContent
 		Expected json.RawMessage `json:"expected"`
 	} `json:"implementation_defined_store_files"`
 	RefreshSuccessCases struct {
@@ -229,8 +274,10 @@ func fileExists(path string) bool {
 // recursively through errors.Unwrap AND joined errors (Unwrap() []error), since a parser
 // message quoting the body/file would leak token material through a wrapped cause even
 // when the outer message is fixed. A nil mustNotEcho is a no-op; an empty one is a
-// fixture bug (it would match everything).
-func assertNoEcho(t *testing.T, name string, err error, mustNotEcho *string) {
+// fixture bug (it would match everything), and so is one that does not occur in the
+// case's payload (the decoded body / file bytes): the check would pass vacuously, since
+// no parser can echo a string it never saw.
+func assertNoEcho(t *testing.T, name string, payload []byte, err error, mustNotEcho *string) {
 	t.Helper()
 	if mustNotEcho == nil {
 		return
@@ -238,6 +285,9 @@ func assertNoEcho(t *testing.T, name string, err error, mustNotEcho *string) {
 	secret := *mustNotEcho
 	if secret == "" {
 		t.Fatalf("case %s: must_not_echo is empty in the fixture", name)
+	}
+	if !bytes.Contains(payload, []byte(secret)) {
+		t.Fatalf("case %s: must_not_echo %q does not occur in the case's payload — the no-echo check would be vacuous", name, secret)
 	}
 	var visited int
 	var walk func(e error, depth int)
@@ -275,9 +325,14 @@ func assertNoEcho(t *testing.T, name string, err error, mustNotEcho *string) {
 // caller fails the t.Run outright, so reaching the assertions proves "never a panic".)
 func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileTokenResponses); n < 27 {
-		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 27", n)
+	if n := len(fixture.HostileTokenResponses); n < 30 {
+		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 30", n)
 	}
+	var tokenNeedles []*string
+	for _, tc := range fixture.HostileTokenResponses {
+		tokenNeedles = append(tokenNeedles, tc.MustNotEcho)
+	}
+	requireNoEchoFloor(t, "hostile_token_responses", tokenNeedles, 4)
 
 	for _, tc := range fixture.HostileTokenResponses {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -324,7 +379,7 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 			if n := calls.Load(); n != 1 {
 				t.Fatalf("a hostile 2xx must not trigger the reload-retry arm: want 1 endpoint call, got %d", n)
 			}
-			assertNoEcho(t, tc.Name, err, tc.MustNotEcho)
+			assertNoEcho(t, tc.Name, payload, err, tc.MustNotEcho)
 
 			tokensAfter, err := os.ReadFile(store.TokensPath())
 			if err != nil {
@@ -446,14 +501,20 @@ func TestConformanceImplementationDefinedTokenResponsesSucceedOrFailTypedUntouch
 // zero-valued record (which would make IsAuthenticated lie), never a panic.
 func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileStoreFiles); n < 14 {
-		t.Fatalf("fixture shrank? hostile_store_files has %d cases, want >= 14", n)
+	if n := len(fixture.HostileStoreFiles); n < 17 {
+		t.Fatalf("fixture shrank? hostile_store_files has %d cases, want >= 17", n)
 	}
+	var storeNeedles []*string
+	for _, tc := range fixture.HostileStoreFiles {
+		storeNeedles = append(storeNeedles, tc.MustNotEcho)
+	}
+	requireNoEchoFloor(t, "hostile_store_files", storeNeedles, 5)
 
 	for _, tc := range fixture.HostileStoreFiles {
 		t.Run(tc.Name, func(t *testing.T) {
+			content := tc.fileContent(t, tc.Name)
 			store := NewStoreAt(t.TempDir())
-			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), []byte(tc.Content), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), content, 0o600); err != nil {
 				t.Fatal(err)
 			}
 
@@ -462,13 +523,13 @@ func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 			case "tokens.json":
 				tokens, err := store.LoadTokens()
 				if tokens != nil {
-					t.Fatalf("a hostile tokens.json must never yield a record, got %v", tokens)
+					t.Fatalf("case %s: a hostile tokens.json must never yield a record, got %v", tc.Name, tokens)
 				}
 				loadErr = err
 			case "credentials.json":
 				creds, err := store.LoadCredentials()
 				if creds != nil {
-					t.Fatalf("a hostile credentials.json must never yield a record, got %v", creds)
+					t.Fatalf("case %s: a hostile credentials.json must never yield a record, got %v", tc.Name, creds)
 				}
 				loadErr = err
 			default:
@@ -476,13 +537,13 @@ func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 			}
 
 			if loadErr == nil {
-				t.Fatal("a hostile store file must not load")
+				t.Fatalf("case %s: a hostile store file must not load", tc.Name)
 			}
 			var sfe *StoreFormatError
 			if !errors.As(loadErr, &sfe) {
-				t.Fatalf("want the typed *StoreFormatError, got %T: %v", loadErr, loadErr)
+				t.Fatalf("case %s: want the typed *StoreFormatError, got %T: %v", tc.Name, loadErr, loadErr)
 			}
-			assertNoEcho(t, tc.Name, loadErr, tc.MustNotEcho)
+			assertNoEcho(t, tc.Name, content, loadErr, tc.MustNotEcho)
 		})
 	}
 }
@@ -506,7 +567,7 @@ func TestConformanceImplementationDefinedStoreFilesLoadExactlyOrFailTyped(t *tes
 				t.Fatalf("case %s: fixture `expected` is missing or empty", tc.Name)
 			}
 			store := NewStoreAt(t.TempDir())
-			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), []byte(tc.Content), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), tc.fileContent(t, tc.Name), 0o600); err != nil {
 				t.Fatal(err)
 			}
 

@@ -251,37 +251,45 @@ class TokenManager:
         # all. Decoding explicitly (never `json.loads(bytes)`, which sniffs UTF-16/32)
         # and strictly (never errors="replace", which would persist U+FFFD) makes the
         # whole response malformed, even though the server already rotated.
+        #
+        # NO exception chaining on this parse path (conformance `must_not_echo`, e.g.
+        # `body_invalid_utf8_secret`): a UnicodeDecodeError's repr() quotes the ENTIRE
+        # input bytes (incl. the rotated refresh token) and a JSONDecodeError keeps the
+        # whole body in `.doc`. `raise ... from None` would still leave the parser error
+        # reachable via `__context__`, so each failure is recorded as a fixed message
+        # and the typed error is raised OUTSIDE the `except` block — nothing chains.
+        text: Optional[str]
         try:
             text = resp.data.decode("utf-8")
-        except UnicodeDecodeError as e:
+        except UnicodeDecodeError:
+            text = None
+        if text is None:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response was not valid UTF-8"
-            ) from e
+            )
         # RecursionError too (conformance `body_deeply_nested`, an
         # implementation_defined_token_responses case): json.loads recurses per nesting
         # level, so a body nested past the interpreter's recursion limit — even inside
         # an unknown field — raises RecursionError (a RuntimeError, NOT a ValueError).
         # Rejecting it is allowed; letting it escape untyped is not.
+        parse_failure: Optional[str] = None
         try:
             payload = json.loads(text)
-        except ValueError as e:
-            raise TokenEndpointError(
-                resp.status, "token-endpoint response was not valid JSON"
-            ) from e
-        except RecursionError as e:
-            raise TokenEndpointError(
-                resp.status, "token-endpoint response was nested too deeply"
-            ) from e
+        except ValueError:
+            parse_failure = "token-endpoint response was not valid JSON"
+        except RecursionError:
+            parse_failure = "token-endpoint response was nested too deeply"
+        if parse_failure is not None:
+            raise TokenEndpointError(resp.status, parse_failure)
         if not isinstance(payload, dict):
             raise TokenEndpointError(
                 resp.status, "token-endpoint response was not a JSON object"
             )
-        try:
-            access_token = payload["access_token"]
-        except KeyError as e:
+        if "access_token" not in payload:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response missing 'access_token'"
-            ) from e
+            )
+        access_token = payload["access_token"]
         if not isinstance(access_token, str):
             raise TokenEndpointError(
                 resp.status, "token-endpoint response 'access_token' was not a string"

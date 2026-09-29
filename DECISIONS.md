@@ -427,8 +427,13 @@ does the same for the store (Python's store reader had the same `RecursionError`
 **Errors never quote the input.** Parser messages can echo what they choke on (V8's
 `JSON.parse` quotes the text; Jackson's "Unrecognized token 'rt…'"), and token bodies and store
 files carry secrets. Cases with `must_not_echo` require that string to appear nowhere in the
-typed error or anything it chains. It caught TypeScript's store error embedding `JSON.parse`'s
-message and Java chaining Jackson's exception.
+typed error or anything it chains, including type errors that name a wrong-typed value (serde's
+`invalid type: string "…"`). It caught TypeScript's store error embedding `JSON.parse`'s message,
+Java chaining Jackson's exception, Python chaining a `UnicodeDecodeError` (whose repr holds the
+whole input), and the Rust store quoting a wrong-typed value — which reached the CLI's stderr and
+MCP tool results. Store files, like token bodies, must be valid UTF-8 over the whole file:
+TypeScript and Go loaded invalid bytes as U+FFFD, and Rust, C# and Java's Jackson let some through
+in fields they skip (overlong forms and encoded surrogates, in Jackson's case).
 
 Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
 untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even

@@ -33,8 +33,8 @@ func (e *TokenEndpointError) Error() string {
 }
 
 // StoreFormatError is a store record that exists on disk but is not a valid, complete
-// record of its type: malformed JSON, the JSON literal null, a missing required field, or
-// a wrong-typed field. It is deliberately TYPED and distinct from an ABSENT record (which
+// record of its type: not valid UTF-8, malformed JSON, the JSON literal null, a missing
+// required field, or a wrong-typed field. It is deliberately TYPED and distinct from an ABSENT record (which
 // loads as (nil, nil) — "not logged in / not set up yet") so a partial or corrupt file can
 // never be silently loaded as a zero-valued struct, which would let IsAuthenticated report
 // non-existent tokens as present. The message names the offending field, never its value —

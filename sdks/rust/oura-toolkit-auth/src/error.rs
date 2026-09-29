@@ -60,13 +60,21 @@ pub enum AuthError {
     #[error("token store i/o error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// (De)serialization error for the stored credentials.
+    /// A store record that isn't a well-formed record. Loading reports only the category and
+    /// line/column, never the file's text (it holds secrets). Not chained as a `source()`: the
+    /// message already carries it, and a chained copy would print twice under `{:#}`.
     #[error("token store format error: {0}")]
-    Serde(#[from] serde_json::Error),
+    Serde(serde_json::Error),
 
     /// Transport error talking to the token endpoint (connection, TLS, timeout, reading the
     /// body). A 2xx body that arrives intact but can't be used is
     /// [`AuthError::InvalidTokenResponse`] instead.
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
+}
+
+impl From<serde_json::Error> for AuthError {
+    fn from(e: serde_json::Error) -> Self {
+        AuthError::Serde(e)
+    }
 }

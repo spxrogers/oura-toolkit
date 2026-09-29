@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // appDirName is the locked config-directory name (CLAUDE.md → NAMING), identical under
@@ -215,7 +216,16 @@ func parseTokens(data []byte) (*Tokens, error) {
 // strictUnmarshal maps any JSON error (syntax, or a wrong-typed field caught by the shadow
 // struct's typed pointers) to a typed *StoreFormatError. json.Unmarshal messages name the
 // character/field/type, never the value, so no secret can leak.
+//
+// A store file must be valid UTF-8 (RFC 8259 §8.1): encoding/json would silently
+// substitute U+FFFD for invalid bytes and LOAD a mangled secret (e.g. a refresh_token the
+// next refresh would present and burn), so invalid bytes are rejected up front — with a
+// fixed message that never quotes the content (hostile_store_files/
+// tokens_invalid_utf8_secret).
 func strictUnmarshal(data []byte, into any) error {
+	if !utf8.Valid(data) {
+		return &StoreFormatError{msg: "record is not valid UTF-8"}
+	}
 	if err := json.Unmarshal(data, into); err != nil {
 		return &StoreFormatError{msg: err.Error()}
 	}

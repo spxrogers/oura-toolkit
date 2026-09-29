@@ -145,7 +145,7 @@ impl TokenStore {
     /// Load the client credentials, or `None` if `auth setup` has never run.
     pub fn load_credentials(&self) -> Result<Option<ClientCredentials>, AuthError> {
         match fs::read(self.credentials_path()) {
-            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Ok(bytes) => parse_record(&bytes).map(Some),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -162,7 +162,7 @@ impl TokenStore {
     /// Load the tokens, or `None` if no login has succeeded yet.
     pub fn load_tokens(&self) -> Result<Option<Tokens>, AuthError> {
         match fs::read(self.tokens_path()) {
-            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Ok(bytes) => parse_record(&bytes).map(Some),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -286,6 +286,36 @@ fn remove_if_exists(path: &Path) -> Result<bool, AuthError> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e.into()),
     }
+}
+
+/// Parse a store record, reporting WHAT went wrong and WHERE — never the file's text.
+/// serde_json's own messages quote the value they choke on (`invalid type: string "…"`), and
+/// the store holds secrets, so the typed error carries only the category and position
+/// (conformance: hostile_store_files `must_not_echo` cases).
+fn parse_record<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, AuthError> {
+    use serde::de::Error as _;
+    use serde_json::error::Category;
+    // A record is UTF-8 JSON text (RFC 8259 §8.1), checked over the WHOLE file: serde_json
+    // doesn't validate the strings of fields it skips (conformance
+    // tokens_invalid_utf8_in_unknown_field).
+    if std::str::from_utf8(bytes).is_err() {
+        return Err(AuthError::Serde(serde_json::Error::custom(
+            "a record that is not valid UTF-8",
+        )));
+    }
+    serde_json::from_slice(bytes).map_err(|e| {
+        let what = match e.classify() {
+            Category::Io => "an unreadable record",
+            Category::Syntax => "malformed JSON",
+            Category::Data => "a missing or wrong-typed field",
+            Category::Eof => "truncated JSON",
+        };
+        AuthError::Serde(serde_json::Error::custom(format!(
+            "{what} at line {} column {}",
+            e.line(),
+            e.column()
+        )))
+    })
 }
 
 /// Open (creating if needed) with owner-only perms where supported.

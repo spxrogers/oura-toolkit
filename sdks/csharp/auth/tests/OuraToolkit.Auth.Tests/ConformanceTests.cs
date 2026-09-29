@@ -28,15 +28,19 @@ namespace OuraToolkit.Auth.Tests;
 /// access_token = at-refreshed, refresh_token = rt-refreshed or the prior one (never empty)
 /// and expires_at = refresh time + 3600, OR the typed error with the store byte-identical —
 /// never an untyped exception or a half-written store;</item>
-/// <item>hostile store files → the typed <see cref="StoreFormatException"/>, never a
-/// default-filled record that makes is-authenticated lie, and never an untyped crash;</item>
+/// <item>hostile store files (given as <c>content</c> text or <c>content_base64</c> bytes,
+/// e.g. invalid UTF-8 — a store file must be valid UTF-8) → the typed
+/// <see cref="StoreFormatException"/>, never a default-filled record that makes
+/// is-authenticated lie, never a U+FFFD-substituted load, and never an untyped crash;</item>
 /// <item>implementation-defined store files (nesting past a parser's depth limit in an
 /// unknown field) → EITHER exactly the fixture's <c>expected</c> record OR the typed
 /// <see cref="StoreFormatException"/> — never an untyped crash;</item>
 /// <item>every case carrying <c>must_not_echo</c> (token responses and store files) → that
 /// string appears nowhere in the typed error's text or in any exception it chains
 /// (InnerException, recursively, incl. every AggregateException inner): parser messages can
-/// quote content, and the content is token material;</item>
+/// quote content, and the content is token material. Each needle must actually occur in its
+/// case's payload (else the check is vacuous), and at least 4 hostile token / 5 hostile store
+/// cases must carry one;</item>
 /// <item>canonical valid records → load with exactly the fixture's field values and
 /// round-trip through this companion's own persist path (the cross-language store
 /// compatibility check — field names are the shared wire format, #54);</item>
@@ -104,8 +108,8 @@ public class ConformanceTests
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
     /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
-    /// >= 27 hostile_token_responses, >= 5 implementation_defined_token_responses,
-    /// >= 14 hostile_store_files, >= 1 implementation_defined_store_files,
+    /// >= 30 hostile_token_responses, >= 5 implementation_defined_token_responses,
+    /// >= 17 hostile_store_files, >= 1 implementation_defined_store_files,
     /// >= 18 refresh_success_cases.
     /// </summary>
     [Fact]
@@ -120,14 +124,14 @@ public class ConformanceTests
             "fixture lost its implementation_defined_token_responses table");
         Assert.True(fixture.TryGetProperty("implementation_defined_store_files", out var implStore),
             "fixture lost its implementation_defined_store_files table");
-        Assert.True(responses.GetArrayLength() >= 27,
-            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 27");
+        Assert.True(responses.GetArrayLength() >= 30,
+            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 30");
         Assert.True(implStore.GetArrayLength() >= 1,
             $"fixture shrank? implementation_defined_store_files has {implStore.GetArrayLength()} cases, want >= 1");
         Assert.True(implDefined.GetArrayLength() >= 5,
             $"fixture shrank? implementation_defined_token_responses has {implDefined.GetArrayLength()} cases, want >= 5");
-        Assert.True(storeFiles.GetArrayLength() >= 14,
-            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 14");
+        Assert.True(storeFiles.GetArrayLength() >= 17,
+            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 17");
         Assert.True(fixture.TryGetProperty("refresh_success_cases", out var successTable),
             "fixture lost its refresh_success_cases table");
         var successCases = successTable.GetProperty("cases").GetArrayLength();
@@ -275,6 +279,98 @@ public class ConformanceTests
         }
     }
 
+    /// <summary>
+    /// Why a case's <c>must_not_echo</c> needle would make its no-echo check vacuous, or null
+    /// when it is sound: the needle must be non-empty and its UTF-8 bytes must actually occur
+    /// in the case's payload (the decoded body / file bytes) — a needle the payload doesn't
+    /// carry can never be echoed, so the check would pass against any implementation.
+    /// </summary>
+    internal static string? NeedleProblem(string name, byte[] payload, string? needle)
+    {
+        if (needle is null)
+        {
+            return null;
+        }
+        if (needle.Length == 0)
+        {
+            return $"fixture case {name}: must_not_echo must be non-empty";
+        }
+        var n = Encoding.UTF8.GetBytes(needle);
+        for (var i = 0; i + n.Length <= payload.Length; i++)
+        {
+            var match = true;
+            for (var j = 0; j < n.Length && match; j++)
+            {
+                match = payload[i + j] == n[j];
+            }
+            if (match)
+            {
+                return null;
+            }
+        }
+        return $"fixture case {name}: must_not_echo \"{needle}\" does not occur in the case's "
+            + "payload, so its no-echo check is vacuous (it could never be echoed)";
+    }
+
+    /// <summary>Fails naming the case when its <c>must_not_echo</c> check would be vacuous (<see cref="NeedleProblem"/>).</summary>
+    private static void AssertNeedleInPayload(string name, byte[] payload, string? needle)
+    {
+        var problem = NeedleProblem(name, payload, needle);
+        Assert.True(problem is null, problem);
+    }
+
+    /// <summary>
+    /// The vacuity guard itself is load-bearing: a needle absent from its payload (or empty) is
+    /// rejected naming the case, a present one (incl. inside invalid-UTF-8 bytes) accepted.
+    /// </summary>
+    [Fact]
+    public void NeedleGuardRejectsAVacuousMustNotEcho()
+    {
+        var payload = Encoding.UTF8.GetBytes("{\"refresh_token\":\"rtSEC000\"}");
+        Assert.Null(NeedleProblem("present", payload, "rtSEC000"));
+        Assert.Null(NeedleProblem("no-needle", payload, null));
+        var absent = NeedleProblem("absent", payload, "rtSEC999");
+        Assert.NotNull(absent);
+        Assert.Contains("fixture case absent", absent);
+        Assert.Contains("vacuous", absent);
+        Assert.Contains("non-empty", NeedleProblem("empty", payload, ""));
+        byte[] invalidUtf8 = [.. Encoding.UTF8.GetBytes("\"rtSEC135"), 0xFF, (byte)'"'];
+        Assert.Null(NeedleProblem("invalid-utf8", invalidUtf8, "rtSEC135"));
+    }
+
+    /// <summary>
+    /// Every <c>must_not_echo</c> needle in the hostile tables actually occurs in its case's
+    /// payload, and the no-echo coverage cannot silently erode: at least 4 hostile token cases
+    /// and 5 hostile store cases carry one (the fixture's floors).
+    /// </summary>
+    [Fact]
+    public void MustNotEchoNeedlesAreSoundAndMeetTheFloors()
+    {
+        var fixture = Fixture();
+        var tables = new (string Table, Func<JsonElement, string> PayloadBase64, int Floor)[]
+        {
+            ("hostile_token_responses", BodyBase64, 4),
+            ("hostile_store_files", ContentBase64, 5),
+        };
+        foreach (var (table, payloadBase64, floor) in tables)
+        {
+            var carrying = 0;
+            foreach (var c in fixture.GetProperty(table).EnumerateArray())
+            {
+                var needle = MustNotEcho(c);
+                if (needle is null)
+                {
+                    continue;
+                }
+                carrying++;
+                AssertNeedleInPayload(c.GetProperty("name").GetString()!,
+                    Convert.FromBase64String(payloadBase64(c)), needle);
+            }
+            Assert.True(carrying >= floor,
+                $"fixture shrank? only {carrying} {table} cases carry must_not_echo, want >= {floor}");
+        }
+    }
+
     // --- 1. hostile-but-2xx token responses --------------------------------------------------
 
     /// <summary>
@@ -304,6 +400,7 @@ public class ConformanceTests
     [MemberData(nameof(HostileTokenResponses))]
     public async Task HostileTokenResponseFailsTypedAndLeavesTheStoreUntouched(string name, string bodyBase64, string? mustNotEcho)
     {
+        AssertNeedleInPayload(name, Convert.FromBase64String(bodyBase64), mustNotEcho);
         using var temp = new TempStore();
         temp.Store.SaveCredentials(Credentials());
         temp.Store.SaveTokens(OriginalTokens());
@@ -421,7 +518,29 @@ public class ConformanceTests
 
     // --- 2. hostile store files ---------------------------------------------------------------
 
-    /// <summary>One (name, record file, exact file content, optional must_not_echo) row per fixture case.</summary>
+    /// <summary>
+    /// A hostile store case's file as the exact bytes to write, base64-encoded (so the theory
+    /// row stays a plain string): <c>content_base64</c> decoded (bytes JSON can't hold, e.g.
+    /// invalid UTF-8) or <c>content</c> as UTF-8 text. EXACTLY ONE of the two, or loading the
+    /// fixture fails naming the case (mirrors <see cref="BodyBase64"/>).
+    /// </summary>
+    private static string ContentBase64(JsonElement c)
+    {
+        var name = c.GetProperty("name").GetString();
+        string[] keys = ["content", "content_base64"];
+        var given = keys.Where(k => c.TryGetProperty(k, out _)).ToList();
+        if (given.Count != 1)
+        {
+            throw new InvalidOperationException(
+                $"fixture case {name}: must give exactly one of content/content_base64, "
+                + $"got [{string.Join(", ", given)}]");
+        }
+        return given[0] == "content_base64"
+            ? c.GetProperty("content_base64").GetString()!
+            : Convert.ToBase64String(Encoding.UTF8.GetBytes(c.GetProperty("content").GetString()!));
+    }
+
+    /// <summary>One (name, record file, base64 of the exact file bytes, optional must_not_echo) row per fixture case.</summary>
     public static TheoryData<string, string, string, string?> HostileStoreFiles()
     {
         var data = new TheoryData<string, string, string, string?>();
@@ -430,7 +549,7 @@ public class ConformanceTests
             data.Add(
                 c.GetProperty("name").GetString()!,
                 c.GetProperty("file").GetString()!,
-                c.GetProperty("content").GetString()!,
+                ContentBase64(c),
                 MustNotEcho(c));
         }
         return data;
@@ -454,10 +573,14 @@ public class ConformanceTests
     /// </summary>
     [Theory]
     [MemberData(nameof(HostileStoreFiles))]
-    public void HostileStoreFileFailsTyped(string name, string file, string content, string? mustNotEcho)
+    public void HostileStoreFileFailsTyped(string name, string file, string contentBase64, string? mustNotEcho)
     {
+        var content = Convert.FromBase64String(contentBase64);
+        AssertNeedleInPayload(name, content, mustNotEcho);
         using var temp = new TempStore();
-        File.WriteAllText(Path.Combine(temp.Dir, file), content);
+        // WriteAllBytes, not WriteAllText: a content_base64 case's invalid UTF-8 must reach
+        // the loader untouched (a string round-trip would have replaced it with U+FFFD).
+        File.WriteAllBytes(Path.Combine(temp.Dir, file), content);
 
         object? loaded = null;
         var thrown = Record.Exception(() => loaded = LoadStoreFile(name, temp.Store, file));

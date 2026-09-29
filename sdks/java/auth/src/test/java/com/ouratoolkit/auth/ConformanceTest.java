@@ -155,10 +155,65 @@ class ConformanceTest {
         }
         assertTrue(needle.isTextual() && !needle.asText().isEmpty(),
                 name + ": must_not_echo must be a non-empty string");
-        assertTrue(new String(payload, StandardCharsets.UTF_8).contains(needle.asText()),
+        assertTrue(containsBytes(payload, needle.asText().getBytes(StandardCharsets.UTF_8)),
                 name + ": must_not_echo must occur in the case's payload, or the no-echo "
                         + "check is vacuous");
         return Optional.of(needle.asText());
+    }
+
+    /**
+     * Byte-level substring search — the payload may be deliberately invalid UTF-8
+     * ({@code raw_body_base64} / {@code content_base64}), so it is never decoded (a lossy
+     * decode could mangle the bytes around the needle).
+     */
+    private static boolean containsBytes(byte[] haystack, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= haystack.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * The no-echo floor: at least {@code min} cases of {@code table} carry
+     * {@code must_not_echo}, so the secret-leak checks can't silently vanish from the
+     * fixture (a shrink guard on the no-echo coverage itself).
+     */
+    private static void assertNoEchoFloor(String table, JsonNode cases, int min) {
+        int carrying = 0;
+        for (JsonNode c : cases) {
+            if (c.has("must_not_echo")) {
+                carrying++;
+            }
+        }
+        assertTrue(carrying >= min, "fixture lost no-echo coverage? " + carrying + " "
+                + table + " cases carry must_not_echo, want >= " + min);
+    }
+
+    /**
+     * The exact bytes a store-file case writes: {@code content_base64} decoded (bytes JSON
+     * can't hold, e.g. invalid UTF-8) or {@code content} as UTF-8 text. EXACTLY ONE must be
+     * present — fails naming the case otherwise.
+     */
+    private static byte[] caseFileContent(JsonNode testCase) {
+        String name = testCase.get("name").asText();
+        boolean text = testCase.has("content");
+        boolean b64 = testCase.has("content_base64");
+        assertTrue(text ^ b64, name + ": case must carry EXACTLY ONE of content / "
+                + "content_base64 (has " + ((text ? 1 : 0) + (b64 ? 1 : 0)) + ")");
+        if (b64) {
+            JsonNode v = testCase.get("content_base64");
+            assertTrue(v.isTextual(), name + ": content_base64 must be a string");
+            return Base64.getDecoder().decode(v.asText());
+        }
+        JsonNode v = testCase.get("content");
+        assertTrue(v.isTextual(), name + ": content must be a string");
+        return v.asText().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
@@ -202,9 +257,10 @@ class ConformanceTest {
             throws IOException {
         JsonNode cases = fixture().get("hostile_token_responses");
         assertNotNull(cases, "fixture lost its hostile_token_responses table");
-        assertTrue(cases.size() >= 27,
+        assertTrue(cases.size() >= 30,
                 "fixture shrank? hostile_token_responses has " + cases.size()
-                        + " cases, want >= 27");
+                        + " cases, want >= 30");
+        assertNoEchoFloor("hostile_token_responses", cases, 4);
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileTokenResponseRejected(c)));
@@ -348,9 +404,10 @@ class ConformanceTest {
     Stream<DynamicTest> hostileStoreFilesFailTyped() throws IOException {
         JsonNode cases = fixture().get("hostile_store_files");
         assertNotNull(cases, "fixture lost its hostile_store_files table");
-        assertTrue(cases.size() >= 14,
+        assertTrue(cases.size() >= 17,
                 "fixture shrank? hostile_store_files has " + cases.size()
-                        + " cases, want >= 14");
+                        + " cases, want >= 17");
+        assertNoEchoFloor("hostile_store_files", cases, 5);
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileStoreFileRejected(c)));
@@ -359,11 +416,10 @@ class ConformanceTest {
     private void assertHostileStoreFileRejected(JsonNode testCase) throws Exception {
         String name = testCase.get("name").asText();
         String file = testCase.get("file").asText();
-        String content = testCase.get("content").asText();
+        byte[] bytes = caseFileContent(testCase);
 
         Path dir = caseDir("store-" + name);
         TokenStore store = new TokenStore(dir);
-        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
         Files.write(dir.resolve(file), bytes);
 
         final StoreException thrown;
@@ -426,7 +482,7 @@ class ConformanceTest {
             throws Exception {
         String name = testCase.get("name").asText();
         String file = testCase.get("file").asText();
-        String content = testCase.get("content").asText();
+        byte[] content = caseFileContent(testCase);
         JsonNode expected = testCase.get("expected");
         assertNotNull(expected, name + ": case lacks its expected record");
         String what = name + ".expected";
@@ -459,7 +515,7 @@ class ConformanceTest {
 
         Path dir = caseDir("store-impl-defined-" + name);
         TokenStore store = new TokenStore(dir);
-        Files.write(dir.resolve(file), content.getBytes(StandardCharsets.UTF_8));
+        Files.write(dir.resolve(file), content);
 
         Optional<?> loaded;
         try {

@@ -26,9 +26,13 @@
 //    persists EXACTLY `expected` (access_token, refresh_token, scope, token_type) and
 //    expires_at = refresh time + expected.expires_in — incl. the omitted/null/blank
 //    scope and omitted/null/empty refresh_token/token_type fallbacks to `prior`;
-//  - hostile_store_files -> the typed StoreFormatError, never a default/null-filled
-//    record and never an untyped throw; `must_not_echo` as above (the store holds
-//    secrets);
+//  - hostile_store_files (the file as `content` text or `content_base64` bytes — e.g.
+//    invalid UTF-8, which must fail typed, never load with U+FFFD) -> the typed
+//    StoreFormatError, never a default/null-filled record and never an untyped throw;
+//    `must_not_echo` as above (the store holds secrets);
+//  - every `must_not_echo` needle must actually occur in its case's payload bytes (else
+//    the no-echo check passes vacuously), and at least 4 hostile token / 5 hostile store
+//    cases carry one;
 //  - implementation_defined_store_files: contents a parser may accept or reject (deep
 //    nesting) -> EITHER load exactly `expected`, OR the typed StoreFormatError;
 //  - valid_records -> load with exactly the fixture's field values and round-trip
@@ -36,8 +40,8 @@
 //    check — field names are the shared wire format, #54).
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-// same test structure, same fixture-shrink guards (>= 27 hostile token responses, >= 5
-// implementation-defined token responses, >= 18 refresh success cases, >= 14 hostile
+// same test structure, same fixture-shrink guards (>= 30 hostile token responses, >= 5
+// implementation-defined token responses, >= 18 refresh success cases, >= 17 hostile
 // store files, >= 1 implementation-defined store file).
 "use strict";
 
@@ -114,6 +118,39 @@ function casePayload(c) {
 }
 
 /**
+ * The exact bytes a store case writes to disk: `content_base64` decoded (bytes JSON can't
+ * hold, e.g. invalid UTF-8), else `content` as UTF-8 text. Exactly one of the two, so a
+ * typo'd column can't silently write `undefined`.
+ */
+function storeContent(c) {
+  const columns = ["content", "content_base64"].filter((k) => k in c);
+  assert.equal(columns.length, 1, `case ${c.name}: exactly one of content/content_base64, got ${columns}`);
+  if (typeof c.content_base64 === "string") return Buffer.from(c.content_base64, "base64");
+  assert.equal(typeof c.content, "string", `case ${c.name}: content column has the wrong type`);
+  return Buffer.from(c.content, "utf8");
+}
+
+/**
+ * Vacuity guard: a case's `must_not_echo` needle must actually occur in the bytes the case
+ * sends/writes — otherwise the no-echo check passes no matter what the error says. A
+ * no-op for a case without `must_not_echo`.
+ */
+function assertNeedleInPayload(c, payload) {
+  if (c.must_not_echo === undefined) return;
+  assert.equal(typeof c.must_not_echo, "string", `case ${c.name}: must_not_echo must be a string`);
+  assert.ok(
+    payload.includes(Buffer.from(c.must_not_echo, "utf8")),
+    `case ${c.name}: must_not_echo ${JSON.stringify(c.must_not_echo)} does not occur in the case's payload — the no-echo check would pass vacuously`
+  );
+}
+
+/** Floor: at least `min` cases of a hostile table carry `must_not_echo`. */
+function assertNoEchoFloor(cases, min, table) {
+  const n = cases.filter((c) => c.must_not_echo !== undefined).length;
+  assert.ok(n >= min, `${table}: only ${n} cases carry must_not_echo (floor ${min}) — fixture shrank?`);
+}
+
+/**
  * `must_not_echo` (fixture contract): the secret must appear NOWHERE in the typed error's
  * text or in any error it chains. Walks the error and its `cause` chain (plus an
  * AggregateError's `errors`), checking every textual surface a caller could log:
@@ -186,11 +223,13 @@ test("conformance: the fixture's top-level tables are exactly the ones this leg 
 test("conformance: hostile 2xx token responses fail typed and leave the store untouched", async (t) => {
   const cases = fixture.hostile_token_responses;
   assert.ok(Array.isArray(cases), "hostile_token_responses table");
-  assert.ok(cases.length >= 27, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 30, `fixture shrank? ${cases.length} cases`);
+  assertNoEchoFloor(cases, 4, "hostile_token_responses");
 
   for (const c of cases) {
     const name = c.name;
     const payload = casePayload(c);
+    assertNeedleInPayload(c, payload);
 
     const endpoint = await startTokenEndpoint((_params, res) => {
       res.writeHead(200, { "content-type": "application/json" });
@@ -419,10 +458,13 @@ test("conformance: refresh_success_cases persist exactly `expected`", async (t) 
 test("conformance: hostile store files fail with the typed StoreFormatError", (t) => {
   const cases = fixture.hostile_store_files;
   assert.ok(Array.isArray(cases), "hostile_store_files table");
-  assert.ok(cases.length >= 14, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 17, `fixture shrank? ${cases.length} cases`);
+  assertNoEchoFloor(cases, 5, "hostile_store_files");
 
   for (const c of cases) {
-    const { name, file, content } = c;
+    const { name, file } = c;
+    const content = storeContent(c);
+    assertNeedleInPayload(c, content);
     const store = withTempStore(t);
     fs.writeFileSync(path.join(store.dir, file), content);
 

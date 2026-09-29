@@ -408,21 +408,38 @@ class TokenStore:
             return _MISSING
         except OSError as e:
             raise StoreFormatError(f"cannot read store record {path.name}: {e}") from e
+        # Strict UTF-8 first (conformance `tokens_invalid_utf8_secret`): a store file
+        # must be valid UTF-8. Decoding explicitly (never `json.loads(bytes)`, which
+        # sniffs UTF-16/32) makes anything else a typed format error.
+        #
+        # NO exception chaining on this parse path (conformance `must_not_echo` — the
+        # store holds secrets): a UnicodeDecodeError's repr() quotes the ENTIRE file
+        # bytes and a JSONDecodeError keeps the whole text in `.doc`. `raise ... from
+        # None` would still leave the parser error reachable via `__context__`, so each
+        # failure is recorded as a message and the typed error is raised OUTSIDE the
+        # `except` block — nothing chains. (json's own ValueError messages name only a
+        # position/limit, never input text, so they are kept for diagnosis.)
+        text: Optional[str]
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = None
+        if text is None:
+            raise StoreFormatError(f"corrupt store record {path.name}: not valid UTF-8")
         # RecursionError too (conformance `tokens_deeply_nested`, an
         # implementation_defined_store_files case): json.loads recurses per nesting
         # level, so a record nested past the interpreter's recursion limit — even in
         # an unknown field — raises RecursionError (a RuntimeError, NOT a ValueError).
         # Rejecting it is allowed; letting it escape untyped (from load_tokens(), or
-        # from a refresh's reload under the lock) is not. Fixed message: no file
-        # content, since the store holds secrets.
+        # from a refresh's reload under the lock) is not.
+        failure: Optional[str] = None
         try:
-            return json.loads(raw)
+            return json.loads(text)
         except ValueError as e:
-            raise StoreFormatError(f"corrupt store record {path.name}: {e}") from e
-        except RecursionError as e:
-            raise StoreFormatError(
-                f"corrupt store record {path.name}: nested too deeply"
-            ) from e
+            failure = str(e)
+        except RecursionError:
+            failure = "nested too deeply"
+        raise StoreFormatError(f"corrupt store record {path.name}: {failure}")
 
 
 def _to_json_bytes(data: dict) -> bytes:

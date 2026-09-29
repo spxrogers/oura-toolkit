@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -253,6 +256,20 @@ public final class TokenStore {
             bytes = Files.readAllBytes(path);
         } catch (NoSuchFileException e) {
             return Optional.empty();
+        }
+        // A store file must be valid UTF-8 ANYWHERE (unknown fields included) — conformance
+        // fixture #58, hostile_store_files. Jackson's byte parser is NOT a strict validator:
+        // it decodes overlong forms (C0 80 → NUL), CESU-encoded surrogates (ED A0 80) and
+        // code points past U+10FFFF instead of rejecting them, so check with the JDK's
+        // strict decoder (REPORT on malformed input) first. Typed, and the decoder's
+        // exception is NOT chained (it carries nothing useful, and the file holds secrets).
+        try {
+            StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes));
+        } catch (CharacterCodingException e) {
+            throw new StoreException(path.getFileName() + " is not valid UTF-8", null);
         }
         final T value;
         try {

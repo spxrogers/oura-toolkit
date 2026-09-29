@@ -90,6 +90,9 @@ setup: install-nightly-rustfmt install-progenitor
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
+    # The TS auth conformance harness keeps each fixture number's original text (so `3600.0` is
+    # sent as written), which needs JSON.parse's source-text access: Node 22+ (CI pins 22).
+    @node -e 'process.exit(+process.versions.node.split(".")[0] >= 22 ? 0 : 1)' 2>/dev/null || echo "!! install Node 22+ -- needed by 'just sdk-test-ts' (the conformance harness)"
     # (Runs java rather than `command -v`: a JDK-less macOS still has a /usr/bin/java stub.)
     @java -version >/dev/null 2>&1 || echo "!! install a Java runtime (e.g. brew install --cask temurin) -- openapi-generator is a jar: needed by breadth-SDK codegen ('just gen', and every release via set-version)"
     # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an

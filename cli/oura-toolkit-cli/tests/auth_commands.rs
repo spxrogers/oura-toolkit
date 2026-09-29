@@ -268,3 +268,64 @@ fn refresh_on_an_empty_store_hints_setup() {
         .stdout(predicate::str::is_empty())
         .stderr(predicate::str::contains("hint: run `oura auth setup`"));
 }
+
+/// A corrupt store record's error never prints the secret it holds (CLAUDE.md: no secrets in
+/// logs; DECISIONS "Errors never quote the input"). serde's type errors quote the value they
+/// reject, so a record whose secret sits where another type belongs is the attack: the whole
+/// credentials file as a JSON string, and a token string in the numeric `expires_at`. The
+/// format error is also printed once, not twice (it used to repeat as its own `source()`).
+#[test]
+fn a_corrupt_store_record_never_prints_the_secret_it_holds() {
+    let cases: [(&str, &str, &str, &[&str]); 3] = [
+        (
+            "credentials.json",
+            "\"csSEC654\"",
+            "csSEC654",
+            &["auth", "status"],
+        ),
+        (
+            "tokens.json",
+            r#"{"access_token": "at", "refresh_token": "rt", "expires_at": "rtSEC987"}"#,
+            "rtSEC987",
+            &["auth", "status"],
+        ),
+        (
+            "tokens.json",
+            r#"{"access_token": "at", "refresh_token": "rt", "expires_at": "rtSEC987"}"#,
+            "rtSEC987",
+            &["auth", "token"],
+        ),
+    ];
+    for (file, content, secret, args) in cases {
+        let (mut cmd, store, _dir) = oura(args);
+        store.save_credentials(&credentials()).unwrap();
+        std::fs::write(store.dir().join(file), content).unwrap();
+        let out = cmd
+            .env_remove("OURA_ACCESS_TOKEN")
+            .output()
+            .expect("spawn oura");
+        let (stdout, stderr) = (
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        let context =
+            format!("oura {args:?} with a corrupt {file}: stdout={stdout:?} stderr={stderr:?}");
+        assert!(
+            !stdout.contains(secret) && !stderr.contains(secret),
+            "the secret leaked — {context}"
+        );
+        // Reported once: the redacted detail must not repeat as a chained `source()` under
+        // `{:#}` (the prefix alone would print once even when the detail doubles).
+        let all = format!("{stdout}{stderr}");
+        assert_eq!(
+            all.matches("token store format error").count(),
+            1,
+            "the store format error is reported — {context}"
+        );
+        assert_eq!(
+            all.matches("a missing or wrong-typed field").count(),
+            1,
+            "the store format error's detail is reported exactly once — {context}"
+        );
+    }
+}
