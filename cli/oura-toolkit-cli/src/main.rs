@@ -194,8 +194,9 @@ async fn run() -> anyhow::Result<()> {
 
     // Re-consent check (#116): before a STORE-backed command, a saved login that predates a
     // change to the default scopes gets one prompt (interactive) or one notice (scripts).
-    // Not for `auth *` (account commands act on the store directly), `mcp` (stdout is the
-    // transport), the pure generators, or an OURA_ACCESS_TOKEN run (no store involved).
+    // Not for `auth *` (account commands act on the store directly), the pure generators, or
+    // an OURA_ACCESS_TOKEN run (no store involved). `mcp` can't prompt (stdout is the
+    // transport), so it carries its own out-of-band note on a tool result (`mcp.rs`).
     let store_backed = matches!(
         cli.command,
         Some(
@@ -307,7 +308,12 @@ async fn run() -> anyhow::Result<()> {
             // the first tool call reports the structured auth error (CLAUDE.md → MCP).
             // Honors the same OURA_ACCESS_TOKEN / OURA_API_BASE_URL overrides so the server
             // runs in a container with an injected token (#20).
-            oura_toolkit_cli::mcp::serve(api::manager_from_env(env)?, base_url).await
+            // The store also feeds the scope-change note (#116). An env-token server has none.
+            let scope_store = api::access_token_override(env)
+                .is_none()
+                .then(|| oura_toolkit_auth::TokenStore::new().ok())
+                .flatten();
+            oura_toolkit_cli::mcp::serve(api::manager_from_env(env)?, scope_store, base_url).await
         }
         // Pure code generators: no auth, no network. The script/man page IS the result, so it
         // goes to stdout through the same broken-pipe-tolerant path as every other result

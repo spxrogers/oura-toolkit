@@ -82,8 +82,9 @@ automatically from then on.
 
 When Oura changes its OAuth scopes (as in API 1.41: `spo2Daily` → `spo2`, plus
 `heart_health`), a refresh can't add them. So the first command after upgrading asks once
-whether to re-authorize (scripts get a one-line stderr note instead). If your Oura app
-doesn't list the new scopes yet, add them first.
+whether to re-authorize (scripts get a one-line stderr note instead, and the MCP server
+adds a note to its first tool result for Claude to pass on). If your Oura app doesn't list
+the new scopes yet, add them first.
 
 Manage the stored state any time:
 

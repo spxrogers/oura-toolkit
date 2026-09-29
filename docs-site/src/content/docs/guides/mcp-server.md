@@ -51,6 +51,13 @@ batteries-included experience with ready-made wellness skills, use the
 [Claude plugin](/guides/claude-plugin/) instead.
 
 :::note
+When Oura changes its OAuth scopes (API 1.41 renamed `spo2Daily` to `spo2` and added
+`heart_health`), a login from before the change lacks the new ones. The server can't prompt, so
+the first tool result of each session carries an extra note, `Note: Oura changed its API
+permissions (OAuth scopes)…`. It asks the model to have you run `oura auth login` in a terminal.
+The data in that result is still valid. Declining the same question at the CLI prompt silences
+it here too.
+
 stdio MCP authentication is out-of-band by design — the server is local and STDIO-only. It is
 never a remote/HTTP server or a hosted OAuth broker.
 :::

@@ -432,3 +432,114 @@ async fn concurrent_tool_calls_share_the_manager_safely() {
 
     client.cancel().await.unwrap();
 }
+
+// --- Scope-change re-consent note (#116) ---------------------------------------------------
+
+const PRE_1_41_GRANT: &str = "personal daily heartrate workout tag session spo2Daily";
+
+/// Like [`connect`], with the scope-change check enabled against the manager's store dir.
+async fn connect_checked(
+    dir: &tempfile::TempDir,
+    grant: Option<&str>,
+    base_url: String,
+) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
+    let mut tokens = fresh_tokens("at-1");
+    tokens.scope = grant.map(Into::into);
+    let manager = manager(dir, Some(tokens));
+    let store = TokenStore::with_dir(dir.path());
+    let (server_io, client_io) = tokio::io::duplex(1 << 16);
+    tokio::spawn(async move {
+        let server = OuraMcp::new(manager, base_url).with_scope_check(Some(store));
+        if let Ok(running) = server.serve(server_io).await {
+            let _ = running.waiting().await;
+        }
+    });
+    ().serve(client_io).await.expect("client connects")
+}
+
+async fn sleep_server() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], None))
+        .mount(&server)
+        .await;
+    server
+}
+
+async fn call_sleep(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+) -> CallToolResult {
+    client
+        .call_tool(
+            CallToolRequestParams::new("get_daily_sleep")
+                .with_arguments(sleep_args("2026-06-26", "2026-06-26")),
+        )
+        .await
+        .unwrap()
+}
+
+/// The MCP flavour of the CLI's `[Y/n]` prompt: a stale grant's FIRST tool result carries a
+/// trailing note (data untouched, still a success) telling the model to have the user run
+/// `oura auth login`; later calls in the same session don't repeat it.
+#[tokio::test]
+async fn a_stale_grant_notes_the_first_tool_result_once_per_session() {
+    let server = sleep_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let client = connect_checked(&dir, Some(PRE_1_41_GRANT), server.uri()).await;
+
+    let first = call_sleep(&client).await;
+    assert_ne!(
+        first.is_error,
+        Some(true),
+        "the note never turns data into an error"
+    );
+    assert_eq!(
+        first.content.len(),
+        2,
+        "data block + one note block: {first:?}"
+    );
+    assert!(
+        text_of(&first).contains("2026-06-26"),
+        "block 0 is still the data"
+    );
+    let note = &first.content[1].as_text().expect("text note").text;
+    assert!(
+        note.starts_with(oura_toolkit_cli::reauth::MCP_NOTICE_LEAD)
+            && note.contains("spo2 heart_health")
+            && note.contains("oura auth login"),
+        "the note names the gap and the out-of-band fix: {note}"
+    );
+    let structured = first.structured_content.as_ref().unwrap().to_string();
+    assert!(
+        !structured.contains("oura auth login"),
+        "structured_content stays pure data: {structured}"
+    );
+
+    let second = call_sleep(&client).await;
+    assert_eq!(second.content.len(), 1, "once per session: {second:?}");
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_current_grant_carries_no_note() {
+    let server = sleep_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let grant = oura_toolkit_auth::metadata::default_scopes().join(" ");
+    let client = connect_checked(&dir, Some(&grant), server.uri()).await;
+    assert_eq!(call_sleep(&client).await.content.len(), 1);
+    client.cancel().await.unwrap();
+}
+
+/// Without `with_scope_check` (an `OURA_ACCESS_TOKEN` server has no store), a stale grant on
+/// disk is irrelevant.
+#[tokio::test]
+async fn a_server_without_the_scope_check_never_notes() {
+    let server = sleep_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut tokens = fresh_tokens("at-1");
+    tokens.scope = Some(PRE_1_41_GRANT.into());
+    let client = connect(manager(&dir, Some(tokens)), server.uri()).await;
+    assert_eq!(call_sleep(&client).await.content.len(), 1);
+    client.cancel().await.unwrap();
+}

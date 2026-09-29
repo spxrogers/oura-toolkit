@@ -15,8 +15,10 @@
 //! - **non-interactive**: one stderr notice, never blocking. It's remembered separately, so
 //!   a script running first doesn't use up the human's prompt.
 //!
-//! `oura mcp` never prompts (stdout is its transport), and neither does an `OURA_ACCESS_TOKEN`
-//! run (no store). The bookkeeping lives in [`STATE_FILE`] next to the token records.
+//! `oura mcp` can't prompt (stdout is its transport, and stdio MCP auth is out of band), so
+//! it gets the MCP flavour, [`mcp_notice`]: a note on the first tool result of each session,
+//! for the model to relay ("run `oura auth login` in a terminal"). An `OURA_ACCESS_TOKEN` run
+//! (no store) sees neither. The bookkeeping lives in [`STATE_FILE`] next to the token records.
 //! It's CLI-only and holds no secrets.
 
 use std::future::Future;
@@ -33,6 +35,9 @@ pub const NOTICE_PREFIX: &str = "oura: note:";
 
 /// The interactive question (documented; pinned by docs_tripwire.rs).
 pub const PROMPT_QUESTION: &str = "Re-authorize now? [Y/n]";
+
+/// How the MCP tool-result note starts (documented; pinned by docs_tripwire.rs).
+pub const MCP_NOTICE_LEAD: &str = "Note: Oura changed its API permissions (OAuth scopes)";
 
 /// What the user has already been told, keyed by the space-joined default scope set it was
 /// told about — so the next scope change (a different key) asks again.
@@ -197,6 +202,32 @@ where
             Ok(())
         }
     }
+}
+
+/// The MCP flavour: the note to append to a tool result, or `None`.
+///
+/// It uses the same decision as the interactive prompt (`decide(…, true)`): a human is on the
+/// other end, just not at a TTY we own. So a scope set the user already declined at the CLI
+/// prompt stays quiet here too. It's read-only: "once" is per MCP session, tracked by the
+/// server, so each new session reminds once until the user re-consents or declines.
+pub fn mcp_notice(store: &TokenStore) -> Option<String> {
+    let tokens = store.load_tokens().ok()??;
+    let Action::Prompt(missing) = decide(Some(&tokens), &load_state(store), true) else {
+        return None;
+    };
+    let coverage = if tokens.scope.is_none() {
+        "may not cover"
+    } else {
+        "doesn't cover"
+    };
+    Some(format!(
+        "{MCP_NOTICE_LEAD}, and the user's saved login {coverage} them: {}. The data above is \
+         still valid. Tell the user once: to grant them, run `oura auth login` in a terminal. \
+         If their Oura app doesn't list these scopes yet, they add them first at \
+         https://cloud.ouraring.com/oauth/applications. To silence this without \
+         re-authorizing, they can answer `n` when any `oura` data command asks in a terminal.",
+        missing.join(" ")
+    ))
 }
 
 /// The production entry point: real stdin/stderr, TTY-detected interactivity, and
@@ -440,6 +471,52 @@ mod tests {
         let (out, logged_in) = run_check(&store, true, "y\n").await;
         assert_eq!((out.as_str(), logged_in), ("", false));
         assert!(!store.dir().join(STATE_FILE).exists());
+    }
+
+    #[test]
+    fn mcp_notice_names_the_gap_for_a_stale_grant_and_points_at_login() {
+        let (store, _dir) = store_with(Some(PRE_1_41));
+        let note = mcp_notice(&store).expect("a stale grant gets the MCP note");
+        assert!(note.starts_with(MCP_NOTICE_LEAD), "{note}");
+        assert!(
+            note.contains(": spo2 heart_health."),
+            "names the gap: {note}"
+        );
+        assert!(note.contains("oura auth login"), "names the fix: {note}");
+    }
+
+    #[test]
+    fn mcp_notice_is_silent_for_a_current_grant_no_tokens_or_a_cli_decline() {
+        let (current, _d1) = store_with(Some(&scope_set_key()));
+        assert_eq!(mcp_notice(&current), None);
+
+        let empty_dir = tempfile::tempdir().unwrap();
+        assert_eq!(mcp_notice(&TokenStore::with_dir(empty_dir.path())), None);
+
+        let (declined, _d2) = store_with(Some(PRE_1_41));
+        save_state(
+            &declined,
+            &NoticeState {
+                declined: Some(scope_set_key()),
+                notified: None,
+            },
+        );
+        assert_eq!(mcp_notice(&declined), None, "a CLI decline covers MCP too");
+    }
+
+    #[test]
+    fn mcp_notice_ignores_a_script_notice_and_writes_no_state() {
+        // A script's stderr note never reached the human in the chat. It must not silence MCP.
+        let (store, _dir) = store_with(Some(PRE_1_41));
+        save_state(
+            &store,
+            &NoticeState {
+                declined: None,
+                notified: Some(scope_set_key()),
+            },
+        );
+        assert!(mcp_notice(&store).is_some());
+        assert_eq!(load_state(&store).declined, None, "read-only");
     }
 
     #[tokio::test]

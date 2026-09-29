@@ -349,7 +349,11 @@ The next scope change is caught with no new code. It fires **once per scope-set 
 scope, so nagging on every run would be wrong. **Blocking** was rejected because no current
 command needs the new scopes. Interactive runs get a `[Y/n]` prompt that chains into `auth
 login`. Scripts get one stderr note, tracked separately so a script can't use up the human's
-prompt. MCP never prompts. The bookkeeping is a CLI-only `scope-notice.json`, not a
+prompt. MCP can't prompt, and stdio MCP auth stays out of band (no OAuth in the server). So the
+same decision becomes a note on the first tool result of each MCP session for the model to
+relay, and it respects a CLI decline. MCP elicitation was considered: it could ask, but a
+"yes" would still need the out-of-band login, so it adds a round-trip without closing the loop.
+The bookkeeping is a CLI-only `scope-notice.json`, not a
 `tokens.json` field, so the six-language store records and their conformance fixture are
 untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
 §5.1), so the check can tell a current grant from a stale one.

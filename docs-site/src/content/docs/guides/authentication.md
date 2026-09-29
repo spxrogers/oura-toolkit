@@ -61,7 +61,9 @@ Press Enter to run `oura auth login` and carry on with your command, or `n` to s
 be asked again for this change). Scripts and other non-interactive runs get a single
 `oura: note: …` line on stderr instead, and are never blocked. If your Oura app doesn't list
 the new scopes yet, add them at <https://cloud.ouraring.com/oauth/applications> before
-re-authorizing. `oura auth status` shows any missing scopes at any time.
+re-authorizing. `oura auth status` shows any missing scopes at any time. In Claude (the `oura
+mcp` server), the first tool result of each session carries the same message as a note for
+Claude to pass on.
 
 ## Managing stored state
 

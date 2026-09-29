@@ -21,7 +21,9 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
 
-use oura_toolkit_auth::{AuthError, TokenManager};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use oura_toolkit_auth::{AuthError, TokenManager, TokenStore};
 
 use crate::api::{self, DateRange};
 use crate::commands;
@@ -59,6 +61,11 @@ pub struct OuraMcp {
     manager: TokenManager,
     base_url: String,
     tool_router: ToolRouter<Self>,
+    /// The store to check for a scope-change re-consent (#116); `None` = no check (an
+    /// `OURA_ACCESS_TOKEN` server has no store, and in-process tests opt in explicitly).
+    scope_store: Option<TokenStore>,
+    /// Whether this session already carried the scope-change note ("once per session").
+    scope_noted: AtomicBool,
 }
 
 /// Shared date-window parameters for every windowed tool. Deliberately CURATED, not the
@@ -193,7 +200,44 @@ impl OuraMcp {
             manager,
             base_url,
             tool_router,
+            scope_store: None,
+            scope_noted: AtomicBool::new(false),
         }
+    }
+
+    /// Enable the scope-change re-consent note (#116) against `store`: the first tool result
+    /// of the session whose saved grant lacks a default scope carries an extra text block
+    /// telling the model to have the user run `oura auth login`. That's MCP's out-of-band
+    /// version of the CLI's `[Y/n]` prompt (see `reauth`).
+    pub fn with_scope_check(mut self, store: Option<TokenStore>) -> Self {
+        self.scope_store = store;
+        self
+    }
+
+    /// Append the scope-change note to `result` the first time this session has one to give.
+    /// The data block(s) stay untouched and `structured_content` stays pure data; the note is
+    /// its own trailing text block.
+    fn with_scope_notice(
+        &self,
+        result: Result<CallToolResult, ErrorData>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (mut result, store) = match (result, &self.scope_store) {
+            (Ok(result), Some(store)) if !self.scope_noted.load(Ordering::Acquire) => {
+                (result, store)
+            }
+            (other, _) => return other,
+        };
+        if let Some(note) = crate::reauth::mcp_notice(store) {
+            // compare_exchange: concurrent tool calls race here, and exactly one carries it.
+            if self
+                .scope_noted
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                result.content.push(ContentBlock::text(note));
+            }
+        }
+        Ok(result)
     }
 
     #[tool(name = "get_daily_sleep")]
@@ -202,7 +246,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_sleep(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_sleep(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_daily_readiness")]
@@ -211,7 +257,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_readiness(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_readiness(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_daily_activity")]
@@ -220,7 +268,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_activity(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_activity(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_daily_stress")]
@@ -229,7 +279,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_stress(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_stress(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_heart_rate")]
@@ -238,7 +290,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_heartrate(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_heartrate(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_sessions")]
@@ -247,7 +301,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_sessions(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_sessions(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_workouts")]
@@ -256,12 +312,16 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_workouts(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_workouts(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_personal_info")]
     async fn get_personal_info(&self) -> Result<CallToolResult, ErrorData> {
-        tool_result(commands::fetch_personal_info(&self.manager, &self.base_url).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_personal_info(&self.manager, &self.base_url).await,
+        ))
     }
 }
 
@@ -285,7 +345,9 @@ impl ServerHandler for OuraMcp {
                  Authentication is out of band: if a tool reports that the user is not \
                  authenticated, ask them to run `oura auth login` in a terminal (or \
                  `oura auth setup` first if they have never registered credentials), then \
-                 retry.",
+                 retry. If a tool result carries a note that Oura changed its API \
+                 permissions, relay it to the user once (they re-authorize with `oura auth \
+                 login` in a terminal). The data in that result is still valid.",
             )
     }
 }
@@ -295,8 +357,15 @@ impl ServerHandler for OuraMcp {
 ///
 /// `base_url` is the resolved data-plane host (default [`api::API_BASE`], or `OURA_API_BASE_URL`
 /// — #20), so a containerized server can point at a proxy/mock just like the CLI.
-pub async fn serve(manager: TokenManager, base_url: String) -> anyhow::Result<()> {
-    let server = OuraMcp::new(manager, base_url);
+///
+/// `scope_store` is the store to check for a scope-change re-consent note (#116): `None` for
+/// an `OURA_ACCESS_TOKEN` server (no store).
+pub async fn serve(
+    manager: TokenManager,
+    scope_store: Option<TokenStore>,
+    base_url: String,
+) -> anyhow::Result<()> {
+    let server = OuraMcp::new(manager, base_url).with_scope_check(scope_store);
     let running = match server.serve(rmcp::transport::stdio()).await {
         Ok(running) => running,
         // stdin closing before/during the handshake is "no client connected", not a

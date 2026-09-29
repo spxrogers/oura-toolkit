@@ -120,9 +120,15 @@ scope-set change, never for a current grant:
   scopes and the fix (`oura auth login`). The command proceeds normally (stdout and exit code
   are unchanged). It's shown once, and tracked separately from the prompt, so a script
   running first doesn't use up the prompt.
-- **Never** for `oura mcp` (stdout is the transport), the `auth` commands, the pure
-  generators, or an `OURA_ACCESS_TOKEN` run (no store). `oura auth status` always shows the
-  gap.
+- **`oura mcp`** can't prompt (stdout is the JSON-RPC transport, and auth is out of band), so
+  the **first tool result of each MCP session** carries a trailing text block starting
+  `Note: Oura changed its API permissions (OAuth scopes)`. It names the missing scopes and tells
+  the model to have the user run `oura auth login` in a terminal. The data block(s) and
+  `structured_content` are unchanged, and the result is still a success. A scope set declined at
+  the CLI prompt stays quiet here too. The script notice doesn't silence it, because that never
+  reached the person in the chat.
+- **Never** for the `auth` commands, the pure generators, or an `OURA_ACCESS_TOKEN` run (CLI or
+  MCP; no store). `oura auth status` always shows the gap.
 
 What was shown is kept in `scope-notice.json` next to the token records. It's CLI-only
 bookkeeping with no secrets; deleting it just re-arms the notice. A login records the scopes

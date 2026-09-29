@@ -74,7 +74,8 @@ their own Oura OAuth app.
   companion) compares the recorded grant to the spec-derived default scopes before a
   store-backed command. It prompts once per scope-set change (or leaves one stderr note when
   non-interactive), and keeps its bookkeeping in a CLI-only `scope-notice.json` beside the
-  two records.
+  two records. `oura mcp` adds the same message as a note on each session's first tool
+  result, for the model to relay.
 - **Headless / CI**: `OURA_ACCESS_TOKEN` injects a raw Bearer token that bypasses the store
   entirely (`TokenManager::from_access_token`, never refreshes); `--no-browser` swaps the
   loopback catch for a paste-the-redirect-URL flow (still CSRF-checked via `state`).
