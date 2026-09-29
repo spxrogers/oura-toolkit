@@ -28,6 +28,10 @@ const CALLBACK_TIMEOUT_SECS: u64 = 300;
 /// uses): `redirect_uri http://localhost:8788/callback`, which must match the registered app.
 pub const DEFAULT_LOGIN_PORT: u16 = 8788;
 
+/// Oura's OAuth app registration page: where `auth setup` sends the user, and where the
+/// re-consent messages send them to add a scope their app doesn't list yet.
+pub const APP_REGISTRATION_URL: &str = "https://cloud.ouraring.com/oauth/applications";
+
 /// `oura auth setup` — register an app (terminal prompts), then log in. `no_browser` runs
 /// the paste-back login (#20) instead of the loopback flow, for SSH/containers.
 pub async fn setup(port: u16, no_browser: bool) -> Result<()> {
@@ -37,10 +41,12 @@ pub async fn setup(port: u16, no_browser: bool) -> Result<()> {
 
     guide("== Register your Oura OAuth application ==\n");
     if no_browser {
-        guide("Register an application at:\n  https://cloud.ouraring.com/oauth/applications\n");
+        guide(&format!(
+            "Register an application at:\n  {APP_REGISTRATION_URL}\n"
+        ));
     } else {
-        guide("Opening https://cloud.ouraring.com/oauth/applications in your browser…");
-        let _ = open::that("https://cloud.ouraring.com/oauth/applications");
+        guide(&format!("Opening {APP_REGISTRATION_URL} in your browser…"));
+        let _ = open::that(APP_REGISTRATION_URL);
     }
     guide("Create an application with these EXACT values:\n");
     guide("  • Application name : oura-toolkit   (or any name you like)");
@@ -230,12 +236,15 @@ fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<Stat
             "Scope",
             t.scope.clone().unwrap_or_else(|| "(not recorded)".into()),
         ));
-        let missing = metadata::missing_default_scopes(t.scope.as_deref());
+        let (missing, coverage) = crate::reconsent::scope_gap(t);
         if !missing.is_empty() {
-            fields.push((
-                "Missing scopes",
-                format!("{} (run `oura auth login` to grant)", missing.join(" ")),
-            ));
+            // An unrecorded grant can't be shown to cover them: hedge, like the prompt does.
+            let why = if coverage == "may not cover" {
+                "grant not recorded, so these may be missing; run `oura auth login` to be sure"
+            } else {
+                "run `oura auth login` to grant"
+            };
+            fields.push(("Missing scopes", format!("{} ({why})", missing.join(" "))));
         }
         fields.push((
             "Access token",
@@ -257,9 +266,7 @@ fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<Stat
         tokens: TokensStatus {
             present: tokens.is_some(),
             scope: tokens.as_ref().and_then(|t| t.scope.clone()),
-            missing_scopes: tokens
-                .as_ref()
-                .map(|t| metadata::missing_default_scopes(t.scope.as_deref())),
+            missing_scopes: tokens.as_ref().map(|t| crate::reconsent::scope_gap(t).0),
             expires_at: tokens.as_ref().map(|t| t.expires_at),
             expired,
         },
@@ -289,6 +296,10 @@ pub fn logout(store: &TokenStore, all: bool) -> Result<String> {
 
     let removed_tokens = store.delete_tokens()?;
     let removed_credentials = all && store.delete_credentials()?;
+    if all {
+        // A full reset also forgets what the re-consent check told the user (#116).
+        crate::reconsent::forget(store)?;
+    }
 
     let mut out = String::new();
     if removed_tokens {
@@ -505,14 +516,14 @@ async fn run_authorization(
         .context("building the HTTP client")?;
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
-        .map(|t| with_recorded_scope(t, &scopes))
         .context("token exchange with the Oura token endpoint failed")
 }
 
 /// Record what was granted: RFC 6749 §5.1 lets the token response OMIT `scope` when it
 /// equals the requested set, so an absent/blank `scope` means "exactly what we asked for".
-/// Recording it is what lets the re-consent check (`reauth`, #116) tell a current grant from
-/// one that predates a scope change.
+/// Recording it is what lets the re-consent check (`reconsent`, #116) tell a current grant
+/// from one that predates a scope change. Applied in [`persist`], the one write path for
+/// every login flow, so no flow can skip it.
 fn with_recorded_scope(mut tokens: Tokens, requested: &[&str]) -> Tokens {
     if tokens.scope.as_deref().is_none_or(|s| s.trim().is_empty()) {
         tokens.scope = Some(requested.join(" "));
@@ -547,7 +558,6 @@ async fn authorize_no_browser(port: u16, credentials: &ClientCredentials) -> Res
         .context("building the HTTP client")?;
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
-        .map(|t| with_recorded_scope(t, &scopes))
         .context("token exchange with the Oura token endpoint failed")
 }
 
@@ -597,7 +607,7 @@ fn extract_code_from_paste(pasted: &str, expected_state: &str) -> Result<String>
 /// True when the environment looks like a remote/headless session where the loopback callback
 /// likely can't reach this host — used only to SUGGEST `--no-browser` (#20). Injected env
 /// lookup so the predicate is unit-tested without touching process env.
-fn looks_headless(env: impl Fn(&str) -> Option<String>) -> bool {
+pub(crate) fn looks_headless(env: impl Fn(&str) -> Option<String>) -> bool {
     env("SSH_CONNECTION").is_some() || env("SSH_TTY").is_some()
 }
 
@@ -687,7 +697,11 @@ fn persist(store: &TokenStore, tokens: &Tokens) -> Result<()> {
             store.lock_exclusive()?
         }
     };
-    store.save_tokens(tokens)?;
+    // Every login requests the default scopes, so that's what an omitted `scope` granted.
+    store.save_tokens(&with_recorded_scope(
+        tokens.clone(),
+        &metadata::default_scopes(),
+    ))?;
     guide(&format!(
         "✓ Done. Tokens saved to {}",
         store.tokens_path().display()
@@ -859,7 +873,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(store.load_credentials().unwrap().unwrap(), creds);
-        assert_eq!(store.load_tokens().unwrap().unwrap(), tokens);
+        // The setup flow records the requested scopes the token response omitted (#116).
+        assert_eq!(store.load_tokens().unwrap().unwrap(), recorded(tokens));
     }
 
     #[test]
@@ -874,7 +889,7 @@ mod tests {
             token_type: None,
         };
         persist(&store, &tokens).unwrap();
-        assert_eq!(store.load_tokens().unwrap().unwrap(), tokens);
+        assert_eq!(store.load_tokens().unwrap().unwrap(), recorded(tokens));
         // The fast path must leave the lock free (guard dropped, not leaked).
         assert!(store.try_lock_exclusive().unwrap().is_some());
     }
@@ -915,7 +930,15 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(5))
             .expect("persist must proceed once the lock is released");
         writer.join().unwrap();
-        assert_eq!(store.load_tokens().unwrap().unwrap(), tokens);
+        assert_eq!(store.load_tokens().unwrap().unwrap(), recorded(tokens));
+    }
+
+    /// `tokens` as `persist` stores them: an omitted `scope` recorded as the requested defaults.
+    fn recorded(tokens: Tokens) -> Tokens {
+        Tokens {
+            scope: Some(metadata::default_scopes().join(" ")),
+            ..tokens
+        }
     }
 
     #[test]
@@ -1052,6 +1075,60 @@ mod tests {
         let v: serde_json::Value =
             serde_json::from_str(&status_at(&store, opts, now).unwrap().rendered).unwrap();
         assert_eq!(v["tokens"]["missing_scopes"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn persist_records_the_default_scopes_when_the_token_response_omitted_scope() {
+        // `persist` is the ONE write path for every login flow (loopback, --no-browser, setup),
+        // so recording here is what makes the re-consent check see a current grant as current.
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let mut t = tokens_expiring_at(1);
+        t.scope = None;
+        persist(&store, &t).unwrap();
+        assert_eq!(
+            store.load_tokens().unwrap().unwrap().scope,
+            Some(metadata::default_scopes().join(" "))
+        );
+        // …and keeps a scope the server DID return (the truth, e.g. an unticked scope).
+        t.scope = Some("personal".into());
+        persist(&store, &t).unwrap();
+        assert_eq!(
+            store.load_tokens().unwrap().unwrap().scope.as_deref(),
+            Some("personal")
+        );
+    }
+
+    #[test]
+    fn status_hedges_the_missing_scopes_row_for_an_unrecorded_grant() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let mut tokens = tokens_expiring_at(now + 3_600);
+        tokens.scope = None;
+        let store = seeded_store(&dir, true, Some(tokens));
+        let text = status_at(&store, plain(), now).unwrap().rendered;
+        assert!(
+            text.contains("Missing scopes\t") && text.contains("grant not recorded"),
+            "an unrecorded grant must hedge, not assert: {text}"
+        );
+    }
+
+    #[test]
+    fn logout_all_also_forgets_the_reconsent_record_but_plain_logout_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = seeded_store(&dir, true, Some(tokens_expiring_at(2_000)));
+        let record = store.dir().join(crate::reconsent::STATE_FILE);
+        std::fs::write(&record, "{}").unwrap();
+        logout(&store, false).unwrap();
+        assert!(
+            record.exists(),
+            "a plain logout keeps the user's earlier answer"
+        );
+        logout(&store, true).unwrap();
+        assert!(
+            !record.exists(),
+            "--all is a full reset: the notice re-arms"
+        );
     }
 
     #[test]

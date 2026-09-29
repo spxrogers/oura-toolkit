@@ -1225,19 +1225,21 @@ fn docs_check_runs_the_analytics_guard() {
     );
 }
 
-/// #116: the re-consent contract's enumerable strings — the notice prefix, the prompt
-/// question, and the bookkeeping file — are the source's constants, in the contract AND the
+/// #116: the re-consent contract's enumerable strings — the notice prefix, the prompt's
+/// lead and question, and the bookkeeping file — are the source's constants, in the contract AND the
 /// docs-site auth guide (the file name is contract-only: it's operator detail).
 #[test]
 fn scope_change_reconsent_strings_match_the_source() {
-    use oura_toolkit_cli::reauth::{NOTICE_PREFIX, PROMPT_QUESTION, STATE_FILE};
-    let contract = read(&repo_root().join("docs/cli-contract.md"));
-    let guide = read(&docs_site_page("guides/authentication.md"));
+    use oura_toolkit_cli::reconsent::{NOTICE_PREFIX, PROMPT_LEAD, PROMPT_QUESTION, STATE_FILE};
+    // Whitespace-normalized: a pinned phrase may wrap across lines in the Markdown source.
+    let flat = |s: String| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let contract = flat(read(&repo_root().join("docs/cli-contract.md")));
+    let guide = flat(read(&docs_site_page("guides/authentication.md")));
     for (doc, name) in [
         (&contract, "docs/cli-contract.md"),
         (&guide, "guides/authentication.md"),
     ] {
-        for s in [NOTICE_PREFIX, PROMPT_QUESTION] {
+        for s in [NOTICE_PREFIX, PROMPT_LEAD, PROMPT_QUESTION] {
             assert!(
                 doc.contains(s),
                 "{name} must quote the re-consent string `{s}` exactly as the CLI prints it"
@@ -1250,18 +1252,15 @@ fn scope_change_reconsent_strings_match_the_source() {
     );
     // The MCP flavour (#116): the note's lead is quoted in the contract and the MCP guide,
     // and every plugin skill tells the model what to do with it.
-    let mcp_guide = read(&docs_site_page("guides/mcp-server.md"));
+    let mcp_guide = flat(read(&docs_site_page("guides/mcp-server.md")));
     for (doc, name) in [
         (&contract, "docs/cli-contract.md"),
         (&mcp_guide, "guides/mcp-server.md"),
     ] {
         assert!(
-            doc.split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .contains(oura_toolkit_cli::reauth::MCP_NOTICE_LEAD),
+            doc.contains(oura_toolkit_cli::reconsent::MCP_NOTICE_LEAD),
             "{name} must quote the MCP note's lead `{}`",
-            oura_toolkit_cli::reauth::MCP_NOTICE_LEAD
+            oura_toolkit_cli::reconsent::MCP_NOTICE_LEAD
         );
     }
     let skills = repo_root().join("plugins/oura-toolkit/skills");

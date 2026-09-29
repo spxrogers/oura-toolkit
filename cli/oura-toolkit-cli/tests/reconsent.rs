@@ -8,8 +8,12 @@
 //! - a current grant, or an `OURA_ACCESS_TOKEN` run, never sees it.
 //!
 //! A spawned child's stdin/stderr are pipes, never TTYs, so this is exactly the scripted
-//! path. The interactive prompt (Y → login, n → remembered) is covered by `reauth`'s unit
-//! tests through injected IO. `oura mcp`'s flavour, a note on the first tool result, is
+//! path. Which commands run the check (data + `oura api`, after argument validation; never
+//! `auth *` or the generators) is pinned here too. On Linux, `script(1)` gives the child a
+//! real pseudo-terminal, so the INTERACTIVE wiring (both stdin and stderr must be TTYs; the
+//! prompt goes to the terminal, never stdout) is exercised end to end; the prompt's branches
+//! are covered by `reconsent`'s unit tests. `oura mcp`'s flavour, a note on the first tool
+//! result, is
 //! pinned here at the process boundary too: `main` must hand the server the store (and must
 //! NOT for an env-token server), and the note must ride inside JSON-RPC, never as stray
 //! stdout. Hermetic: the Oura host is a loopback wiremock.
@@ -18,14 +22,15 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use oura_toolkit_auth::{metadata, ClientCredentials, TokenStore, Tokens};
+use oura_toolkit_auth::{ClientCredentials, TokenStore, Tokens};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer};
 
 mod common;
-use common::{page, sleep_doc};
-
-const PRE_1_41_GRANT: &str = "personal daily heartrate workout tag session spo2Daily";
+use common::{current_grant, page, sleep_doc, PRE_1_41_GRANT};
+use oura_toolkit_cli::reconsent::{
+    MCP_NOTICE_LEAD, NOTICE_PREFIX, PROMPT_LEAD, PROMPT_QUESTION, STATE_FILE,
+};
 
 struct Fixture {
     server: MockServer,
@@ -66,7 +71,17 @@ impl Fixture {
         Fixture { server, rt, dir }
     }
 
+    /// `oura sleep --date 2026-06-26` against this fixture.
     fn run(&self, extra_env: &[(&str, &str)]) -> Output {
+        self.run_args(&["sleep", "--date", "2026-06-26"], extra_env)
+    }
+
+    /// The bookkeeping record's path in this fixture's store.
+    fn state_file(&self) -> std::path::PathBuf {
+        self.dir.path().join("oura-toolkit").join(STATE_FILE)
+    }
+
+    fn run_args(&self, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
         let _guard = self.rt.enter();
         let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
         cmd.env("XDG_CONFIG_HOME", self.dir.path())
@@ -75,7 +90,7 @@ impl Fixture {
             .env("NO_COLOR", "1")
             .env_remove("OURA_ACCESS_TOKEN")
             .env("OURA_API_BASE_URL", self.server.uri())
-            .args(["sleep", "--date", "2026-06-26"]);
+            .args(args);
         for (k, v) in extra_env {
             cmd.env(k, v);
         }
@@ -158,8 +173,7 @@ fn oura_mcp_notes_a_stale_grant_on_the_tool_result() {
         "block 0 is the data: {result}"
     );
     assert!(
-        texts[1].starts_with(oura_toolkit_cli::reauth::MCP_NOTICE_LEAD)
-            && texts[1].contains("oura auth login"),
+        texts[1].starts_with(MCP_NOTICE_LEAD) && texts[1].contains("oura auth login"),
         "`main` must wire the store into `oura mcp`: {result}"
     );
 }
@@ -168,7 +182,13 @@ fn oura_mcp_notes_a_stale_grant_on_the_tool_result() {
 fn oura_mcp_with_an_env_token_never_notes() {
     let fx = Fixture::new(Some(PRE_1_41_GRANT));
     let result = fx.mcp_tool_call(&[("OURA_ACCESS_TOKEN", "env-tok")]);
-    assert_eq!(content_texts(&result).len(), 1, "{result}");
+    assert_ne!(
+        result["isError"], true,
+        "a real success, not an error: {result}"
+    );
+    let texts = content_texts(&result);
+    assert_eq!(texts.len(), 1, "data only, no note: {result}");
+    assert!(texts[0].contains("2026-06-26"), "{result}");
 }
 
 fn text(bytes: &[u8]) -> String {
@@ -190,7 +210,7 @@ fn a_stale_login_gets_one_stderr_notice_and_the_command_still_succeeds() {
         "the result still reaches stdout: {stdout}"
     );
     assert!(
-        !stdout.contains("oura: note"),
+        !stdout.contains(NOTICE_PREFIX),
         "the notice is prose — stderr only (contract → Streams): {stdout}"
     );
     assert_eq!(
@@ -199,7 +219,7 @@ fn a_stale_login_gets_one_stderr_notice_and_the_command_still_succeeds() {
         "exactly one notice line: {stderr}"
     );
     assert!(
-        stderr.starts_with("oura: note:") && stderr.contains("spo2 heart_health"),
+        stderr.starts_with(NOTICE_PREFIX) && stderr.contains("spo2 heart_health"),
         "the notice names the missing scopes: {stderr}"
     );
     assert!(stderr.contains("oura auth login"), "and the fix: {stderr}");
@@ -211,9 +231,10 @@ fn a_stale_login_gets_one_stderr_notice_and_the_command_still_succeeds() {
 
 #[test]
 fn a_current_login_is_never_noticed() {
-    let fx = Fixture::new(Some(&metadata::default_scopes().join(" ")));
+    let fx = Fixture::new(Some(&current_grant()));
     let out = fx.run(&[]);
-    assert!(out.status.success());
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("2026-06-26"), "a real result");
     assert_eq!(text(&out.stderr), "");
 }
 
@@ -223,5 +244,159 @@ fn an_env_token_run_bypasses_the_store_and_the_notice() {
     let fx = Fixture::new(Some(PRE_1_41_GRANT));
     let out = fx.run(&[("OURA_ACCESS_TOKEN", "env-tok")]);
     assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("2026-06-26"), "a real result");
     assert_eq!(text(&out.stderr), "");
+}
+
+#[test]
+fn oura_api_is_store_backed_and_gets_the_notice() {
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let out = fx.run_args(&["api", "/v2/usercollection/daily_sleep"], &[]);
+    let stderr = text(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        text(&out.stdout).contains("2026-06-26"),
+        "the raw JSON result"
+    );
+    assert!(
+        stderr.starts_with(NOTICE_PREFIX),
+        "`oura api` runs the check: {stderr}"
+    );
+}
+
+#[test]
+fn account_commands_and_generators_never_run_the_check() {
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    for args in [
+        &["auth", "status"][..],
+        &["auth", "token"],
+        &["completion", "bash"],
+        &["man"],
+    ] {
+        let out = fx.run_args(args, &[]);
+        assert!(out.status.success(), "{args:?}: {}", text(&out.stderr));
+        assert!(
+            !text(&out.stderr).contains(NOTICE_PREFIX),
+            "{args:?} must not run the re-consent check: {}",
+            text(&out.stderr)
+        );
+    }
+    assert!(
+        !fx.state_file().exists(),
+        "nothing was told, so nothing recorded"
+    );
+}
+
+#[test]
+fn a_bad_argument_fails_before_the_check_runs() {
+    // A usage error must be exactly that — never preceded by a notice (or, on a TTY, a prompt
+    // and a browser login) the user didn't need.
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let out = fx.run_args(&["sleep", "--date", "not-a-date"], &[]);
+    assert!(!out.status.success());
+    let stderr = text(&out.stderr);
+    assert!(!stderr.contains(NOTICE_PREFIX), "{stderr}");
+    assert!(!fx.state_file().exists(), "the check never ran");
+}
+
+/// Run `command` (a shell line) under `script(1)`, which gives it a real pseudo-terminal for
+/// stdin/stdout/stderr, feeding `input` as the user's keystrokes. Returns the terminal
+/// transcript. Linux-only: util-linux `script` (on every CI Linux runner).
+#[cfg(target_os = "linux")]
+fn on_a_terminal(fx: &Fixture, command: &str, input: &str) -> String {
+    let _guard = fx.rt.enter();
+    let mut child = Command::new("script")
+        .args(["-qec", command, "/dev/null"])
+        .env("XDG_CONFIG_HOME", fx.dir.path())
+        .env("HOME", fx.dir.path())
+        .env("NO_COLOR", "1")
+        .env_remove("OURA_ACCESS_TOKEN")
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_TTY")
+        .env("OURA_API_BASE_URL", fx.server.uri())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("util-linux `script` must be installed to exercise the TTY path");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("hung on the terminal: a prompt was answered with a login, or never read");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    text(&out.stdout)
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn on_a_terminal_the_prompt_goes_to_the_terminal_and_the_result_to_stdout() {
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let result = fx.dir.path().join("stdout.txt");
+    let oura = assert_cmd::cargo::cargo_bin("oura");
+    let transcript = on_a_terminal(
+        &fx,
+        &format!(
+            "{} sleep --date 2026-06-26 > {}",
+            oura.display(),
+            result.display()
+        ),
+        "n\n",
+    );
+    assert!(
+        transcript.contains(PROMPT_LEAD) && transcript.contains(PROMPT_QUESTION),
+        "stdin+stderr are TTYs, so the prompt must show on the terminal: {transcript:?}"
+    );
+    assert!(transcript.contains("Skipped"), "{transcript:?}");
+    let stdout = std::fs::read_to_string(&result).unwrap();
+    assert!(
+        stdout.contains("2026-06-26"),
+        "the command still ran: {stdout:?}"
+    );
+    assert!(
+        !stdout.contains(PROMPT_QUESTION),
+        "the prompt is prose — never on stdout: {stdout:?}"
+    );
+    let state = std::fs::read_to_string(fx.state_file()).unwrap();
+    assert!(state.contains("declined"), "the n was remembered: {state}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_terminal_stdin_with_redirected_stderr_never_prompts() {
+    // `oura sleep 2>log` on a terminal: a prompt would block on a question the user can't
+    // see. Both streams must be TTYs; otherwise it's the one-line notice. The keystrokes
+    // would ACCEPT a prompt (and hang on a browser login), so a prompt fails this loudly.
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let err = fx.dir.path().join("stderr.txt");
+    let oura = assert_cmd::cargo::cargo_bin("oura");
+    let transcript = on_a_terminal(
+        &fx,
+        &format!(
+            "{} sleep --date 2026-06-26 2> {}",
+            oura.display(),
+            err.display()
+        ),
+        "y\n",
+    );
+    let stderr = std::fs::read_to_string(&err).unwrap();
+    assert!(stderr.starts_with(NOTICE_PREFIX), "{stderr:?}");
+    assert!(
+        !stderr.contains(PROMPT_QUESTION) && !transcript.contains(PROMPT_QUESTION),
+        "no prompt without a stderr TTY: {stderr:?} / {transcript:?}"
+    );
+    assert!(
+        transcript.contains("2026-06-26"),
+        "the command ran: {transcript:?}"
+    );
 }

@@ -64,8 +64,8 @@ pub struct OuraMcp {
     /// The store to check for a scope-change re-consent (#116); `None` = no check (an
     /// `OURA_ACCESS_TOKEN` server has no store, and in-process tests opt in explicitly).
     scope_store: Option<TokenStore>,
-    /// Whether this session already carried the scope-change note ("once per session").
-    scope_noted: AtomicBool,
+    /// Whether this session already ran its one scope-change check ("once per session").
+    scope_checked: AtomicBool,
 }
 
 /// Shared date-window parameters for every windowed tool. Deliberately CURATED, not the
@@ -201,39 +201,38 @@ impl OuraMcp {
             base_url,
             tool_router,
             scope_store: None,
-            scope_noted: AtomicBool::new(false),
+            scope_checked: AtomicBool::new(false),
         }
     }
 
-    /// Enable the scope-change re-consent note (#116) against `store`: the first tool result
-    /// of the session whose saved grant lacks a default scope carries an extra text block
-    /// telling the model to have the user run `oura auth login`. That's MCP's out-of-band
-    /// version of the CLI's `[Y/n]` prompt (see `reauth`).
-    pub fn with_scope_check(mut self, store: Option<TokenStore>) -> Self {
-        self.scope_store = store;
+    /// Enable the scope-change re-consent note (#116) against `store`: the first SUCCESSFUL
+    /// tool result of the session, if the saved grant lacks a default scope, carries an extra
+    /// text block telling the model to have the user run `oura auth login`. That's MCP's
+    /// out-of-band version of the CLI's `[Y/n]` prompt (see `reconsent`).
+    pub fn with_scope_check(mut self, store: TokenStore) -> Self {
+        self.scope_store = Some(store);
         self
     }
 
-    /// Append the scope-change note to `result` the first time this session has one to give.
-    /// The data block(s) stay untouched and `structured_content` stays pure data; the note is
-    /// its own trailing text block.
+    /// Append the scope-change note to `result` if it's the session's first successful one.
+    ///
+    /// Only successes: an error result carries no data to vouch for ("the data above is still
+    /// valid"), and a skill told to stop on an auth error would never relay it, so the one
+    /// note must wait for a result the model will actually present. The data block(s) and
+    /// `structured_content` stay untouched; the note is its own trailing text block.
     fn with_scope_notice(
         &self,
         result: Result<CallToolResult, ErrorData>,
     ) -> Result<CallToolResult, ErrorData> {
         let (mut result, store) = match (result, &self.scope_store) {
-            (Ok(result), Some(store)) if !self.scope_noted.load(Ordering::Acquire) => {
-                (result, store)
-            }
+            (Ok(result), Some(store)) if result.is_error != Some(true) => (result, store),
             (other, _) => return other,
         };
-        if let Some(note) = crate::reauth::mcp_notice(store) {
-            // compare_exchange: concurrent tool calls race here, and exactly one carries it.
-            if self
-                .scope_noted
-                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .is_ok()
-            {
+        // `swap` claims the session's one check atomically: under concurrent tool calls
+        // exactly one successful result reads the store and (maybe) carries the note, and a
+        // current grant costs one read per session, not one per call.
+        if !self.scope_checked.swap(true, Ordering::AcqRel) {
+            if let Some(note) = crate::reconsent::mcp_notice(store) {
                 result.content.push(ContentBlock::text(note));
             }
         }
@@ -365,7 +364,10 @@ pub async fn serve(
     scope_store: Option<TokenStore>,
     base_url: String,
 ) -> anyhow::Result<()> {
-    let server = OuraMcp::new(manager, base_url).with_scope_check(scope_store);
+    let mut server = OuraMcp::new(manager, base_url);
+    if let Some(store) = scope_store {
+        server = server.with_scope_check(store);
+    }
     let running = match server.serve(rmcp::transport::stdio()).await {
         Ok(running) => running,
         // stdin closing before/during the handshake is "no client connected", not a

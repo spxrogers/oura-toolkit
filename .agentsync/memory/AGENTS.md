@@ -165,10 +165,10 @@ and 9 scopes (`email personal daily heartrate workout tag session spo2 heart_hea
   `email` unless needed).
 - **Scope-change re-consent** (#116): a refresh can't add scopes, so before a store-backed
   command the CLI compares the recorded grant to `default_scopes()` (data-driven via
-  `metadata::missing_default_scopes`, with no per-version code). It prompts once per scope-set
-  change on a TTY (Y → `auth login`, then continue) and gives one stderr note otherwise.
-  `oura mcp` can't prompt, so it adds a note to the first tool result of each session for the
-  model to relay (see MCP). Bookkeeping lives in `scope-notice.json`, which is CLI-only and
+  `reconsent::missing_default_scopes` in the CLI, with no per-version code). It prompts once
+  per scope-set change on a TTY (Y → `auth login`, then continue; a failed login never costs
+  the command) and gives one stderr note otherwise. `oura mcp` can't prompt, so it adds a note
+  to the first successful tool result of each session for the model to relay (see MCP). Bookkeeping lives in `scope-notice.json`, which is CLI-only and
   holds no secrets. Contract: `docs/cli-contract.md` → Scope changes.
 - **Headless**: `OURA_ACCESS_TOKEN` injects a raw Bearer that bypasses the store (no login, no
   refresh); `OURA_API_BASE_URL` points the client at an alternate host/proxy/mock.
@@ -297,8 +297,9 @@ that orphaned it.
   persist rotated tokens, retry. If tokens are **ABSENT**: do **NOT** prompt, open a browser,
   or write to stdout (stdout is the JSON-RPC transport). Let `initialize` succeed; on the
   **first tool call** return a structured error telling the user to run `oura auth login`.
-  If the saved grant predates a scope change (#116), the **first tool result of the session**
-  gets a trailing text note for the model to relay (run `oura auth login` in a terminal).
+  If the saved grant predates a scope change (#116), the **first successful tool result of the
+  session** gets a trailing text note for the model to relay (run `oura auth login` in a
+  terminal).
   Data and `structured_content` are untouched, and it never prompts, blocks, or runs OAuth.
 - stdio MCP auth is **out-of-band** per the MCP spec — do **NOT** implement OAuth-over-the-wire
   for the server, and do **NOT** make it remote/HTTP or a hosted OAuth broker. STDIO only for

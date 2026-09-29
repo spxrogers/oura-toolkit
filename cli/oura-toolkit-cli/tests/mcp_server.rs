@@ -73,6 +73,12 @@ async fn initialize_succeeds_without_tokens_and_lists_the_8_described_tools() {
     // and the plugin skills — `oura auth setup` first (never-registered), then `oura auth
     // login`. Pinning both catches a future drift back to a login-only instruction.
     let instructions = info.instructions.as_deref().unwrap_or_default();
+    // #116: the model is primed to relay the scope-change note it may find on a result.
+    assert!(
+        instructions.contains("Oura changed its API permissions")
+            && instructions.contains("relay it to the user once"),
+        "instructions must tell the model to relay the scope-change note: {instructions:?}"
+    );
     assert!(
         instructions.contains("oura auth login") && instructions.contains("oura auth setup"),
         "instructions must name the full out-of-band auth path (setup + login): {instructions:?}"
@@ -435,7 +441,8 @@ async fn concurrent_tool_calls_share_the_manager_safely() {
 
 // --- Scope-change re-consent note (#116) ---------------------------------------------------
 
-const PRE_1_41_GRANT: &str = "personal daily heartrate workout tag session spo2Daily";
+use common::{current_grant, PRE_1_41_GRANT};
+use oura_toolkit_cli::reconsent::MCP_NOTICE_LEAD;
 
 /// Like [`connect`], with the scope-change check enabled against the manager's store dir.
 async fn connect_checked(
@@ -449,7 +456,7 @@ async fn connect_checked(
     let store = TokenStore::with_dir(dir.path());
     let (server_io, client_io) = tokio::io::duplex(1 << 16);
     tokio::spawn(async move {
-        let server = OuraMcp::new(manager, base_url).with_scope_check(Some(store));
+        let server = OuraMcp::new(manager, base_url).with_scope_check(store);
         if let Ok(running) = server.serve(server_io).await {
             let _ = running.waiting().await;
         }
@@ -457,38 +464,73 @@ async fn connect_checked(
     ().serve(client_io).await.expect("client connects")
 }
 
-async fn sleep_server() -> MockServer {
+/// A mock Oura where any of the 8 tools succeeds: daily sleep serves one document (the data
+/// the assertions look for), personal info a minimal profile, and every other collection an
+/// empty page (valid for each typed model).
+async fn any_tool_server() -> MockServer {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v2/usercollection/daily_sleep"))
         .respond_with(page(vec![sleep_doc("2026-06-26", 80)], None))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/personal_info"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "me"})))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(page(vec![], None))
+        .with_priority(2)
         .mount(&server)
         .await;
     server
 }
 
-async fn call_sleep(
+async fn call(
     client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    tool: &'static str,
 ) -> CallToolResult {
     client
-        .call_tool(
-            CallToolRequestParams::new("get_daily_sleep")
-                .with_arguments(sleep_args("2026-06-26", "2026-06-26")),
-        )
+        .call_tool(CallToolRequestParams::new(tool))
         .await
         .unwrap()
 }
 
-/// The MCP flavour of the CLI's `[Y/n]` prompt: a stale grant's FIRST tool result carries a
-/// trailing note (data untouched, still a success) telling the model to have the user run
-/// `oura auth login`; later calls in the same session don't repeat it.
+/// How many of `result`'s content blocks are the scope-change note.
+fn notes_in(result: &CallToolResult) -> usize {
+    result
+        .content
+        .iter()
+        .filter(|b| {
+            b.as_text()
+                .is_some_and(|t| t.text.starts_with(MCP_NOTICE_LEAD))
+        })
+        .count()
+}
+
+/// A plain successful data result: not an error, exactly one (data) block, no note.
+fn assert_plain_success(result: &CallToolResult) {
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    assert_eq!(result.content.len(), 1, "data only: {result:?}");
+    assert!(
+        text_of(result).contains("2026-06-26"),
+        "the data block: {result:?}"
+    );
+}
+
+/// The MCP flavour of the CLI's `[Y/n]` prompt: a stale grant's FIRST successful tool result
+/// carries a trailing note (data untouched, still a success) telling the model to have the
+/// user run `oura auth login`; later calls in the same session don't repeat it.
 #[tokio::test]
 async fn a_stale_grant_notes_the_first_tool_result_once_per_session() {
-    let server = sleep_server().await;
+    let server = any_tool_server().await;
     let dir = tempfile::tempdir().unwrap();
     let client = connect_checked(&dir, Some(PRE_1_41_GRANT), server.uri()).await;
 
-    let first = call_sleep(&client).await;
+    let first = call(&client, "get_daily_sleep").await;
     assert_ne!(
         first.is_error,
         Some(true),
@@ -505,29 +547,134 @@ async fn a_stale_grant_notes_the_first_tool_result_once_per_session() {
     );
     let note = &first.content[1].as_text().expect("text note").text;
     assert!(
-        note.starts_with(oura_toolkit_cli::reauth::MCP_NOTICE_LEAD)
+        note.starts_with(MCP_NOTICE_LEAD)
             && note.contains("spo2 heart_health")
             && note.contains("oura auth login"),
         "the note names the gap and the out-of-band fix: {note}"
     );
     let structured = first.structured_content.as_ref().unwrap().to_string();
     assert!(
-        !structured.contains("oura auth login"),
+        structured.contains("2026-06-26") && !structured.contains("oura auth login"),
         "structured_content stays pure data: {structured}"
     );
 
-    let second = call_sleep(&client).await;
-    assert_eq!(second.content.len(), 1, "once per session: {second:?}");
+    assert_plain_success(&call(&client, "get_daily_sleep").await);
+    client.cancel().await.unwrap();
+}
+
+/// Every one of the 8 tools carries the note (a fresh session each — it's once per session),
+/// so no tool can silently skip the wrapper.
+#[tokio::test]
+async fn every_tool_carries_the_note_as_the_sessions_first_result() {
+    let server = any_tool_server().await;
+    for tool in [
+        "get_daily_sleep",
+        "get_daily_readiness",
+        "get_daily_activity",
+        "get_daily_stress",
+        "get_heart_rate",
+        "get_sessions",
+        "get_workouts",
+        "get_personal_info",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let client = connect_checked(&dir, Some(PRE_1_41_GRANT), server.uri()).await;
+        let result = call(&client, tool).await;
+        assert_ne!(result.is_error, Some(true), "{tool}: {result:?}");
+        assert_eq!(
+            notes_in(&result),
+            1,
+            "{tool} must carry the note: {result:?}"
+        );
+        client.cancel().await.unwrap();
+    }
+    assert_eq!(
+        oura_toolkit_cli::mcp::tool_names().count(),
+        8,
+        "a new tool must be added to this list"
+    );
+}
+
+/// An error result has no data to vouch for, so it never carries the note, and it doesn't use
+/// up the session's one note: the next SUCCESSFUL result carries it.
+#[tokio::test]
+async fn an_error_result_never_carries_the_note_or_uses_it_up() {
+    let server = MockServer::start().await;
+    // The data plane retries a 429 once, so two 429s make the first CALL fail.
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "0")
+                .insert_header("X-RateLimit-Reset", "1783191600"),
+        )
+        .up_to_n_times(2)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/usercollection/daily_sleep"))
+        .respond_with(page(vec![sleep_doc("2026-06-26", 80)], None))
+        .with_priority(2)
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let client = connect_checked(&dir, Some(PRE_1_41_GRANT), server.uri()).await;
+
+    let failed = call(&client, "get_daily_sleep").await;
+    assert_eq!(
+        failed.is_error,
+        Some(true),
+        "the first call is the 429: {failed:?}"
+    );
+    assert_eq!(
+        notes_in(&failed),
+        0,
+        "no note on an error result: {failed:?}"
+    );
+
+    let ok = call(&client, "get_daily_sleep").await;
+    assert_ne!(ok.is_error, Some(true), "{ok:?}");
+    assert_eq!(
+        notes_in(&ok),
+        1,
+        "the note waits for the first success: {ok:?}"
+    );
+    client.cancel().await.unwrap();
+}
+
+/// The plugin skills call tools in parallel, so concurrent calls are the normal path:
+/// exactly ONE of N simultaneous successful results carries the note.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_first_calls_carry_exactly_one_note() {
+    let server = any_tool_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let client = connect_checked(&dir, Some(PRE_1_41_GRANT), server.uri()).await;
+
+    let (a, b, c, d) = tokio::join!(
+        call(&client, "get_daily_sleep"),
+        call(&client, "get_daily_readiness"),
+        call(&client, "get_daily_activity"),
+        call(&client, "get_daily_stress"),
+    );
+    let results = [a, b, c, d];
+    for r in &results {
+        assert_ne!(r.is_error, Some(true), "{r:?}");
+    }
+    let notes: usize = results.iter().map(notes_in).sum();
+    assert_eq!(
+        notes, 1,
+        "exactly one concurrent result carries the note: {results:?}"
+    );
     client.cancel().await.unwrap();
 }
 
 #[tokio::test]
 async fn a_current_grant_carries_no_note() {
-    let server = sleep_server().await;
+    let server = any_tool_server().await;
     let dir = tempfile::tempdir().unwrap();
-    let grant = oura_toolkit_auth::metadata::default_scopes().join(" ");
-    let client = connect_checked(&dir, Some(&grant), server.uri()).await;
-    assert_eq!(call_sleep(&client).await.content.len(), 1);
+    let client = connect_checked(&dir, Some(&current_grant()), server.uri()).await;
+    assert_plain_success(&call(&client, "get_daily_sleep").await);
     client.cancel().await.unwrap();
 }
 
@@ -535,11 +682,11 @@ async fn a_current_grant_carries_no_note() {
 /// disk is irrelevant.
 #[tokio::test]
 async fn a_server_without_the_scope_check_never_notes() {
-    let server = sleep_server().await;
+    let server = any_tool_server().await;
     let dir = tempfile::tempdir().unwrap();
     let mut tokens = fresh_tokens("at-1");
     tokens.scope = Some(PRE_1_41_GRANT.into());
     let client = connect(manager(&dir, Some(tokens)), server.uri()).await;
-    assert_eq!(call_sleep(&client).await.content.len(), 1);
+    assert_plain_success(&call(&client, "get_daily_sleep").await);
     client.cancel().await.unwrap();
 }

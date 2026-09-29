@@ -343,20 +343,42 @@ probe still runs; only network/5xx failures exit 2. Selftest case 6 guards it.
 Oura renamed `spo2Daily` → `spo2` and added `heart_health` in openapi-1.41. A refresh
 can't widen a grant, so logins from before a scope change silently lack the new scopes.
 We chose a **data-driven** check over a per-version migration: the grant recorded in
-`tokens.json` vs the spec-derived `default_scopes()` (`metadata::missing_default_scopes`).
-The next scope change is caught with no new code. It fires **once per scope-set change**
+`tokens.json` vs the spec-derived `default_scopes()` (`reconsent::missing_default_scopes`).
+The next scope change is caught with no new code. The helper lives in the CLI, not the Rust
+companion: it's CLI policy built on `default_scopes()`, which all six companions already
+expose, so adding public API to one companion would break the same-shape rule. It fires **once per scope-set change**
 (the bookkeeping is keyed by the default set), because a user may deliberately decline a
 scope, so nagging on every run would be wrong. **Blocking** was rejected because no current
 command needs the new scopes. Interactive runs get a `[Y/n]` prompt that chains into `auth
 login`. Scripts get one stderr note, tracked separately so a script can't use up the human's
-prompt. MCP can't prompt, and stdio MCP auth stays out of band (no OAuth in the server). So the
-same decision becomes a note on the first tool result of each MCP session for the model to
-relay, and it respects a CLI decline. MCP elicitation was considered: it could ask, but a
-"yes" would still need the out-of-band login, so it adds a round-trip without closing the loop.
+prompt.
+
+**The inline login is optional and never costs the command.** Yes runs `auth login` on the
+default port (paste-back over SSH), because answering "yes" and then being told to run a second
+command is worse UX. But a login can fail for reasons the prompt can't foresee: a busy port, a
+custom `--port` registration (a 300s callback wait), or missing credentials. So any failure is
+reported, remembered for the scope set, and the command carries on with the existing login
+(still valid for everything it covered). Without remembering it, a default-yes prompt would
+trap the user in that wait on every run.
+
+**MCP gets a note, once per session.** MCP can't prompt, and stdio MCP auth stays out of band
+(no OAuth in the server). So the same decision becomes a note on the first *successful* tool
+result of each MCP session, for the model to relay. Error results never carry it: they have no
+data to vouch for, and the skills stop on errors. It's once per SESSION, not once ever: a
+note the model may not relay can't be treated as the user having seen it, unlike the CLI's
+prompt or stderr line. A CLI decline silences it, so an MCP-only user can decline by answering
+`n` once in a terminal. MCP elicitation was considered: it could ask, but a "yes" would still
+need the out-of-band login, so it adds a round-trip without closing the loop. Accepted risk:
+the note is a `content` block, not part of `structured_content` (which stays pure data), so a
+client that feeds the model only `structured_content` won't relay it; `oura auth status`
+still shows the gap.
 The bookkeeping is a CLI-only `scope-notice.json`, not a
 `tokens.json` field, so the six-language store records and their conformance fixture are
 untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
-§5.1), so the check can tell a current grant from a stale one.
+§5.1), so the check can tell a current grant from a stale one. A refresh response with a blank
+`scope` still replaces the recorded grant in every companion. That's pre-existing companion
+behavior; a fix belongs in the shared conformance fixture across all six, so it's tracked
+separately. Until then the check reads a blank grant as unrecorded ("may not cover").
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

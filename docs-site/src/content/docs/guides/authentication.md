@@ -58,12 +58,14 @@ Re-authorize now? [Y/n]
 ```
 
 Press Enter to run `oura auth login` and carry on with your command, or `n` to skip (you won't
-be asked again for this change). Scripts and other non-interactive runs get a single
+be asked again for this change). Over SSH it uses the paste-back login. If the login can't
+complete (say your app is registered on another port), your command still runs on your
+existing login, and you can run `oura auth login --port <n>` yourself later. Scripts and other non-interactive runs get a single
 `oura: note: …` line on stderr instead, and are never blocked. If your Oura app doesn't list
 the new scopes yet, add them at <https://cloud.ouraring.com/oauth/applications> before
 re-authorizing. `oura auth status` shows any missing scopes at any time. In Claude (the `oura
-mcp` server), the first tool result of each session carries the same message as a note for
-Claude to pass on.
+mcp` server), the first successful tool result of each session carries the same message as a
+note for Claude to pass on.
 
 ## Managing stored state
 

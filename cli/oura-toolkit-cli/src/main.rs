@@ -212,9 +212,23 @@ async fn run() -> anyhow::Result<()> {
         )
     );
     if store_backed && api::access_token_override(env).is_none() {
+        // Validate the command's own arguments FIRST: a bad date range must fail as the usage
+        // error it is, never after a prompt (or a browser login) the user didn't need.
+        if let Some(
+            Command::Sleep(range)
+            | Command::Readiness(range)
+            | Command::Activity(range)
+            | Command::Stress(range)
+            | Command::Heartrate(range)
+            | Command::Sessions(range)
+            | Command::Workouts(range),
+        ) = &cli.command
+        {
+            range.resolve()?;
+        }
         // No resolvable store dir is the command's own error to report (via its manager).
         if let Ok(store) = oura_toolkit_auth::TokenStore::new() {
-            oura_toolkit_cli::reauth::run(&store).await?;
+            oura_toolkit_cli::reconsent::run(&store).await;
         }
     }
 
@@ -309,10 +323,10 @@ async fn run() -> anyhow::Result<()> {
             // Honors the same OURA_ACCESS_TOKEN / OURA_API_BASE_URL overrides so the server
             // runs in a container with an injected token (#20).
             // The store also feeds the scope-change note (#116). An env-token server has none.
-            let scope_store = api::access_token_override(env)
-                .is_none()
-                .then(|| oura_toolkit_auth::TokenStore::new().ok())
-                .flatten();
+            let scope_store = match api::access_token_override(env) {
+                Some(_) => None,
+                None => oura_toolkit_auth::TokenStore::new().ok(),
+            };
             oura_toolkit_cli::mcp::serve(api::manager_from_env(env)?, scope_store, base_url).await
         }
         // Pure code generators: no auth, no network. The script/man page IS the result, so it

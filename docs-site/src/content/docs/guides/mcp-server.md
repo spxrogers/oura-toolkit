@@ -53,7 +53,7 @@ batteries-included experience with ready-made wellness skills, use the
 :::note
 When Oura changes its OAuth scopes (API 1.41 renamed `spo2Daily` to `spo2` and added
 `heart_health`), a login from before the change lacks the new ones. The server can't prompt, so
-the first tool result of each session carries an extra note, `Note: Oura changed its API
+the first successful tool result of each session carries an extra note, `Note: Oura changed its API
 permissions (OAuth scopes)…`. It asks the model to have you run `oura auth login` in a terminal.
 The data in that result is still valid. Declining the same question at the CLI prompt silences
 it here too.
