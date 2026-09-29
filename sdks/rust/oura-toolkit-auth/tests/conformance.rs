@@ -65,7 +65,7 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 8, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 17, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -127,7 +127,7 @@ async fn refresh_scope_cases_persist_expected_scope() {
         .expect("prior_scope")
         .to_string();
     let cases = table["cases"].as_array().expect("cases").clone();
-    assert!(cases.len() >= 8, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 9, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();

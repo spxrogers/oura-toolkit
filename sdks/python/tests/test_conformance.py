@@ -10,15 +10,17 @@ companion suite must exercise; new cases are added THERE, never here):
   (the rotated refresh token is never burned by persisting a blank/expired Bearer);
 - hostile store files -> the typed :class:`StoreFormatError`, never a default-filled
   record that makes ``is_authenticated`` lie, and never an untyped exception;
-- successful refreshes with omitted/null/empty/whitespace/real ``scope`` -> the
-  persisted record carries exactly the fixture's ``expected_scope`` (a blank scope
-  keeps the prior grant; a real one replaces it);
+- successful refreshes with omitted/null/empty/whitespace/non-string/real ``scope``
+  (incl. a valid surrogate pair) -> the persisted record carries exactly the
+  fixture's ``expected_scope`` (a blank or non-string scope keeps the prior grant; a
+  real one replaces it);
 - canonical valid records -> load with exactly the fixture's field values and
   round-trip through this companion's own persist path (the cross-language store
   compatibility check — field names are the shared wire format, #54).
 
 Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-same three-test structure, same fixture-shrink guards (>= 8 cases per hostile table).
+same three-test structure, same fixture-shrink guards (>= 17 hostile token responses,
+>= 8 hostile store files, >= 9 refresh-scope cases).
 Monorepo-only: the fixture is resolved by walking up from ``__file__`` to the repo
 root (nearest ancestor holding the justfile + README), never from the cwd.
 """
@@ -76,8 +78,9 @@ def original_tokens() -> Tokens:
 
 def test_fixture_has_not_shrunk() -> None:
     """Shrink guard: a fixture edit that drops hostile cases weakens EVERY language's
-    suite at once — fail loudly here (>= 8 per hostile table, like the other legs)."""
-    assert len(HOSTILE_TOKEN_RESPONSES) >= 8, (
+    suite at once — fail loudly here (>= 17 hostile token responses, >= 8 hostile store
+    files, >= 9 refresh-scope cases, like the other legs)."""
+    assert len(HOSTILE_TOKEN_RESPONSES) >= 17, (
         f"fixture shrank? {len(HOSTILE_TOKEN_RESPONSES)} hostile_token_responses cases"
     )
     assert len(HOSTILE_STORE_FILES) >= 8, (
@@ -85,7 +88,7 @@ def test_fixture_has_not_shrunk() -> None:
     )
     # pytest SKIPS a parametrize over an empty list, so an emptied refresh_scope_cases
     # table would pass silently without this guard.
-    assert len(REFRESH_SCOPE_CASES) >= 8, (
+    assert len(REFRESH_SCOPE_CASES) >= 9, (
         f"fixture shrank? {len(REFRESH_SCOPE_CASES)} refresh_scope_cases cases"
     )
 

@@ -252,14 +252,22 @@ public final class TokenManager {
         // Mirrors go/auth/oauth.go:74-79. Messages carry NO token/secret material — the raw
         // body is never echoed, since a partial 2xx payload may contain token material.
         // A string that isn't valid Unicode (e.g. a lone "\\ud800" escape, which Jackson
-        // decodes into an unpaired UTF-16 surrogate) makes the RESPONSE malformed: it must
-        // fail typed here, before anything is persisted — never be written to the store as
-        // mojibake. Checked over every string (and field name) in the body, not just scope.
-        // Pinned by the shared fixture's hostile_token_responses scope_lone_surrogate case.
-        if (node != null && containsUnpairedSurrogate(node)) {
-            throw new TransportException(
-                    "token endpoint 2xx response contains a string that is not valid Unicode",
-                    null);
+        // decodes into an unpaired UTF-16 surrogate) in any of the FOUR fields this companion
+        // reads — access_token, refresh_token, token_type, scope — makes the RESPONSE
+        // malformed: it must fail typed here, before anything is persisted, never be written
+        // to the store as mojibake. Unknown fields are NOT validated (the agreed rule for all
+        // six companions). Pinned by the shared fixture's hostile_token_responses
+        // *_lone_surrogate cases.
+        if (node != null && node.isObject()) {
+            for (String field : READ_FIELDS) {
+                JsonNode value = node.get(field);
+                if (value != null && value.isTextual() && hasUnpairedSurrogate(value.asText())) {
+                    throw new TransportException(
+                            "token endpoint 2xx response has a " + field
+                                    + " that is not valid Unicode",
+                            null);
+                }
+            }
         }
         JsonNode accessToken = node == null ? null : node.get("access_token");
         JsonNode expiresIn = node == null ? null : node.get("expires_in");
@@ -275,9 +283,12 @@ public final class TokenManager {
                     "token endpoint 2xx response missing or invalid expires_in",
                     null);
         }
-        String rotatedRefresh = node.hasNonNull("refresh_token")
-                ? node.get("refresh_token").asText()
-                : current.getRefreshToken(); // server omitted rotation; keep the old one
+        // An omitted/null refresh_token or token_type keeps the current value (the server
+        // omitted rotation); a NON-STRING one (e.g. 42) is a malformed response and fails
+        // typed — asText() would otherwise persist "42" as the rotated refresh token (burning
+        // the real one) or "" for an object. Pinned by the fixture's wrong_type_refresh_token
+        // and wrong_type_token_type cases.
+        String rotatedRefresh = optionalString(node, "refresh_token", current.getRefreshToken());
         // An omitted, null, non-string, empty, or whitespace-only scope keeps the prior grant
         // (RFC 6749 §5.1 lets the server omit an unchanged scope); persisting a blank would
         // erase the grant the CLI's re-consent check reads. Pinned by the shared conformance
@@ -286,15 +297,35 @@ public final class TokenManager {
         String scope = scopeNode != null && scopeNode.isTextual() && !isBlankScope(scopeNode.asText())
                 ? scopeNode.asText()
                 : current.getScope();
-        String tokenType = node.hasNonNull("token_type")
-                ? node.get("token_type").asText()
-                : current.getTokenType();
+        String tokenType = optionalString(node, "token_type", current.getTokenType());
         return new Tokens(
                 accessToken.asText(),
                 rotatedRefresh,
                 Instant.now().getEpochSecond() + expiresIn.asLong(),
                 scope,
                 tokenType);
+    }
+
+    /** The token-response fields this companion reads (and so validates as Unicode). */
+    private static final String[] READ_FIELDS = {
+        "access_token", "refresh_token", "token_type", "scope"
+    };
+
+    /**
+     * The string value of {@code field}, or {@code fallback} when it is omitted or null.
+     * A present non-string value is a malformed response: typed {@link TransportException}.
+     */
+    private static String optionalString(JsonNode node, String field, String fallback)
+            throws TransportException {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return fallback;
+        }
+        if (!value.isTextual()) {
+            throw new TransportException(
+                    "token endpoint 2xx response has a non-string " + field, null);
+        }
+        return value.asText();
     }
 
     /**
@@ -305,31 +336,6 @@ public final class TokenManager {
      */
     private static boolean isBlankScope(String s) {
         return s.codePoints().allMatch(cp -> Character.isWhitespace(cp) || Character.isSpaceChar(cp));
-    }
-
-    /** True when any string value or field name anywhere in {@code node} has an unpaired surrogate. */
-    private static boolean containsUnpairedSurrogate(JsonNode node) {
-        if (node.isTextual()) {
-            return hasUnpairedSurrogate(node.asText());
-        }
-        if (node.isObject()) {
-            var fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> e = fields.next();
-                if (hasUnpairedSurrogate(e.getKey()) || containsUnpairedSurrogate(e.getValue())) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        if (node.isArray()) {
-            for (JsonNode child : node) {
-                if (containsUnpairedSurrogate(child)) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /** True when {@code s} has a high surrogate not followed by a low one, or a lone low one. */

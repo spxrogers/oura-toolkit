@@ -387,14 +387,25 @@ informational, and failing would burn the rotated refresh token. The six had dri
 let a whitespace-only scope replace the grant, and three also let `""` do it. On a non-string
 scope, Rust/Go/C# failed the whole refresh, Java persisted it as text (`"42"`), Python
 persisted the raw number, and only TypeScript kept the prior grant. That's pinned for all six
-by the shared conformance table `refresh_scope_cases`. A string that isn't valid Unicode (a
-lone-surrogate escape like `"\ud800"`) is different: it makes the response malformed, not
-merely wrong-typed. Before this, Rust failed typed, Python crashed untyped while persisting
-(after the server had rotated the refresh token), and Go/TS/Java persisted a lossy grant.
-TS/Java's escaped surrogate even made Rust reject the shared `tokens.json`, and C# threw
-untyped. So it's a `hostile_token_responses` case (`scope_lone_surrogate`): every companion
-fails typed and leaves the store untouched, the same contract as the other malformed
-responses.
+by the shared conformance table `refresh_scope_cases`.
+
+**Malformed vs wrong-typed.** A string that isn't valid Unicode (a lone-surrogate escape like
+`"\ud800"`) in any of the four fields a companion reads (`access_token`, `refresh_token`,
+`token_type`, `scope`) makes the response malformed JSON text (RFC 8259 §8.2), not merely
+wrong-typed. So it fails typed with the store untouched (`hostile_token_responses`), even
+though that loses the refresh token the server just rotated: there is no trustworthy value to
+persist, and persisting a mangled refresh token would lose it anyway. The same holds for a
+non-string `refresh_token` or `token_type`. Only `scope` is informational enough to stay
+lenient when wrong-typed. Before this, the six diverged badly:
+- Rust failed typed.
+- Python crashed untyped while persisting, and stored a non-string refresh token as-is.
+- Go, TypeScript and Java persisted a lossy grant. The escaped surrogate that TS and Java wrote
+  even made Rust reject the shared `tokens.json`.
+- C# threw untyped.
+
+Unknown response fields are not validated. Known gap: RAW invalid UTF-8 bytes (as opposed to an
+escape) can't be expressed in the JSON fixture. Rust, Go and Python reject them; TS, Java and
+C# decode them to U+FFFD.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

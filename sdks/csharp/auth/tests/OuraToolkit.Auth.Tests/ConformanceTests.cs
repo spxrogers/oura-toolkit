@@ -12,7 +12,8 @@ namespace OuraToolkit.Auth.Tests;
 /// companion suite must exercise — new cases are added THERE, never here):
 ///
 /// <list type="bullet">
-/// <item>hostile-but-2xx token responses → the typed <see cref="TokenEndpointException"/>
+/// <item>hostile-but-2xx token responses (incl. a wrong-typed or lone-surrogate string in any
+/// of access_token / refresh_token / token_type / scope) → the typed <see cref="TokenEndpointException"/>
 /// with the 2xx status (what the PR #56 guards throw — never a raw
 /// JsonException/NullReferenceException escaping), exactly ONE endpoint call (a hostile 2xx
 /// is not a 400 — the reload-retry arm must not misfire), and <c>tokens.json</c> /
@@ -81,8 +82,8 @@ public class ConformanceTests
 
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
-    /// fixture shrank, so the table sizes are pinned here: >= 8 each for the hostile-response
-    /// and hostile-store tables (matching the other legs), >= 8 for refresh_scope_cases.
+    /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
+    /// >= 17 hostile_token_responses, >= 8 hostile_store_files, >= 9 refresh_scope_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -92,15 +93,15 @@ public class ConformanceTests
             "fixture lost its hostile_token_responses table");
         Assert.True(fixture.TryGetProperty("hostile_store_files", out var storeFiles),
             "fixture lost its hostile_store_files table");
-        Assert.True(responses.GetArrayLength() >= 8,
-            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 8");
+        Assert.True(responses.GetArrayLength() >= 17,
+            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 17");
         Assert.True(storeFiles.GetArrayLength() >= 8,
             $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 8");
         Assert.True(fixture.TryGetProperty("refresh_scope_cases", out var scopeTable),
             "fixture lost its refresh_scope_cases table");
         var scopeCases = scopeTable.GetProperty("cases").GetArrayLength();
-        Assert.True(scopeCases >= 8,
-            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 8");
+        Assert.True(scopeCases >= 9,
+            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 9");
     }
 
     /// <summary>

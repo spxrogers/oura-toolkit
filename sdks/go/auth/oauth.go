@@ -110,9 +110,11 @@ func refreshTokens(
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response was not valid JSON"}
 	}
-	// A malformed string (lone surrogate / invalid UTF-8) makes the whole response
-	// malformed: persisting the U+FFFD-mangled value as the grant would be a silent lie
-	// (shared conformance case hostile_token_responses/scope_lone_surrogate).
+	// A malformed string (lone surrogate / invalid UTF-8) in any of the four fields read
+	// makes the whole response malformed: persisting a U+FFFD-mangled value would be a
+	// silent lie (shared conformance cases hostile_token_responses/*_lone_surrogate).
+	// Unknown fields are not validated. A non-string refresh_token/token_type already
+	// fails the json.Unmarshal above (string-typed fields).
 	if tr.hasInvalidUnicode() {
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response contained a string that was not valid Unicode"}
 	}

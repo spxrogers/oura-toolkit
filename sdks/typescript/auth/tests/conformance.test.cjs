@@ -7,8 +7,9 @@
 //  - hostile-but-2xx token responses -> typed AuthError subclass (never a bare
 //    SyntaxError/TypeError escaping), tokens.json byte-identical afterwards (the rotated
 //    refresh token is never burned by persisting a blank/expired Bearer);
-//  - successful refreshes whose scope is omitted/null/blank -> the persisted record keeps
-//    the prior grant; a real scope string replaces it (refresh_scope_cases);
+//  - successful refreshes whose scope is omitted/null/blank/non-string -> the persisted
+//    record keeps the prior grant; a real scope string (incl. a valid surrogate pair)
+//    replaces it (refresh_scope_cases);
 //  - hostile store files -> the typed StoreFormatError, never a default/null-filled
 //    record and never an untyped throw;
 //  - canonical valid records -> load with exactly the fixture's field values and
@@ -16,7 +17,8 @@
 //    compatibility check — field names are the shared wire format, #54).
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-// same three-test structure, same fixture-shrink guards (>= 8 cases per hostile table).
+// same test structure, same fixture-shrink guards (>= 17 hostile token responses,
+// >= 9 refresh scope cases, >= 8 hostile store files).
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -51,7 +53,7 @@ function withTempStore(t) {
 test("conformance: hostile 2xx token responses fail typed and leave the store untouched", async (t) => {
   const cases = fixture.hostile_token_responses;
   assert.ok(Array.isArray(cases), "hostile_token_responses table");
-  assert.ok(cases.length >= 11, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 17, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;
@@ -120,7 +122,7 @@ test("conformance: refresh_scope_cases persist expected_scope", async (t) => {
   assert.notEqual(prior.trim(), "", "refresh_scope_cases.prior_scope must be a real grant");
   const cases = table.cases;
   assert.ok(Array.isArray(cases), "refresh_scope_cases.cases");
-  assert.ok(cases.length >= 8, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 9, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;

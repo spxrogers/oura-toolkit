@@ -301,6 +301,10 @@ public sealed class TokenManager : IDisposable
             }
             catch (JsonException)
             {
+                // Also the typed arm for the strictly-typed string fields (access_token,
+                // refresh_token, token_type): a non-string value or a lone-surrogate escape in
+                // one surfaces from System.Text.Json as a JsonException (shared fixture cases
+                // wrong_type_*, *_lone_surrogate). Unknown fields are never materialized.
                 throw new TokenEndpointException(status, "token-endpoint 2xx response was not valid JSON");
             }
             if (parsed is null)

@@ -281,7 +281,22 @@ class TokenManager:
                 resp.status, "token-endpoint response 'expires_in' was not positive"
             )
         rotated = payload.get("refresh_token")
-        # Malformed-Unicode guard (conformance `scope_lone_surrogate`): json.loads
+        returned_token_type = payload.get("token_type")
+        # Type guard (conformance `wrong_type_refresh_token` / `wrong_type_token_type`):
+        # both fields are persisted verbatim, so a non-string (42, {"a":1}, …) would
+        # be written into tokens.json and corrupt the store — fail typed instead.
+        # Omitted/null stays lenient (keeps the stored value), like Rust's
+        # Option<String>. Unlike `scope`, these are not informational.
+        for field, value in (
+            ("refresh_token", rotated),
+            ("token_type", returned_token_type),
+        ):
+            if value is not None and not isinstance(value, str):
+                raise TokenEndpointError(
+                    resp.status,
+                    f"token-endpoint response '{field}' was not a string",
+                )
+        # Malformed-Unicode guard (conformance `*_lone_surrogate` cases): json.loads
         # accepts a lone-surrogate escape like "\ud800", yielding a str that is NOT
         # valid Unicode — the store writer would then raise an untyped
         # UnicodeEncodeError AFTER the server already rotated the refresh token. Any
@@ -311,5 +326,5 @@ class TokenManager:
             refresh_token=rotated if rotated is not None else current.refresh_token,
             expires_at=int(time.time()) + expires_in,
             scope=scope,
-            token_type=payload.get("token_type") or current.token_type,
+            token_type=returned_token_type or current.token_type,
         )

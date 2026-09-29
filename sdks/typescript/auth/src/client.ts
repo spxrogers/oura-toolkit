@@ -249,13 +249,19 @@ export class TokenManager {
     if (typeof json !== "object" || json === null || Array.isArray(json)) {
       throw new TokenEndpointError(status, "token-endpoint 2xx response was not a JSON object");
     }
-    // A string that isn't valid Unicode (a lone-surrogate `\ud800` escape, which
-    // JSON.parse accepts) makes the RESPONSE malformed: persisting it would write a grant
-    // no other language's companion can read back. Checked over every top-level string
-    // field, before anything is persisted. A regex rather than String.prototype
-    // .isWellFormed because the engine floor is Node 18. Non-string scopes stay lenient
-    // (refresh_scope_cases). Conformance: auth-cases.json scope_lone_surrogate.
-    for (const [field, value] of Object.entries(json)) {
+    // Validate exactly the four fields this companion reads (access_token, refresh_token,
+    // token_type, scope) — unknown fields are NOT validated, and the error message only
+    // ever names one of these known fields (never a server-chosen key). A string that
+    // isn't valid Unicode (a lone-surrogate `\ud800`/`\udc00` escape, which JSON.parse
+    // accepts) makes the RESPONSE malformed: persisting it would write a grant no other
+    // language's companion can read back, so it fails typed before anything is
+    // persisted. A regex rather than String.prototype.isWellFormed because the engine
+    // floor is Node 18. A non-string scope stays lenient (keeps the prior grant, see
+    // refresh_scope_cases); a non-string refresh_token/token_type fails typed below.
+    // Conformance: auth-cases.json *_lone_surrogate / wrong_type_* hostile cases.
+    const fields = json as Record<string, unknown>;
+    for (const field of READ_FIELDS) {
+      const value = fields[field];
       if (typeof value === "string" && LONE_SURROGATE.test(value)) {
         throw new TokenEndpointError(
           status,
@@ -277,6 +283,19 @@ export class TokenManager {
         "token-endpoint 2xx response missing or invalid expires_in"
       );
     }
+    // An omitted/null refresh_token or token_type falls back to the stored value (the
+    // server may omit an unchanged one), but a present non-string is a malformed
+    // response: silently keeping the old refresh token would persist one Oura has
+    // already invalidated. Conformance: wrong_type_refresh_token / wrong_type_token_type.
+    for (const field of ["refresh_token", "token_type"] as const) {
+      const value = resp[field] as unknown;
+      if (value !== undefined && value !== null && typeof value !== "string") {
+        throw new TokenEndpointError(
+          status,
+          `token-endpoint 2xx response field ${field} is not a string`
+        );
+      }
+    }
     return new Tokens({
       accessToken: resp.access_token,
       // Persist the rotated token; fall back to the old one only if the server omits it.
@@ -292,6 +311,9 @@ export class TokenManager {
     });
   }
 }
+
+/** The token-response fields this companion reads — the only ones it validates. */
+const READ_FIELDS = ["access_token", "refresh_token", "token_type", "scope"] as const;
 
 /** Matches an unpaired UTF-16 surrogate (a string that is not well-formed Unicode). */
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;

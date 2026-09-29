@@ -5,8 +5,10 @@
 // companion suite must exercise; cases are added THERE, never here):
 //
 //   - hostile-but-2xx token responses → typed *TokenEndpointError, store UNTOUCHED (the
-//     rotated refresh token is never burned by persisting a blank/expired Bearer, and a
-//     scope that is not valid Unicode, e.g. a lone surrogate, is never persisted);
+//     rotated refresh token is never burned by persisting a blank/expired Bearer; a
+//     non-string refresh_token/token_type fails typed; and a lone surrogate in any of
+//     the four fields read — access_token, refresh_token, token_type, scope — is never
+//     persisted);
 //   - hostile store files → typed *StoreFormatError, never a zero-valued record that
 //     would make IsAuthenticated lie, and never a panic;
 //   - canonical valid records → load with exactly the fixture's field values and
@@ -14,7 +16,7 @@
 //     compatibility check — field names are the shared wire format, #54);
 //   - successful refreshes whose scope is omitted/null/empty/whitespace (incl. U+00A0)
 //     or not a JSON string → the refresh SUCCEEDS and the prior grant is persisted
-//     unchanged; a real scope string replaces it.
+//     unchanged; a real scope string (incl. a valid surrogate pair) replaces it.
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs).
 package auth
@@ -100,8 +102,8 @@ func fileExists(path string) bool {
 // caller fails the t.Run outright, so reaching the assertions proves "never a panic".)
 func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileTokenResponses); n < 11 {
-		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 11", n)
+	if n := len(fixture.HostileTokenResponses); n < 17 {
+		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 17", n)
 	}
 
 	for _, tc := range fixture.HostileTokenResponses {
@@ -315,8 +317,8 @@ func TestConformanceRefreshScopeCasesPersistExpectedScope(t *testing.T) {
 	if table.PriorScope == "" {
 		t.Fatal("fixture is missing refresh_scope_cases.prior_scope")
 	}
-	if n := len(table.Cases); n < 8 {
-		t.Fatalf("fixture shrank? refresh_scope_cases has %d cases, want >= 8", n)
+	if n := len(table.Cases); n < 9 {
+		t.Fatalf("fixture shrank? refresh_scope_cases has %d cases, want >= 9", n)
 	}
 
 	for _, tc := range table.Cases {

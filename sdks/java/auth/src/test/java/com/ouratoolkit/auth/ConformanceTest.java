@@ -106,9 +106,9 @@ class ConformanceTest {
             throws IOException {
         JsonNode cases = fixture().get("hostile_token_responses");
         assertNotNull(cases, "fixture lost its hostile_token_responses table");
-        assertTrue(cases.size() >= 11,
+        assertTrue(cases.size() >= 17,
                 "fixture shrank? hostile_token_responses has " + cases.size()
-                        + " cases, want >= 11");
+                        + " cases, want >= 17");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileTokenResponseRejected(c)));
@@ -265,9 +265,10 @@ class ConformanceTest {
      * A SUCCESSFUL refresh starting from a stored grant of {@code prior_scope} must persist
      * exactly each case's {@code expected_scope}: an omitted/null/empty/whitespace-only
      * (incl. U+00A0) {@code scope} keeps the prior grant, and so does a NON-STRING one
-     * (number, object, …) — the refresh still succeeds; a real scope string replaces it.
-     * (A scope string that isn't valid Unicode is a hostile response instead — see
-     * {@code scope_lone_surrogate} in hostile_token_responses.)
+     * (number, object, …) — the refresh still succeeds; a real scope string (incl. a valid
+     * surrogate pair) replaces it. (A scope string that isn't valid Unicode is a hostile
+     * response instead — see the {@code scope_lone_*surrogate} cases in
+     * hostile_token_responses.)
      */
     @TestFactory
     Stream<DynamicTest> refreshScopeCasesPersistExpectedScope() throws IOException {
@@ -278,9 +279,9 @@ class ConformanceTest {
         String priorScope = prior.asText();
         JsonNode cases = table.get("cases");
         assertNotNull(cases, "fixture's refresh_scope_cases lost its cases");
-        assertTrue(cases.size() >= 8,
+        assertTrue(cases.size() >= 9,
                 "fixture shrank? refresh_scope_cases has " + cases.size()
-                        + " cases, want >= 8");
+                        + " cases, want >= 9");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(),
