@@ -45,6 +45,24 @@ Two records are kept side by side: the client credentials and the OAuth tokens, 
 login never loses the client secret you pasted. Refresh tokens rotate on every refresh and are
 persisted automatically, so once you're logged in it stays that way.
 
+## When Oura changes its scopes
+
+Oura occasionally renames or adds OAuth scopes. API 1.41 renamed `spo2Daily` to `spo2` and
+added `heart_health`. A token refresh can't add scopes to an existing login, so the first
+data command (or `oura api`) after an upgrade notices and asks once:
+
+```text
+Oura's API permissions (OAuth scopes) changed, and your saved login doesn't cover: spo2 heart_health
+…
+Re-authorize now? [Y/n]
+```
+
+Press Enter to run `oura auth login` and carry on with your command, or `n` to skip (you won't
+be asked again for this change). Scripts and other non-interactive runs get a single
+`oura: note: …` line on stderr instead, and are never blocked. If your Oura app doesn't list
+the new scopes yet, add them at <https://cloud.ouraring.com/oauth/applications> before
+re-authorizing. `oura auth status` shows any missing scopes at any time.
+
 ## Managing stored state
 
 The account commands are non-interactive and scriptable:

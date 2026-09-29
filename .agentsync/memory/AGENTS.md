@@ -163,6 +163,12 @@ and 9 scopes (`email personal daily heartrate workout tag session spo2 heart_hea
   paste-the-redirect-URL flow (still `state` CSRF-checked).
 - **Default scope request**: `personal daily heartrate workout tag session spo2 heart_health` (omit
   `email` unless needed).
+- **Scope-change re-consent** (#116): a refresh can't add scopes, so before a store-backed
+  command the CLI compares the recorded grant to `default_scopes()` (data-driven via
+  `metadata::missing_default_scopes`, with no per-version code). It prompts once per scope-set
+  change on a TTY (Y → `auth login`, then continue) and gives one stderr note otherwise. Never
+  for `oura mcp`. Bookkeeping lives in `scope-notice.json`, which is CLI-only and holds no
+  secrets. Contract: `docs/cli-contract.md` → Scope changes.
 - **Headless**: `OURA_ACCESS_TOKEN` injects a raw Bearer that bypasses the store (no login, no
   refresh); `OURA_API_BASE_URL` points the client at an alternate host/proxy/mock.
 

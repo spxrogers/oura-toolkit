@@ -85,7 +85,9 @@ fi
   `--json` emits a machine-readable model instead. Exit `0` when a data command would
   get a token (tokens valid beyond the proactive-refresh window, or refreshable), exit
   `4` when one would fail auth — the report is still printed first, and the stderr hint
-  names the fix (`setup` vs `login`).
+  names the fix (`setup` vs `login`). When the saved grant doesn't cover every default
+  scope (see **Scope changes** below), the report adds a `Missing scopes` row, and `--json`
+  carries `tokens.missing_scopes` (an array: `[]` when current, absent with no tokens).
 - **`oura auth logout`** — deletes stored tokens; `--all` also deletes the client
   credentials (the sanctioned way to remove the stored secret). Idempotent: nothing
   stored is success (exit `0`), not an error. As a mutation it has no result: stdout
@@ -99,6 +101,32 @@ fi
   stdout: the token, one trailing newline, **nothing else**, so
   `curl -H "Authorization: Bearer $(oura auth token)" …` composes cleanly. When
   unauthenticated: exit `4`, stdout stays empty.
+
+## Scope changes (re-consent)
+
+Oura renames and adds OAuth scopes between API versions (1.41: `spo2Daily` → `spo2`, plus
+`heart_health`). A token refresh can't add scopes, so a login from before such a change
+lacks them. Before a **store-backed** command (the data commands and `oura api`), the CLI
+compares the grant recorded with the tokens to the current default scopes. It fires once per
+scope-set change, never for a current grant:
+
+- **Interactive** (stdin and stderr are TTYs): a prompt on stderr names the missing scopes
+  and asks `Re-authorize now? [Y/n]`. Enter/`y` runs `oura auth login` (default port), then
+  the original command continues. `n` (or EOF) is remembered for this scope set. A failed
+  login fails the command and is asked again next run. A login that succeeds but is still
+  granted less (e.g. the Oura app doesn't list a new scope) names what was withheld and is
+  remembered too, so it never loops.
+- **Non-interactive**: exactly one stderr line, starting `oura: note:`, that names the missing
+  scopes and the fix (`oura auth login`). The command proceeds normally (stdout and exit code
+  are unchanged). It's shown once, and tracked separately from the prompt, so a script
+  running first doesn't use up the prompt.
+- **Never** for `oura mcp` (stdout is the transport), the `auth` commands, the pure
+  generators, or an `OURA_ACCESS_TOKEN` run (no store). `oura auth status` always shows the
+  gap.
+
+What was shown is kept in `scope-notice.json` next to the token records. It's CLI-only
+bookkeeping with no secrets; deleting it just re-arms the notice. A login records the scopes
+it requested whenever Oura's token response omits `scope` (RFC 6749 §5.1).
 
 ## Raw API passthrough (`oura api`)
 

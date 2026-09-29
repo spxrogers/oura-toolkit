@@ -24,6 +24,10 @@ use crate::output::{render_record, RenderOptions};
 /// How long `auth login` waits for the browser callback before giving up.
 const CALLBACK_TIMEOUT_SECS: u64 = 300;
 
+/// The loopback port `auth setup`/`auth login` default to (and the re-consent prompt's login
+/// uses): `redirect_uri http://localhost:8788/callback`, which must match the registered app.
+pub const DEFAULT_LOGIN_PORT: u16 = 8788;
+
 /// `oura auth setup` — register an app (terminal prompts), then log in. `no_browser` runs
 /// the paste-back login (#20) instead of the loopback flow, for SSH/containers.
 pub async fn setup(port: u16, no_browser: bool) -> Result<()> {
@@ -153,6 +157,11 @@ struct TokensStatus {
     present: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
+    /// Default scopes the saved grant doesn't cover (#116) — non-empty after an upstream
+    /// scope change until `oura auth login` re-consents. `[]` when current; absent when there
+    /// are no tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    missing_scopes: Option<Vec<&'static str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     expires_at: Option<i64>,
     /// Literal wall-clock expiry (`now >= expires_at`). The top-level `authenticated`
@@ -221,6 +230,13 @@ fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<Stat
             "Scope",
             t.scope.clone().unwrap_or_else(|| "(not recorded)".into()),
         ));
+        let missing = metadata::missing_default_scopes(t.scope.as_deref());
+        if !missing.is_empty() {
+            fields.push((
+                "Missing scopes",
+                format!("{} (run `oura auth login` to grant)", missing.join(" ")),
+            ));
+        }
         fields.push((
             "Access token",
             expiry_phrase(t.expires_at, now, credentials.is_some()),
@@ -241,6 +257,9 @@ fn status_at(store: &TokenStore, render: RenderOptions, now: i64) -> Result<Stat
         tokens: TokensStatus {
             present: tokens.is_some(),
             scope: tokens.as_ref().and_then(|t| t.scope.clone()),
+            missing_scopes: tokens
+                .as_ref()
+                .map(|t| metadata::missing_default_scopes(t.scope.as_deref())),
             expires_at: tokens.as_ref().map(|t| t.expires_at),
             expired,
         },
@@ -486,7 +505,19 @@ async fn run_authorization(
         .context("building the HTTP client")?;
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
+        .map(|t| with_recorded_scope(t, &scopes))
         .context("token exchange with the Oura token endpoint failed")
+}
+
+/// Record what was granted: RFC 6749 §5.1 lets the token response OMIT `scope` when it
+/// equals the requested set, so an absent/blank `scope` means "exactly what we asked for".
+/// Recording it is what lets the re-consent check (`reauth`, #116) tell a current grant from
+/// one that predates a scope change.
+fn with_recorded_scope(mut tokens: Tokens, requested: &[&str]) -> Tokens {
+    if tokens.scope.as_deref().is_none_or(|s| s.trim().is_empty()) {
+        tokens.scope = Some(requested.join(" "));
+    }
+    tokens
 }
 
 /// The `--no-browser` half of the Authorization Code flow (#20): print the authorize URL for
@@ -516,6 +547,7 @@ async fn authorize_no_browser(port: u16, credentials: &ClientCredentials) -> Res
         .context("building the HTTP client")?;
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
+        .map(|t| with_recorded_scope(t, &scopes))
         .context("token exchange with the Oura token endpoint failed")
 }
 
@@ -996,9 +1028,49 @@ mod tests {
             report.rendered,
             format!(
                 "Store\t{}\nCredentials\tpresent (client_id: cid-123)\nTokens\tpresent\n\
-                 Scope\tpersonal daily\nAccess token\texpires in 1h 0m\nAuthenticated\tyes\n",
+                 Scope\tpersonal daily\nMissing scopes\theartrate workout tag session spo2 \
+                 heart_health (run `oura auth login` to grant)\n\
+                 Access token\texpires in 1h 0m\nAuthenticated\tyes\n",
                 dir.path().display()
             )
+        );
+    }
+
+    #[test]
+    fn status_shows_no_missing_scopes_row_for_a_current_grant_and_an_empty_json_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        let mut tokens = tokens_expiring_at(now + 3_600);
+        tokens.scope = Some(metadata::default_scopes().join(" "));
+        let store = seeded_store(&dir, true, Some(tokens));
+        let text = status_at(&store, plain(), now).unwrap().rendered;
+        assert!(!text.contains("Missing scopes"), "{text}");
+        let opts = RenderOptions {
+            format: Format::Json,
+            style: Style::new(false),
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&status_at(&store, opts, now).unwrap().rendered).unwrap();
+        assert_eq!(v["tokens"]["missing_scopes"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn login_records_the_requested_scope_only_when_the_response_omits_it() {
+        let requested = ["personal", "spo2"];
+        let mut t = tokens_expiring_at(1);
+        for omitted in [None, Some(String::new()), Some("  ".to_string())] {
+            t.scope = omitted.clone();
+            assert_eq!(
+                with_recorded_scope(t.clone(), &requested).scope.as_deref(),
+                Some("personal spo2"),
+                "an omitted scope ({omitted:?}) means the requested set (RFC 6749 §5.1)"
+            );
+        }
+        // A scope the server DID return is the truth (e.g. the user unticked one) — kept.
+        t.scope = Some("personal".into());
+        assert_eq!(
+            with_recorded_scope(t, &requested).scope.as_deref(),
+            Some("personal")
         );
     }
 
@@ -1156,9 +1228,11 @@ mod tests {
                 !rendered.contains('\u{1b}'),
                 "{format:?}: escape byte must be stripped: {rendered:?}"
             );
+            // 7 = the six standard rows + `Missing scopes` (this hostile grant covers
+            // none of the defaults as whole tokens).
             assert_eq!(
                 rendered.lines().count(),
-                6,
+                7,
                 "{format:?}: an embedded newline must not forge a report line: {rendered:?}"
             );
         }
@@ -1201,6 +1275,17 @@ mod tests {
         assert_eq!(v["credentials"]["client_id"], "cid-123");
         assert_eq!(v["tokens"]["present"], true);
         assert_eq!(v["tokens"]["scope"], "personal daily");
+        assert_eq!(
+            v["tokens"]["missing_scopes"],
+            serde_json::json!([
+                "heartrate",
+                "workout",
+                "tag",
+                "session",
+                "spo2",
+                "heart_health"
+            ])
+        );
         assert_eq!(v["tokens"]["expires_at"], now + 3_600);
         assert_eq!(v["tokens"]["expired"], false);
         assert_eq!(v["store"], dir.path().display().to_string());

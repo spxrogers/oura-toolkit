@@ -339,6 +339,21 @@ weekly run crashed instead of reporting — and never reached the probe that wou
 the replacement. A 404/410 on the pinned export is now reported as drift ("withdrawn") and the
 probe still runs; only network/5xx failures exit 2. Selftest case 6 guards it.
 
+### Scope changes re-consent once, data-driven (#116)
+Oura renamed `spo2Daily` → `spo2` and added `heart_health` in openapi-1.41. A refresh
+can't widen a grant, so logins from before a scope change silently lack the new scopes.
+We chose a **data-driven** check over a per-version migration: the grant recorded in
+`tokens.json` vs the spec-derived `default_scopes()` (`metadata::missing_default_scopes`).
+The next scope change is caught with no new code. It fires **once per scope-set change**
+(the bookkeeping is keyed by the default set), because a user may deliberately decline a
+scope, so nagging on every run would be wrong. **Blocking** was rejected because no current
+command needs the new scopes. Interactive runs get a `[Y/n]` prompt that chains into `auth
+login`. Scripts get one stderr note, tracked separately so a script can't use up the human's
+prompt. MCP never prompts. The bookkeeping is a CLI-only `scope-notice.json`, not a
+`tokens.json` field, so the six-language store records and their conformance fixture are
+untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
+§5.1), so the check can tell a current grant from a stale one.
+
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified
 against a real host tarball), but its Homebrew formula template has **no** completion/manpage

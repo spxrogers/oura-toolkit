@@ -113,7 +113,7 @@ enum AuthAction {
     /// Guided Oura OAuth app registration (terminal prompts), then login.
     Setup {
         /// Loopback port for the redirect URI (must match your registered app).
-        #[arg(long, default_value_t = 8788)]
+        #[arg(long, default_value_t = auth::DEFAULT_LOGIN_PORT)]
         port: u16,
         /// Skip the local browser+loopback: print the URL and paste the redirect back
         /// (for SSH/containers where the callback can't reach this host).
@@ -123,7 +123,7 @@ enum AuthAction {
     /// Authorization Code login using stored client credentials.
     Login {
         /// Loopback port for the redirect URI (must match your registered app).
-        #[arg(long, default_value_t = 8788)]
+        #[arg(long, default_value_t = auth::DEFAULT_LOGIN_PORT)]
         port: u16,
         /// Skip the local browser+loopback: print the URL and paste the redirect back
         /// (for SSH/containers where the callback can't reach this host).
@@ -191,6 +191,31 @@ async fn run() -> anyhow::Result<()> {
             render,
         })
     };
+
+    // Re-consent check (#116): before a STORE-backed command, a saved login that predates a
+    // change to the default scopes gets one prompt (interactive) or one notice (scripts).
+    // Not for `auth *` (account commands act on the store directly), `mcp` (stdout is the
+    // transport), the pure generators, or an OURA_ACCESS_TOKEN run (no store involved).
+    let store_backed = matches!(
+        cli.command,
+        Some(
+            Command::Sleep(_)
+                | Command::Readiness(_)
+                | Command::Activity(_)
+                | Command::Stress(_)
+                | Command::Heartrate(_)
+                | Command::Sessions(_)
+                | Command::Workouts(_)
+                | Command::PersonalInfo
+                | Command::Api { .. }
+        )
+    );
+    if store_backed && api::access_token_override(env).is_none() {
+        // No resolvable store dir is the command's own error to report (via its manager).
+        if let Ok(store) = oura_toolkit_auth::TokenStore::new() {
+            oura_toolkit_cli::reauth::run(&store).await?;
+        }
+    }
 
     match cli.command {
         Some(Command::Auth { action }) => match action {

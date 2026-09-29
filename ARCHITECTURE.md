@@ -70,6 +70,11 @@ their own Oura OAuth app.
     data plane, and refresh-token **rotation persisted**;
   - a **cross-process lock** so the CLI and the long-running MCP server can share one store
     without clobbering each other's rotations.
+- **Scope-change re-consent** (#116): a refresh can't add scopes, so the CLI (not the
+  companion) compares the recorded grant to the spec-derived default scopes before a
+  store-backed command. It prompts once per scope-set change (or leaves one stderr note when
+  non-interactive), and keeps its bookkeeping in a CLI-only `scope-notice.json` beside the
+  two records.
 - **Headless / CI**: `OURA_ACCESS_TOKEN` injects a raw Bearer token that bypasses the store
   entirely (`TokenManager::from_access_token`, never refreshes); `--no-browser` swaps the
   loopback catch for a paste-the-redirect-URL flow (still CSRF-checked via `state`).
