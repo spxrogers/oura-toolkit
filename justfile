@@ -191,7 +191,17 @@ spec-drift-selftest:
     cp "$sf" "$pd/openapi-$nextmaj.json"
     out="$(run "$sf")" && { echo "spec-drift-selftest: major bump must exit 1"; exit 1; }
     grep -qF "$nextmaj" <<<"$out" || { echo "spec-drift-selftest: major-bump report missing"; exit 1; }
-    # 6) hard error: an unparseable version must exit 2 (the workflow branches on it). Capture
+    # 6) pinned export WITHDRAWN: Oura serves only its latest export, so a newer one 404s the
+    #    pinned URL. That's drift (exit 1, not a hard error), and the probe must still run and
+    #    name the replacement. An absent hook file stands in for the 404.
+    out="$(run "$pd/withdrawn.json")" && { echo "spec-drift-selftest: a withdrawn pinned export must exit 1"; exit 1; }
+    grep -q 'withdrawn upstream' <<<"$out" || { echo "spec-drift-selftest: withdrawn report missing"; exit 1; }
+    grep -qF "$next" <<<"$out" || { echo "spec-drift-selftest: withdrawn pin must still probe for the replacement"; exit 1; }
+    #    ...and even with no replacement found, a withdrawn pin is still drift (never exit 0 / 2).
+    c=0
+    OURA_SPEC_DRIFT_UPSTREAM_FILE="$pd/withdrawn.json" OURA_SPEC_DRIFT_PROBE_DIR="$pd/empty" codegen/spec-drift.sh "$sv" "$su" "$sf" >/dev/null || c=$?
+    [[ $c -eq 1 ]] || { echo "spec-drift-selftest: a withdrawn pin with no replacement must exit 1 (got $c)"; exit 1; }
+    # 7) hard error: an unparseable version must exit 2 (the workflow branches on it). Capture
     #    with `|| c=$?` so `set -e` doesn't abort on the expected non-zero exit.
     c=0
     OURA_SPEC_DRIFT_UPSTREAM_FILE="$sf" codegen/spec-drift.sh "openapi-BAD" "$su" "$sf" >/dev/null 2>&1 || c=$?

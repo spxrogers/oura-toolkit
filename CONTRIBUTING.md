@@ -68,8 +68,10 @@ clients stamp the version at codegen time (openapi-generator's `npmVersion`/`pac
 
 The spec is pinned to a specific export (`spec_version` in the justfile). A scheduled
 workflow (`.github/workflows/spec-drift.yml`, `just spec-drift-check`) watches upstream and
-opens a `spec-drift` issue when the pinned export re-publishes or a newer
-`openapi-<major>.<minor>` appears. To adopt a change:
+opens a `spec-drift` issue when the pinned export re-publishes, is withdrawn, or a newer
+`openapi-<major>.<minor>` appears. Oura serves only its **latest** export, so a newer one
+404s the pinned URL — `just spec-fetch` then fails until `spec_version` is bumped. To adopt a
+change:
 
 ```sh
 just spec-drift-check   # what drifted (also runs weekly; needs network, not in `just ci`)

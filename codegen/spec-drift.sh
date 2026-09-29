@@ -5,7 +5,8 @@
 #
 # Two kinds of drift:
 #   1. CONTENT — the pinned export URL's bytes now differ from the committed spec/openapi.json
-#      (Oura re-published the SAME version number with changes).
+#      (Oura re-published the SAME version number with changes), or the pinned URL now 404s
+#      (Oura withdrew it — it serves only the latest export).
 #   2. VERSION — a newer openapi-<major>.<minor> export exists upstream than the one we pin.
 #
 # Invoked via `just spec-drift-check` (real network; the scheduled workflow, NOT `just ci`) and
@@ -16,6 +17,7 @@
 #
 # Test hooks (UNSET in production — the selftest sets them to avoid the network):
 #   OURA_SPEC_DRIFT_UPSTREAM_FILE   use this local file as "upstream content" instead of curl
+#                                   (a path that doesn't exist = the pinned export 404s)
 #   OURA_SPEC_DRIFT_PROBE_DIR       probe local fixture files (openapi-<maj>.<min>.json) in this
 #                                   dir instead of the network — runs the real probe loop + the
 #                                   soft-404 gate hermetically
@@ -42,17 +44,36 @@ url_root="${spec_url%"${major}.${minor}.json"}"
 report=""
 drift=0
 
-# --- 1. content drift ------------------------------------------------------------------------
+# --- 1. content drift (or the pinned export withdrawn) ---------------------------------------
+# Oura serves only its LATEST export: publishing a newer one 404s every older URL, the pinned
+# one included. That is drift, not an error — report it and still run the version probe below
+# (which names the replacement). Only a non-404 failure (network, 5xx) is a hard error.
 tmp="$(mktemp)"
 tmp2="$(mktemp)"
 trap 'rm -f "$tmp" "$tmp2"' EXIT
 if [[ -n "${OURA_SPEC_DRIFT_UPSTREAM_FILE:-}" ]]; then
-  cp "$OURA_SPEC_DRIFT_UPSTREAM_FILE" "$tmp"
-elif ! curl -fsS "$spec_url" -o "$tmp"; then
-  echo "spec-drift: failed to fetch the pinned export $spec_url" >&2
-  exit 2
+  # Hermetic (selftest): an absent hook file stands in for a 404, like OURA_SPEC_DRIFT_PROBE_DIR.
+  if [[ -f "$OURA_SPEC_DRIFT_UPSTREAM_FILE" ]]; then
+    cp "$OURA_SPEC_DRIFT_UPSTREAM_FILE" "$tmp"
+    pinned_code=200
+  else
+    pinned_code=404
+  fi
+else
+  # No -f: a 404 must yield its status code. `000` = hard network failure (curl's -w already
+  # prints 000 then; the `||` just keeps `set -e` from aborting on curl's non-zero exit).
+  pinned_code=$(curl -sS -o "$tmp" -w '%{http_code}' "$spec_url") || pinned_code=000
 fi
-if ! cmp -s "$tmp" "$spec_file"; then
+if [[ "$pinned_code" == 404 || "$pinned_code" == 410 ]]; then
+  drift=1
+  report+="## The pinned export was withdrawn upstream\n\n"
+  report+="\`$spec_url\` now returns HTTP $pinned_code — Oura serves only its latest export, so a "
+  report+="newer one has replaced \`$spec_version\`. \`just spec-fetch\` fails until "
+  report+="\`spec_version\` is bumped.\n\n"
+elif [[ "$pinned_code" != 200 ]]; then
+  echo "spec-drift: failed to fetch the pinned export $spec_url (HTTP $pinned_code)" >&2
+  exit 2
+elif ! cmp -s "$tmp" "$spec_file"; then
   drift=1
   changed=$(diff "$spec_file" "$tmp" | grep -c '^[<>]' || true)
   report+="## Content drift on the pinned export\n\n"
