@@ -333,6 +333,11 @@ has nothing to refresh with.
 The weekly drift detector's decision logic is guarded hermetically by
 `just spec-drift-selftest` in CI — the detector is watch-only, but its logic can't be allowed
 to rot silently.
+Oura serves only its **latest** export: publishing `openapi-1.41` 404'd `openapi-1.37` (and
+every older URL). The detector originally treated a pinned-URL 404 as a hard error, so the
+weekly run crashed instead of reporting — and never reached the probe that would have named
+the replacement. A 404/410 on the pinned export is now reported as drift ("withdrawn") and the
+probe still runs; only network/5xx failures exit 2. Selftest case 6 guards it.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified
