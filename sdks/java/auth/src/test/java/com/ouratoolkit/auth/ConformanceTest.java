@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,7 +12,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,14 +43,20 @@ import org.junit.jupiter.api.io.TempDir;
  *       {@code ClassCastException} escaping), exactly ONE endpoint call (a hostile 2xx is
  *       not a 400 — the reload-retry arm must not misfire), and {@code tokens.json} /
  *       {@code credentials.json} byte-identical afterwards (persisting a blank/expired
- *       Bearer would burn the still-valid rotated refresh token);</li>
+ *       Bearer would burn the still-valid rotated refresh token); a case's
+ *       {@code must_not_echo} string appears nowhere in the exception's chain;</li>
  *   <li>implementation-defined 2xx token responses → EITHER a successful refresh that
- *       persists access_token {@code at-refreshed}, OR the typed {@link TransportException}
- *       with {@code tokens.json} byte-identical — never an unchecked throw, a wrong
- *       persisted token, or a half-written store;</li>
+ *       persists access_token {@code at-refreshed}, a refresh_token that is
+ *       {@code rt-refreshed} or the prior one (never empty), and expires_at = refresh
+ *       time + 3600, OR the typed {@link TransportException} with {@code tokens.json}
+ *       byte-identical — never an unchecked throw, a wrong persisted record, or a
+ *       half-written store;</li>
  *   <li>hostile store files → the typed {@link StoreException}, never a null-filled
  *       {@link Tokens} that would make {@code isAuthenticated} lie, never an unchecked
- *       crash;</li>
+ *       crash; a case's {@code must_not_echo} string appears nowhere in the exception's
+ *       chain;</li>
+ *   <li>implementation-defined store files → EITHER exactly the case's {@code expected}
+ *       record OR the typed {@link StoreException} — never an unchecked throw/Error;</li>
  *   <li>refresh success cases → a successful refresh from the stored {@code prior} record
  *       persists EXACTLY {@code expected}'s access_token, refresh_token, scope and
  *       token_type, with expires_at = (time of the refresh) + {@code expected.expires_in}
@@ -133,6 +142,52 @@ class ConformanceTest {
         return MAPPER.writeValueAsBytes(testCase.get("body"));
     }
 
+    /**
+     * A case's optional {@code must_not_echo} needle, validated: a non-empty string that
+     * genuinely occurs in the case's served bytes / file content (else the no-echo
+     * assertion would pass vacuously). Empty when the case carries none.
+     */
+    private static Optional<String> mustNotEcho(JsonNode testCase, byte[] payload) {
+        String name = testCase.get("name").asText();
+        JsonNode needle = testCase.get("must_not_echo");
+        if (needle == null) {
+            return Optional.empty();
+        }
+        assertTrue(needle.isTextual() && !needle.asText().isEmpty(),
+                name + ": must_not_echo must be a non-empty string");
+        assertTrue(new String(payload, StandardCharsets.UTF_8).contains(needle.asText()),
+                name + ": must_not_echo must occur in the case's payload, or the no-echo "
+                        + "check is vacuous");
+        return Optional.of(needle.asText());
+    }
+
+    /**
+     * The {@code must_not_echo} contract: the needle appears in NEITHER the typed
+     * exception's {@code toString()} NOR any throwable it chains — every {@code getCause()}
+     * recursively and every suppressed exception (a logged stack trace prints them all).
+     * Walks by identity so a cyclic chain terminates.
+     */
+    private static void assertChainDoesNotEcho(String name, Throwable top, String needle) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Throwable> todo = new ArrayDeque<>();
+        todo.push(top);
+        while (!todo.isEmpty()) {
+            Throwable t = todo.pop();
+            if (!seen.add(t)) {
+                continue;
+            }
+            assertTrue(!String.valueOf(t).contains(needle),
+                    name + ": must_not_echo — " + t.getClass().getName()
+                            + " in the exception chain echoes the case's secret text");
+            if (t.getCause() != null) {
+                todo.push(t.getCause());
+            }
+            for (Throwable s : t.getSuppressed()) {
+                todo.push(s);
+            }
+        }
+    }
+
     // --- 1. hostile-but-2xx token responses ----------------------------------------------
 
     /**
@@ -147,9 +202,9 @@ class ConformanceTest {
             throws IOException {
         JsonNode cases = fixture().get("hostile_token_responses");
         assertNotNull(cases, "fixture lost its hostile_token_responses table");
-        assertTrue(cases.size() >= 26,
+        assertTrue(cases.size() >= 27,
                 "fixture shrank? hostile_token_responses has " + cases.size()
-                        + " cases, want >= 26");
+                        + " cases, want >= 27");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileTokenResponseRejected(c)));
@@ -176,8 +231,12 @@ class ConformanceTest {
             // Typed: the companion's invalid-response error — an AuthException subclass,
             // never a raw NPE/ClassCastException, and never TokenEndpointException (which
             // would mis-file a server-side 2xx fault as a re-login problem).
-            assertThrows(TransportException.class, m::forceRefresh,
+            TransportException thrown = assertThrows(TransportException.class, m::forceRefresh,
                     name + ": a hostile 2xx must surface the typed TransportException");
+            Optional<String> needle = mustNotEcho(testCase, body);
+            if (needle.isPresent()) {
+                assertChainDoesNotEcho(name, thrown, needle.get());
+            }
             assertEquals(1, stub.requests.get(),
                     name + ": a hostile 2xx is not a 400 — the reload-retry arm must NOT "
                             + "fire (endpoint hit exactly once)");
@@ -196,10 +255,12 @@ class ConformanceTest {
      * 2xx bodies where companions may legitimately differ (a leading UTF-8 BOM, duplicate
      * keys, nesting past a parser's depth limit, an integral float expires_in, an
      * upper-case key). Seeded exactly like the hostile harness; the refresh must EITHER
-     * succeed and persist access_token {@code at-refreshed}, OR fail with the typed
-     * {@link TransportException} leaving both records byte-identical. Anything else — an
-     * unchecked exception/error (e.g. a StackOverflowError on deep nesting), a different
-     * persisted access token, or a changed store on failure — fails, naming the case.
+     * succeed and persist access_token {@code at-refreshed}, a refresh_token that is
+     * {@code rt-refreshed} or the prior stored one (never empty), and expires_at =
+     * (time of the refresh) + 3600, OR fail with the typed {@link TransportException}
+     * leaving both records byte-identical. Anything else — an unchecked exception/error
+     * (e.g. a StackOverflowError on deep nesting), a different persisted record, or a
+     * changed store on failure — fails, naming the case.
      */
     @TestFactory
     Stream<DynamicTest> implementationDefinedTokenResponsesSucceedOrFailTypedCleanly()
@@ -234,11 +295,13 @@ class ConformanceTest {
             m.overrideTokenUrl(stub.url());
 
             Throwable thrown = null;
+            long t0 = Instant.now().getEpochSecond();
             try {
                 m.forceRefresh();
             } catch (Throwable t) { // incl. Errors: a StackOverflowError must fail HERE, named
                 thrown = t;
             }
+            long t1 = Instant.now().getEpochSecond();
             assertEquals(1, stub.requests.get(),
                     name + ": a 2xx is not a 400 — the endpoint must be hit exactly once");
             if (thrown == null) {
@@ -247,6 +310,17 @@ class ConformanceTest {
                 assertEquals("at-refreshed", persisted.getAccessToken(),
                         name + ": an ACCEPTED implementation-defined response must persist "
                                 + "access_token = at-refreshed exactly");
+                String rt = persisted.getRefreshToken();
+                assertTrue("rt-refreshed".equals(rt) || "r1".equals(rt),
+                        name + ": an ACCEPTED implementation-defined response must persist "
+                                + "refresh_token rt-refreshed or the prior r1 (never empty / "
+                                + "anything else), got " + (rt == null ? "null"
+                                        : rt.isEmpty() ? "\"\"" : "another value"));
+                long expiresAt = persisted.getExpiresAt();
+                assertTrue(expiresAt >= t0 + 3600 && expiresAt <= t1 + 3600,
+                        name + ": an ACCEPTED implementation-defined response must persist "
+                                + "expires_at = refresh time + 3600, i.e. within ["
+                                + (t0 + 3600) + ", " + (t1 + 3600) + "], got " + expiresAt);
             } else {
                 if (!(thrown instanceof TransportException)) {
                     throw new AssertionError(name + ": an implementation-defined response "
@@ -274,9 +348,9 @@ class ConformanceTest {
     Stream<DynamicTest> hostileStoreFilesFailTyped() throws IOException {
         JsonNode cases = fixture().get("hostile_store_files");
         assertNotNull(cases, "fixture lost its hostile_store_files table");
-        assertTrue(cases.size() >= 8,
+        assertTrue(cases.size() >= 14,
                 "fixture shrank? hostile_store_files has " + cases.size()
-                        + " cases, want >= 8");
+                        + " cases, want >= 14");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileStoreFileRejected(c)));
@@ -289,24 +363,119 @@ class ConformanceTest {
 
         Path dir = caseDir("store-" + name);
         TokenStore store = new TokenStore(dir);
-        Files.write(dir.resolve(file), content.getBytes(StandardCharsets.UTF_8));
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        Files.write(dir.resolve(file), bytes);
 
+        final StoreException thrown;
         switch (file) {
             case "tokens.json":
-                assertThrows(StoreException.class, store::loadTokens,
+                thrown = assertThrows(StoreException.class, store::loadTokens,
                         name + ": a hostile tokens.json must surface the typed "
                                 + "StoreException — never a null-filled Tokens, never an "
                                 + "unchecked crash");
                 break;
             case "credentials.json":
-                assertThrows(StoreException.class, store::loadCredentials,
+                thrown = assertThrows(StoreException.class, store::loadCredentials,
                         name + ": a hostile credentials.json must surface the typed "
                                 + "StoreException — never a null-filled record, never an "
                                 + "unchecked crash");
                 break;
             default:
-                fail("fixture names an unknown store file: " + file);
+                throw new AssertionError(name + ": fixture names an unknown store file: "
+                        + file);
         }
+        Optional<String> needle = mustNotEcho(testCase, bytes);
+        if (needle.isPresent()) {
+            assertChainDoesNotEcho(name, thrown, needle.get());
+        }
+    }
+
+    // --- 2b. implementation-defined store files -------------------------------------------
+
+    /**
+     * Store contents a parser may accept or reject (nesting past its depth limit inside
+     * an unknown field). Loading must EITHER return exactly the case's {@code expected}
+     * record OR fail with the typed {@link StoreException}. Anything else — an unchecked
+     * exception or Error (e.g. a StackOverflowError), or a record differing from
+     * {@code expected} — fails, naming the case.
+     */
+    @TestFactory
+    Stream<DynamicTest> implementationDefinedStoreFilesLoadExactlyOrFailTyped()
+            throws IOException {
+        JsonNode cases = fixture().get("implementation_defined_store_files");
+        assertNotNull(cases, "fixture lost its implementation_defined_store_files table");
+        assertTrue(cases.size() >= 1,
+                "fixture shrank? implementation_defined_store_files has " + cases.size()
+                        + " cases, want >= 1");
+        return StreamSupport.stream(cases.spliterator(), false)
+                .map(c -> DynamicTest.dynamicTest(
+                        c.get("name").asText(),
+                        () -> assertImplementationDefinedStoreFileHandledCleanly(c)));
+    }
+
+    private static String optionalText(JsonNode record, String field, String what) {
+        JsonNode value = record.get(field);
+        if (value == null) {
+            return null;
+        }
+        assertTrue(value.isTextual(), what + "." + field + " must be a string");
+        return value.asText();
+    }
+
+    private void assertImplementationDefinedStoreFileHandledCleanly(JsonNode testCase)
+            throws Exception {
+        String name = testCase.get("name").asText();
+        String file = testCase.get("file").asText();
+        String content = testCase.get("content").asText();
+        JsonNode expected = testCase.get("expected");
+        assertNotNull(expected, name + ": case lacks its expected record");
+        String what = name + ".expected";
+
+        // The record a successful load must equal EXACTLY (all fields — an absent optional
+        // field in `expected` must load as absent, not as some default).
+        final Object want;
+        switch (file) {
+            case "tokens.json": {
+                JsonNode exp = expected.get("expires_at");
+                assertTrue(exp != null && exp.canConvertToLong(),
+                        what + ".expires_at must be an integer");
+                want = new Tokens(
+                        requiredText(expected, "access_token", what),
+                        requiredText(expected, "refresh_token", what),
+                        exp.asLong(),
+                        optionalText(expected, "scope", what),
+                        optionalText(expected, "token_type", what));
+                break;
+            }
+            case "credentials.json":
+                want = new ClientCredentials(
+                        requiredText(expected, "client_id", what),
+                        requiredText(expected, "client_secret", what));
+                break;
+            default:
+                throw new AssertionError(name + ": fixture names an unknown store file: "
+                        + file);
+        }
+
+        Path dir = caseDir("store-impl-defined-" + name);
+        TokenStore store = new TokenStore(dir);
+        Files.write(dir.resolve(file), content.getBytes(StandardCharsets.UTF_8));
+
+        Optional<?> loaded;
+        try {
+            loaded = "tokens.json".equals(file) ? store.loadTokens() : store.loadCredentials();
+        } catch (StoreException e) {
+            return; // the typed rejection arm
+        } catch (Throwable t) { // incl. Errors: a StackOverflowError must fail HERE, named
+            throw new AssertionError(name + ": an implementation-defined store file must "
+                    + "either load exactly `expected` or fail with the typed "
+                    + "StoreException, got " + t.getClass().getName(), t);
+        }
+        assertTrue(loaded.isPresent(),
+                name + ": an ACCEPTED implementation-defined store file must load a record");
+        assertEquals(want, loaded.get(),
+                name + ": an ACCEPTED implementation-defined store file must load EXACTLY "
+                        + "`expected`");
     }
 
     // --- 3. canonical valid records --------------------------------------------------------
@@ -474,7 +643,7 @@ class ConformanceTest {
     // --- sanity: the fixture's tables are the ones this suite knows how to map ------------
 
     /**
-     * The fixture's tables must be EXACTLY the five this suite maps (plus {@code $comment}):
+     * The fixture's tables must be EXACTLY the six this suite maps (plus {@code $comment}):
      * a NEW table fails here (this leg must be extended deliberately — beats ten
      * silently-unexercised cases), and so does a renamed/removed one.
      */
@@ -485,6 +654,7 @@ class ConformanceTest {
                 "hostile_token_responses",
                 "implementation_defined_token_responses",
                 "hostile_store_files",
+                "implementation_defined_store_files",
                 "refresh_success_cases",
                 "valid_records"));
         Set<String> actual = new TreeSet<>();

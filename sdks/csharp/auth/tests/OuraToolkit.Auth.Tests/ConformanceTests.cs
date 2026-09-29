@@ -25,10 +25,18 @@ namespace OuraToolkit.Auth.Tests;
 /// would burn the still-valid rotated refresh token);</item>
 /// <item>implementation-defined token responses (BOM, duplicate keys, deep nesting, an
 /// integral-float expires_in, an upper-case key) → EITHER a successful refresh persisting
-/// access_token = at-refreshed, OR the typed error with the store byte-identical — never an
-/// untyped exception or a half-written store;</item>
+/// access_token = at-refreshed, refresh_token = rt-refreshed or the prior one (never empty)
+/// and expires_at = refresh time + 3600, OR the typed error with the store byte-identical —
+/// never an untyped exception or a half-written store;</item>
 /// <item>hostile store files → the typed <see cref="StoreFormatException"/>, never a
 /// default-filled record that makes is-authenticated lie, and never an untyped crash;</item>
+/// <item>implementation-defined store files (nesting past a parser's depth limit in an
+/// unknown field) → EITHER exactly the fixture's <c>expected</c> record OR the typed
+/// <see cref="StoreFormatException"/> — never an untyped crash;</item>
+/// <item>every case carrying <c>must_not_echo</c> (token responses and store files) → that
+/// string appears nowhere in the typed error's text or in any exception it chains
+/// (InnerException, recursively, incl. every AggregateException inner): parser messages can
+/// quote content, and the content is token material;</item>
 /// <item>canonical valid records → load with exactly the fixture's field values and
 /// round-trip through this companion's own persist path (the cross-language store
 /// compatibility check — field names are the shared wire format, #54);</item>
@@ -96,8 +104,9 @@ public class ConformanceTests
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
     /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
-    /// >= 26 hostile_token_responses, >= 5 implementation_defined_token_responses,
-    /// >= 10 hostile_store_files, >= 18 refresh_success_cases.
+    /// >= 27 hostile_token_responses, >= 5 implementation_defined_token_responses,
+    /// >= 14 hostile_store_files, >= 1 implementation_defined_store_files,
+    /// >= 18 refresh_success_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -109,12 +118,16 @@ public class ConformanceTests
             "fixture lost its hostile_store_files table");
         Assert.True(fixture.TryGetProperty("implementation_defined_token_responses", out var implDefined),
             "fixture lost its implementation_defined_token_responses table");
-        Assert.True(responses.GetArrayLength() >= 26,
-            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 26");
+        Assert.True(fixture.TryGetProperty("implementation_defined_store_files", out var implStore),
+            "fixture lost its implementation_defined_store_files table");
+        Assert.True(responses.GetArrayLength() >= 27,
+            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 27");
+        Assert.True(implStore.GetArrayLength() >= 1,
+            $"fixture shrank? implementation_defined_store_files has {implStore.GetArrayLength()} cases, want >= 1");
         Assert.True(implDefined.GetArrayLength() >= 5,
             $"fixture shrank? implementation_defined_token_responses has {implDefined.GetArrayLength()} cases, want >= 5");
-        Assert.True(storeFiles.GetArrayLength() >= 10,
-            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 10");
+        Assert.True(storeFiles.GetArrayLength() >= 14,
+            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 14");
         Assert.True(fixture.TryGetProperty("refresh_success_cases", out var successTable),
             "fixture lost its refresh_success_cases table");
         var successCases = successTable.GetProperty("cases").GetArrayLength();
@@ -127,6 +140,7 @@ public class ConformanceTests
     /// top-level key failing here beats ten silently-unexercised cases (mirrors the Java leg).
     /// Every mapped table must also be PRESENT: a renamed table (e.g. the old
     /// refresh_scope_cases) fails here rather than leaving its theory iterating nothing.
+    /// Together the two checks pin the set to EXACTLY the six tables (plus <c>$comment</c>).
     /// </summary>
     [Fact]
     public void EveryFixtureTableIsMappedByThisSuite()
@@ -134,7 +148,8 @@ public class ConformanceTests
         string[] known =
         [
             "$comment", "hostile_token_responses", "implementation_defined_token_responses",
-            "hostile_store_files", "refresh_success_cases", "valid_records",
+            "hostile_store_files", "implementation_defined_store_files", "refresh_success_cases",
+            "valid_records",
         ];
         var present = Fixture().EnumerateObject().Select(p => p.Name).ToList();
         var unknown = present.Where(name => !known.Contains(name)).ToList();
@@ -189,15 +204,89 @@ public class ConformanceTests
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
     }
 
+    /// <summary>A case's optional <c>must_not_echo</c> string (null when the case has none).</summary>
+    private static string? MustNotEcho(JsonElement c) =>
+        c.TryGetProperty("must_not_echo", out var v) ? v.GetString() : null;
+
+    /// <summary>
+    /// <paramref name="e"/> and every exception it chains — InnerException, recursively, and
+    /// every AggregateException inner — each visited once (a cycle cannot loop forever).
+    /// </summary>
+    private static IEnumerable<Exception> ExceptionChain(Exception e)
+    {
+        // A reference-identity list, not a HashSet: ReferenceEqualityComparer is .NET 5+ and
+        // this suite also builds for net472 (the netstandard2.0 Mono leg, #61).
+        var seen = new List<Exception>();
+        var pending = new Stack<Exception>();
+        pending.Push(e);
+        while (pending.Count > 0)
+        {
+            var next = pending.Pop();
+            if (seen.Any(s => ReferenceEquals(s, next)))
+            {
+                continue;
+            }
+            seen.Add(next);
+            yield return next;
+            if (next is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    pending.Push(inner);
+                }
+            }
+            if (next.InnerException is { } innerException)
+            {
+                pending.Push(innerException);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The fixture's <c>must_not_echo</c> contract: <paramref name="secret"/> appears in NO
+    /// exception of <paramref name="e"/>'s chain — neither its ToString() (message + type +
+    /// stack) nor its Message, nor a TokenEndpointException's public <c>Body</c>. A parser
+    /// message quoting the content it choked on would leak token material into logs.
+    /// </summary>
+    private static void AssertDoesNotEcho(string name, Exception e, string? secret)
+    {
+        if (secret is null)
+        {
+            return;
+        }
+        Assert.False(string.IsNullOrEmpty(secret), $"fixture case {name}: must_not_echo must be non-empty");
+        foreach (var link in ExceptionChain(e))
+        {
+            var texts = new List<(string What, string Text)>
+            {
+                ("ToString()", link.ToString()),
+                ("Message", link.Message),
+            };
+            if (link is TokenEndpointException endpointError)
+            {
+                texts.Add(("Body", endpointError.Body));
+            }
+            foreach (var (what, text) in texts)
+            {
+                Assert.False(text.Contains(secret),
+                    $"case {name}: the typed error chain must never echo \"{secret}\" (must_not_echo), "
+                    + $"but {link.GetType().Name}.{what} does: {text}");
+            }
+        }
+    }
+
     // --- 1. hostile-but-2xx token responses --------------------------------------------------
 
-    /// <summary>One (name, base64 of the exact 200 body bytes) pair per fixture case (<see cref="BodyBase64"/>).</summary>
-    public static TheoryData<string, string> HostileTokenResponses()
+    /// <summary>
+    /// One (name, base64 of the exact 200 body bytes (<see cref="BodyBase64"/>), optional
+    /// must_not_echo) triple per fixture case.
+    /// </summary>
+    public static TheoryData<string, string, string?> HostileTokenResponses()
     {
-        var data = new TheoryData<string, string>();
+        var data = new TheoryData<string, string, string?>();
         foreach (var c in Fixture().GetProperty("hostile_token_responses").EnumerateArray())
         {
-            data.Add(c.GetProperty("name").GetString()!, BodyBase64(c));
+            data.Add(c.GetProperty("name").GetString()!, BodyBase64(c), MustNotEcho(c));
         }
         return data;
     }
@@ -209,10 +298,11 @@ public class ConformanceTests
     /// guards fails the test naming it. A 200 is not a 400, so the reload-retry arm must not
     /// fire either (exactly one endpoint call), and BOTH persisted records stay byte-identical:
     /// persisting a blank/expired Bearer would burn the still-valid rotated refresh token.
+    /// A case's <c>must_not_echo</c> string must appear nowhere in the error chain.
     /// </summary>
     [Theory]
     [MemberData(nameof(HostileTokenResponses))]
-    public async Task HostileTokenResponseFailsTypedAndLeavesTheStoreUntouched(string name, string bodyBase64)
+    public async Task HostileTokenResponseFailsTypedAndLeavesTheStoreUntouched(string name, string bodyBase64, string? mustNotEcho)
     {
         using var temp = new TempStore();
         temp.Store.SaveCredentials(Credentials());
@@ -233,6 +323,7 @@ public class ConformanceTests
         // The typed error's diagnostic is FIXED and secret-free — a partial 2xx payload may
         // carry token material, so the raw body is never echoed (PR #56).
         Assert.DoesNotContain("rt-hostile-new", e.Message);
+        AssertDoesNotEcho(name, e, mustNotEcho);
 
         Assert.Equal(1, endpoint.Calls); // a hostile 2xx must NOT trigger the reload-retry arm
         Assert.True(
@@ -261,8 +352,10 @@ public class ConformanceTests
     /// 2xx bodies where companions may legitimately differ (a leading UTF-8 BOM, duplicate
     /// keys, nesting past the parser's depth limit, an integral float expires_in, an
     /// upper-case key). Seeded exactly like the hostile harness, the refresh must land in ONE
-    /// of the two sound outcomes: SUCCEED and persist access_token = at-refreshed (a whole,
-    /// loadable, unexpired record), or FAIL with the typed <see cref="TokenEndpointException"/>
+    /// of the two sound outcomes: SUCCEED and persist a whole, loadable record with
+    /// access_token = at-refreshed, refresh_token = rt-refreshed or the prior stored one (never
+    /// empty — a duplicate key's "" must not win), and expires_at within
+    /// [t0 + 3600, t1 + 3600]; or FAIL with the typed <see cref="TokenEndpointException"/>
     /// carrying the 2xx status and leave tokens.json / credentials.json byte-identical. An
     /// untyped exception, a wrong persisted access token, or a half-written store fails,
     /// naming the case. Either way it is exactly one endpoint call (a 2xx is not a 400).
@@ -283,6 +376,7 @@ public class ConformanceTests
 
         var t0 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var thrown = await Record.ExceptionAsync(() => manager.ForceRefreshAsync());
+        var t1 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Assert.True(endpoint.Calls == 1, $"case {name}: want exactly one endpoint call, got {endpoint.Calls}");
         Assert.True(
             credsBefore.SequenceEqual(File.ReadAllBytes(temp.Store.CredentialsPath)),
@@ -304,10 +398,13 @@ public class ConformanceTests
             Assert.True(persisted is not null, $"case {name}: an accepted refresh must persist a token record");
             Assert.True(persisted!.AccessToken == "at-refreshed",
                 $"case {name}: an accepted refresh must persist access_token \"at-refreshed\", got \"{persisted.AccessToken}\"");
-            Assert.True(!string.IsNullOrEmpty(persisted.RefreshToken),
-                $"case {name}: an accepted refresh must never persist a blank refresh_token");
-            Assert.True(persisted.ExpiresAt > t0,
-                $"case {name}: an accepted refresh must persist an unexpired token, got expires_at {persisted.ExpiresAt}");
+            var priorRefresh = OriginalTokens().RefreshToken;
+            Assert.True(persisted.RefreshToken == "rt-refreshed" || persisted.RefreshToken == priorRefresh,
+                $"case {name}: an accepted refresh must persist refresh_token \"rt-refreshed\" or the "
+                + $"prior \"{priorRefresh}\" (never empty), got \"{persisted.RefreshToken}\"");
+            Assert.True(persisted.ExpiresAt >= t0 + 3600 && persisted.ExpiresAt <= t1 + 3600,
+                $"case {name}: an accepted refresh must persist expires_at = refresh time + 3600 "
+                + $"(within [{t0 + 3600}, {t1 + 3600}]), got {persisted.ExpiresAt}");
             return;
         }
 
@@ -324,41 +421,112 @@ public class ConformanceTests
 
     // --- 2. hostile store files ---------------------------------------------------------------
 
-    /// <summary>One (name, record file, exact file content) triple per fixture case.</summary>
-    public static TheoryData<string, string, string> HostileStoreFiles()
+    /// <summary>One (name, record file, exact file content, optional must_not_echo) row per fixture case.</summary>
+    public static TheoryData<string, string, string, string?> HostileStoreFiles()
     {
-        var data = new TheoryData<string, string, string>();
+        var data = new TheoryData<string, string, string, string?>();
         foreach (var c in Fixture().GetProperty("hostile_store_files").EnumerateArray())
         {
             data.Add(
                 c.GetProperty("name").GetString()!,
                 c.GetProperty("file").GetString()!,
-                c.GetProperty("content").GetString()!);
+                c.GetProperty("content").GetString()!,
+                MustNotEcho(c));
         }
         return data;
     }
+
+    /// <summary>Loads <paramref name="file"/> from <paramref name="store"/>, returning the record (or null).</summary>
+    private static object? LoadStoreFile(string name, TokenStore store, string file) => file switch
+    {
+        "tokens.json" => store.LoadTokens(),
+        "credentials.json" => store.LoadCredentials(),
+        _ => throw new InvalidOperationException($"case {name}: fixture names an unknown store file {file}"),
+    };
 
     /// <summary>
     /// Every hostile store file must fail its load with the typed
     /// <see cref="StoreFormatException"/> — never a default-filled record that makes
     /// is-authenticated lie (System.Text.Json is strict here: `required` members reject
     /// partial records, and wrong-typed fields like a NUMBER client_id are never coerced),
-    /// never an untyped crash.
+    /// never an untyped crash. A case's <c>must_not_echo</c> string (the store holds secrets)
+    /// must appear nowhere in the error chain.
     /// </summary>
     [Theory]
     [MemberData(nameof(HostileStoreFiles))]
-    public void HostileStoreFileFailsTyped(string name, string file, string content)
+    public void HostileStoreFileFailsTyped(string name, string file, string content, string? mustNotEcho)
     {
         using var temp = new TempStore();
         File.WriteAllText(Path.Combine(temp.Dir, file), content);
 
-        var e = file switch
+        object? loaded = null;
+        var thrown = Record.Exception(() => loaded = LoadStoreFile(name, temp.Store, file));
+        Assert.True(thrown is StoreFormatException,
+            $"case {name}: a hostile {file} must fail with the typed StoreFormatException, got "
+            + (thrown is null ? $"a loaded record ({loaded ?? "null"})" : $"untyped {thrown.GetType().Name}"));
+        Assert.True(thrown!.Message.Contains(file),
+            $"case {name}: the typed error must name the offending record {file}");
+        AssertDoesNotEcho(name, thrown, mustNotEcho);
+    }
+
+    // --- 2b. implementation-defined store files -----------------------------------------------
+
+    /// <summary>One (name, record file, exact file content, expected record JSON) row per fixture case.</summary>
+    public static TheoryData<string, string, string, string> ImplementationDefinedStoreFiles()
+    {
+        var data = new TheoryData<string, string, string, string>();
+        foreach (var c in Fixture().GetProperty("implementation_defined_store_files").EnumerateArray())
         {
-            "tokens.json" => Assert.Throws<StoreFormatException>(() => temp.Store.LoadTokens()),
-            "credentials.json" => Assert.Throws<StoreFormatException>(() => temp.Store.LoadCredentials()),
-            _ => throw new InvalidOperationException($"case {name}: fixture names an unknown store file {file}"),
-        };
-        Assert.Contains(file, e.Message); // the typed error names the offending record
+            data.Add(
+                c.GetProperty("name").GetString()!,
+                c.GetProperty("file").GetString()!,
+                c.GetProperty("content").GetString()!,
+                c.GetProperty("expected").GetRawText());
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// Store contents a parser may accept or reject (nesting past its depth limit inside an
+    /// unknown field). Loading must land in ONE of the two sound outcomes: return a record
+    /// whose fields are EXACTLY the fixture's <c>expected</c> values (every field it names),
+    /// or fail with the typed <see cref="StoreFormatException"/> naming the record — never an
+    /// untyped crash (a raw JsonException/InvalidOperationException escaping the loader).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ImplementationDefinedStoreFiles))]
+    public void ImplementationDefinedStoreFileLoadsExactlyOrFailsTyped(string name, string file, string content, string expectedJson)
+    {
+        using var expectedDoc = JsonDocument.Parse(expectedJson);
+        var expected = expectedDoc.RootElement;
+        using var temp = new TempStore();
+        File.WriteAllText(Path.Combine(temp.Dir, file), content);
+
+        object? loaded = null;
+        var thrown = Record.Exception(() => loaded = LoadStoreFile(name, temp.Store, file));
+        if (thrown is not null)
+        {
+            Assert.True(thrown is StoreFormatException,
+                $"case {name}: an implementation-defined {file} must either load exactly or fail with "
+                + $"the typed StoreFormatException, got untyped {thrown.GetType().Name}: {thrown.Message}");
+            Assert.True(thrown.Message.Contains(file),
+                $"case {name}: the typed error must name the offending record {file}");
+            return;
+        }
+
+        Assert.True(loaded is not null, $"case {name}: an accepted {file} must load a record, got null");
+        // Round-trip the loaded record through the shared wire format, then compare EVERY
+        // field the fixture's `expected` names — no field left to chance.
+        using var actualDoc = JsonDocument.Parse(JsonSerializer.Serialize(loaded, loaded!.GetType()));
+        var fields = expected.EnumerateObject().ToList();
+        Assert.True(fields.Count > 0, $"fixture case {name}: expected names no fields");
+        foreach (var field in fields)
+        {
+            Assert.True(actualDoc.RootElement.TryGetProperty(field.Name, out var actual),
+                $"case {name}: the loaded record has no {field.Name}");
+            Assert.True(actual.GetRawText() == field.Value.GetRawText(),
+                $"case {name}: loaded {field.Name} must be exactly {field.Value.GetRawText()}, got {actual.GetRawText()}");
+        }
     }
 
     // --- 3. refresh success cases -------------------------------------------------------------

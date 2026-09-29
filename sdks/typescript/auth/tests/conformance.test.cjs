@@ -5,33 +5,40 @@
 // canonical store records that every companion suite must exercise; new cases are added
 // THERE, never here — and its `$comment` is the contract):
 //
-//  - the fixture's top-level tables are EXACTLY the five below, so a table added to the
+//  - the fixture's top-level tables are EXACTLY the six below, so a table added to the
 //    fixture can't be silently ignored by this leg;
 //  - hostile_token_responses: a hostile-but-2xx token response (`body` JSON, `raw_body`
 //    verbatim, or `raw_body_base64` decoded bytes — e.g. invalid UTF-8) -> typed
 //    TokenEndpointError (never a bare SyntaxError/TypeError escaping), tokens.json
 //    byte-identical afterwards (the rotated refresh token is never burned by persisting
 //    a blank/expired Bearer) — incl. anything but whitespace after the one top-level
-//    JSON value (trailing junk, a second object);
+//    JSON value (trailing junk, a second object); a case with `must_not_echo` also
+//    requires that string to appear nowhere in the error's text or any error it chains
+//    (`cause`, recursively) — parser messages can quote the body;
 //  - implementation_defined_token_responses: a 2xx where companions may legitimately
 //    differ (leading BOM, duplicate keys, deep nesting, an integral float, an uppercase
-//    key) -> EITHER success persisting access_token "at-refreshed", OR the typed
-//    TokenEndpointError (2xx status) with tokens.json byte-identical — never an untyped
-//    throw, a wrong persisted token, or a half-written store;
+//    key) -> EITHER success persisting access_token "at-refreshed", a refresh_token that
+//    is "rt-refreshed" or the prior stored one (never empty), and expires_at = refresh
+//    time + 3600, OR the typed TokenEndpointError (2xx status) with tokens.json
+//    byte-identical — never an untyped throw, a wrong persisted token, or a half-written
+//    store;
 //  - refresh_success_cases: a successful refresh from the fixture's `prior` record
 //    persists EXACTLY `expected` (access_token, refresh_token, scope, token_type) and
 //    expires_at = refresh time + expected.expires_in — incl. the omitted/null/blank
 //    scope and omitted/null/empty refresh_token/token_type fallbacks to `prior`;
 //  - hostile_store_files -> the typed StoreFormatError, never a default/null-filled
-//    record and never an untyped throw;
+//    record and never an untyped throw; `must_not_echo` as above (the store holds
+//    secrets);
+//  - implementation_defined_store_files: contents a parser may accept or reject (deep
+//    nesting) -> EITHER load exactly `expected`, OR the typed StoreFormatError;
 //  - valid_records -> load with exactly the fixture's field values and round-trip
 //    through this companion's own persist path (the cross-language store compatibility
 //    check — field names are the shared wire format, #54).
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-// same test structure, same fixture-shrink guards (>= 26 hostile token responses, >= 5
-// implementation-defined token responses, >= 18 refresh success cases, >= 8 hostile
-// store files).
+// same test structure, same fixture-shrink guards (>= 27 hostile token responses, >= 5
+// implementation-defined token responses, >= 18 refresh success cases, >= 14 hostile
+// store files, >= 1 implementation-defined store file).
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -55,7 +62,35 @@ function repoRoot() {
 }
 
 const FIXTURE_PATH = path.join(repoRoot(), "codegen", "conformance", "auth-cases.json");
-const fixture = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
+/**
+ * The fixture, loaded so a `body` column re-encodes to the SAME JSON text the fixture
+ * holds: a number whose source text isn't its canonical JS form (`3600.0` — the
+ * expires_in_integral_float case) is kept as `JSON.rawJSON(source)`, so JSON.stringify
+ * sends `3600.0` rather than silently collapsing it to `3600` (which would turn the
+ * implementation-defined case into a plain valid one). Mirrors the Rust leg, whose
+ * serde_json f64 re-serializes as `3600.0`. Needs the reviver `context.source` +
+ * JSON.rawJSON (Node >= 22, the CI version); refuses to run without them rather than
+ * silently sending different bytes.
+ */
+function loadFixture() {
+  assert.equal(
+    typeof JSON.rawJSON,
+    "function",
+    "conformance harness needs JSON.rawJSON + reviver source access (Node >= 22) to send the fixture's bodies faithfully"
+  );
+  let sawSource = false;
+  const parsed = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"), function (_key, value, context) {
+    if (typeof value === "number") {
+      assert.ok(context && typeof context.source === "string", "JSON.parse reviver source access unavailable");
+      sawSource = true;
+      if (context.source !== String(value)) return JSON.rawJSON(context.source);
+    }
+    return value;
+  });
+  assert.ok(sawSource, "fixture holds no numbers? reviver source access never exercised");
+  return parsed;
+}
+const fixture = loadFixture();
 
 function withTempStore(t) {
   const dir = tempStoreDir();
@@ -78,6 +113,55 @@ function casePayload(c) {
   return Buffer.from(JSON.stringify(c.body), "utf8");
 }
 
+/**
+ * `must_not_echo` (fixture contract): the secret must appear NOWHERE in the typed error's
+ * text or in any error it chains. Walks the error and its `cause` chain (plus an
+ * AggregateError's `errors`), checking every textual surface a caller could log:
+ * String(e), message, stack, and every own string property (e.g. TokenEndpointError's
+ * `body`). A no-op for a case without `must_not_echo`.
+ *
+ * Stricter than the fixture's full-string rule, deliberately: V8's JSON.parse message
+ * quotes only a ~10-char EXCERPT of the input (`..."h_token": rtSECRETst"...`), so a
+ * full-string check alone misses a truncated-but-real secret leak. Any 8-char window of
+ * the secret counts as an echo too.
+ */
+function assertNoEcho(err, secret, name) {
+  if (secret === undefined) return;
+  assert.equal(typeof secret, "string", `case ${name}: must_not_echo must be a string`);
+  assert.ok(secret.length > 0, `case ${name}: must_not_echo must be non-empty`);
+  const WINDOW = Math.min(8, secret.length);
+  const echoes = (text) => {
+    for (let i = 0; i + WINDOW <= secret.length; i++) {
+      if (text.includes(secret.slice(i, i + WINDOW))) return true;
+    }
+    return false;
+  };
+  const seen = new Set();
+  const walk = (e, where) => {
+    if (e === null || e === undefined) return;
+    if (typeof e !== "object" && typeof e !== "function") {
+      assert.ok(!echoes(String(e)), `case ${name}: ${where} echoes the must_not_echo secret`);
+      return;
+    }
+    if (seen.has(e)) return;
+    seen.add(e);
+    const surfaces = { "String()": String(e), message: e.message, stack: e.stack };
+    for (const key of Object.getOwnPropertyNames(e)) {
+      if (typeof e[key] === "string") surfaces[key] = e[key];
+    }
+    for (const [surface, text] of Object.entries(surfaces)) {
+      if (typeof text !== "string") continue;
+      assert.ok(
+        !echoes(text),
+        `case ${name}: ${where}.${surface} echoes the must_not_echo secret: ${JSON.stringify(text)}`
+      );
+    }
+    walk(e.cause, `${where}.cause`);
+    if (Array.isArray(e.errors)) e.errors.forEach((inner, i) => walk(inner, `${where}.errors[${i}]`));
+  };
+  walk(err, "error");
+}
+
 test("conformance: the fixture's top-level tables are exactly the ones this leg iterates", () => {
   // A table added to (or renamed in) the fixture must fail here until this leg iterates
   // it — otherwise new cases would be silently ignored (e.g. the refresh_scope_cases ->
@@ -90,6 +174,7 @@ test("conformance: the fixture's top-level tables are exactly the ones this leg 
     [
       "hostile_store_files",
       "hostile_token_responses",
+      "implementation_defined_store_files",
       "implementation_defined_token_responses",
       "refresh_success_cases",
       "valid_records",
@@ -101,7 +186,7 @@ test("conformance: the fixture's top-level tables are exactly the ones this leg 
 test("conformance: hostile 2xx token responses fail typed and leave the store untouched", async (t) => {
   const cases = fixture.hostile_token_responses;
   assert.ok(Array.isArray(cases), "hostile_token_responses table");
-  assert.ok(cases.length >= 26, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 27, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;
@@ -145,6 +230,7 @@ test("conformance: hostile 2xx token responses fail typed and leave the store un
       thrown instanceof auth.TokenEndpointError,
       `case ${name}: expected the TokenEndpointError variant, got ${thrown && thrown.constructor.name}`
     );
+    assertNoEcho(thrown, c.must_not_echo, name);
     assert.equal(
       endpoint.requests.length,
       1,
@@ -189,12 +275,15 @@ test("conformance: implementation-defined 2xx token responses succeed cleanly or
     });
 
     let thrown = null;
+    const t0 = Math.floor(Date.now() / 1000);
     try {
       await manager.forceRefresh();
     } catch (e) {
       thrown = e;
     }
+    const t1 = Math.floor(Date.now() / 1000);
     assert.equal(endpoint.requests.length, 1, `case ${name}: the refresh must call the endpoint exactly once`);
+    t.diagnostic(`${name}: ${thrown === null ? "succeeded" : `failed typed (${thrown && thrown.body})`}`);
 
     if (thrown === null) {
       // Outcome A: success — the PERSISTED record (a fresh load from disk) carries the
@@ -205,6 +294,18 @@ test("conformance: implementation-defined 2xx token responses succeed cleanly or
         persisted.accessToken(),
         "at-refreshed",
         `case ${name}: a successful refresh must persist access_token "at-refreshed"`
+      );
+      // The refresh token is the response's rotated one or the prior stored one — never
+      // empty (a "" would make the next refresh 400) and never anything else.
+      assert.ok(
+        ["rt-refreshed", "rt-original"].includes(persisted.refreshToken()),
+        `case ${name}: a successful refresh must persist refresh_token "rt-refreshed" or the prior ` +
+          `"rt-original", got ${JSON.stringify(persisted.refreshToken())}`
+      );
+      assert.ok(
+        persisted.expiresAt >= t0 + 3600 && persisted.expiresAt <= t1 + 3600,
+        `case ${name}: a successful refresh must persist expires_at = refresh time + 3600 ` +
+          `(within [${t0 + 3600}, ${t1 + 3600}]), got ${persisted.expiresAt}`
       );
     } else {
       // Outcome B: the TYPED failure — TokenEndpointError carrying the 2xx status (never
@@ -318,7 +419,7 @@ test("conformance: refresh_success_cases persist exactly `expected`", async (t) 
 test("conformance: hostile store files fail with the typed StoreFormatError", (t) => {
   const cases = fixture.hostile_store_files;
   assert.ok(Array.isArray(cases), "hostile_store_files table");
-  assert.ok(cases.length >= 8, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 14, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const { name, file, content } = c;
@@ -344,10 +445,48 @@ test("conformance: hostile store files fail with the typed StoreFormatError", (t
           e instanceof auth.StoreFormatError,
           `case ${name}: expected the typed StoreFormatError, got ${e && e.constructor.name}: ${e}`
         );
+        assertNoEcho(e, c.must_not_echo, name);
         return true;
       },
       `case ${name}: hostile ${file} must not load`
     );
+  }
+});
+
+test("conformance: implementation-defined store files load exactly `expected` or fail typed", (t) => {
+  const cases = fixture.implementation_defined_store_files;
+  assert.ok(Array.isArray(cases), "implementation_defined_store_files table");
+  assert.ok(cases.length >= 1, `fixture shrank? ${cases.length} cases`);
+
+  for (const c of cases) {
+    const { name, file, content, expected } = c;
+    assert.equal(file, "tokens.json", `case ${name}: only tokens.json cases are harnessed (got ${file})`);
+    assert.ok(expected && typeof expected === "object", `case ${name}: expected`);
+    const store = withTempStore(t);
+    fs.writeFileSync(path.join(store.dir, file), content);
+
+    let loaded;
+    let thrown = null;
+    try {
+      loaded = store.loadTokens();
+    } catch (e) {
+      thrown = e;
+    }
+    t.diagnostic(`${name}: ${thrown === null ? "loaded" : `failed (${thrown && thrown.constructor.name})`}`);
+    if (thrown === null) {
+      // Outcome A: accepted — exactly the fixture's fields, never a null/partial record.
+      assert.notEqual(loaded, null, `case ${name}: an accepted load must return a record`);
+      assert.equal(loaded.accessToken(), expected.access_token, `case ${name}: loaded access_token`);
+      assert.equal(loaded.refreshToken(), expected.refresh_token, `case ${name}: loaded refresh_token`);
+      assert.equal(loaded.expiresAt, expected.expires_at, `case ${name}: loaded expires_at`);
+    } else {
+      // Outcome B: the TYPED store-format error — never a RangeError/SyntaxError escaping.
+      assert.ok(
+        thrown instanceof auth.StoreFormatError,
+        `case ${name}: must load exactly \`expected\` or fail with the typed StoreFormatError, got ` +
+          `${thrown && thrown.constructor.name}: ${thrown}`
+      );
+    }
   }
 });
 

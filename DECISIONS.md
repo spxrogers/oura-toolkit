@@ -419,8 +419,16 @@ Some bodies are legitimately implementation-defined: a leading UTF-8 BOM (RFC 82
 parser ignore it; TS and C# do), duplicate keys (§4), nesting past a parser's depth limit, an
 integral float, a key in another case (Go matches keys case-insensitively). Rather than force
 one behavior, `implementation_defined_token_responses` pins the property that matters: each
-either succeeds with the returned access token or fails typed with the store untouched — it
-caught Python leaking an untyped `RecursionError` on deep nesting.
+either succeeds with a whole usable record (the returned access token, the returned or prior
+refresh token, the response's lifetime) or fails typed with the store untouched — it caught
+Python leaking an untyped `RecursionError` on deep nesting. `implementation_defined_store_files`
+does the same for the store (Python's store reader had the same `RecursionError`).
+
+**Errors never quote the input.** Parser messages can echo what they choke on (V8's
+`JSON.parse` quotes the text; Jackson's "Unrecognized token 'rt…'"), and token bodies and store
+files carry secrets. Cases with `must_not_echo` require that string to appear nowhere in the
+typed error or anything it chains. It caught TypeScript's store error embedding `JSON.parse`'s
+message and Java chaining Jackson's exception.
 
 Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
 untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even

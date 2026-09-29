@@ -23,24 +23,6 @@ class TokenStoreTest {
     @TempDir
     Path dir;
 
-    @Test
-    void aMalformedRecordLeaksNoStoreBytesThroughTheExceptionOrItsCause() throws IOException {
-        // The store holds secrets, and Jackson's parse errors QUOTE the offending text
-        // ("Unrecognized token 'rt…'"). The typed StoreException must carry none of it —
-        // neither in its message nor via a chained cause a logged stack trace would print.
-        String secret = "rtSECRETstore456";
-        TokenStore store = new TokenStore(dir);
-        Files.createDirectories(dir);
-        Files.write(store.tokensPath(), ("{\"access_token\": \"at\", \"refresh_token\": " + secret
-                + ", \"expires_at\": 1}").getBytes(StandardCharsets.UTF_8));
-        StoreException e = assertThrows(StoreException.class, store::loadTokens);
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            assertFalse(String.valueOf(t).contains(secret),
-                    "the exception chain must not echo store bytes, but "
-                            + t.getClass().getName() + " does");
-        }
-    }
-
     private static ClientCredentials sampleCredentials() {
         return new ClientCredentials("cid", "SECRET-CS-789");
     }

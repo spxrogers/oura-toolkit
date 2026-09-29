@@ -239,8 +239,9 @@ Every change MUST satisfy all of the following:
    anything. Never add an assertion-free test to move the number.
 
 **Cross-language auth conformance (#58):** `codegen/conformance/auth-cases.json` is the SINGLE
-SOURCE for the hostile token-endpoint responses, the bodies where companions may differ but
-must never fail untyped (`implementation_defined_token_responses`), hostile store files,
+SOURCE for the hostile token-endpoint responses, the token responses and store files where
+companions may differ but must never fail untyped (`implementation_defined_*`), hostile store
+files (incl. `must_not_echo`: an error never quotes the secret-bearing input),
 successful-refresh fallbacks (`refresh_success_cases`), and canonical store records every auth companion must survive. ALL SIX companion suites — the Rust reference
 included — iterate the fixture FROM THE FILE. A new hostile case goes into the fixture, never
 into just one language's suite; a companion that fails a case gets fixed — the fixture is never

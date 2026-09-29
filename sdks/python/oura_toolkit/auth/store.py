@@ -408,10 +408,21 @@ class TokenStore:
             return _MISSING
         except OSError as e:
             raise StoreFormatError(f"cannot read store record {path.name}: {e}") from e
+        # RecursionError too (conformance `tokens_deeply_nested`, an
+        # implementation_defined_store_files case): json.loads recurses per nesting
+        # level, so a record nested past the interpreter's recursion limit — even in
+        # an unknown field — raises RecursionError (a RuntimeError, NOT a ValueError).
+        # Rejecting it is allowed; letting it escape untyped (from load_tokens(), or
+        # from a refresh's reload under the lock) is not. Fixed message: no file
+        # content, since the store holds secrets.
         try:
             return json.loads(raw)
         except ValueError as e:
             raise StoreFormatError(f"corrupt store record {path.name}: {e}") from e
+        except RecursionError as e:
+            raise StoreFormatError(
+                f"corrupt store record {path.name}: nested too deeply"
+            ) from e
 
 
 def _to_json_bytes(data: dict) -> bytes:

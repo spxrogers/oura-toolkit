@@ -77,6 +77,24 @@ fn response_for(case: &serde_json::Value) -> ResponseTemplate {
     }
 }
 
+/// A case's `must_not_echo` string must appear nowhere in the error: not in its Display or
+/// Debug text, and not in any error it chains (`source()`, recursively) — parser messages can
+/// quote the body/store, which carries token material.
+fn assert_no_echo(case: &serde_json::Value, err: &(dyn std::error::Error + 'static)) {
+    let Some(secret) = case.get("must_not_echo").and_then(|v| v.as_str()) else {
+        return;
+    };
+    let name = case["name"].as_str().unwrap_or("<unnamed>");
+    let mut current = Some(err);
+    while let Some(e) = current {
+        assert!(
+            !e.to_string().contains(secret) && !format!("{e:?}").contains(secret),
+            "case {name}: the error chain echoes the secret: {e:?}"
+        );
+        current = e.source();
+    }
+}
+
 fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -110,7 +128,7 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 26, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 27, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -143,6 +161,7 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
             matches!(err, AuthError::InvalidTokenResponse(_)),
             "case {name}: expected AuthError::InvalidTokenResponse, got {err:?}"
         );
+        assert_no_echo(&case, &err);
         assert_eq!(
             std::fs::read(store.tokens_path()).unwrap(),
             bytes_before,
@@ -159,7 +178,7 @@ async fn hostile_2xx_token_responses_fail_the_code_exchange_typed() {
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 26, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 27, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -307,12 +326,32 @@ async fn implementation_defined_token_responses_succeed_or_fail_typed() {
             TokenManager::from_parts(store.clone(), Some(credentials()), Some(original_tokens()));
         manager.override_token_url(server.uri());
 
-        match manager.force_refresh().await {
+        let t0 = unix_now();
+        let outcome = manager.force_refresh().await;
+        let t1 = unix_now();
+        match outcome {
             Ok(_) => {
+                // A success must persist a WHOLE, usable record — not just the access token:
+                // the returned or the prior refresh token (never an empty/burned one), and
+                // the response's 3600s lifetime.
                 let saved = store.load_tokens().unwrap().expect("tokens persisted");
                 assert_eq!(
                     saved.access_token, "at-refreshed",
                     "case {name}: a success must persist the returned access token"
+                );
+                assert!(
+                    saved.refresh_token == "rt-refreshed"
+                        || saved.refresh_token == original_tokens().refresh_token,
+                    "case {name}: a success must persist the returned or the prior refresh \
+                     token, got {:?}",
+                    saved.refresh_token
+                );
+                assert!(
+                    (t0 + 3600..=t1 + 3600).contains(&saved.expires_at),
+                    "case {name}: expires_at {} not within [{}, {}]",
+                    saved.expires_at,
+                    t0 + 3600,
+                    t1 + 3600
                 );
             }
             Err(err) => {
@@ -347,6 +386,7 @@ fn every_fixture_table_is_mapped_by_this_suite() {
         [
             "hostile_store_files",
             "hostile_token_responses",
+            "implementation_defined_store_files",
             "implementation_defined_token_responses",
             "refresh_success_cases",
             "valid_records"
@@ -365,7 +405,7 @@ fn hostile_store_files_fail_typed() {
         .as_array()
         .expect("hostile_store_files table")
         .clone();
-    assert!(cases.len() >= 8, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 14, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -385,6 +425,7 @@ fn hostile_store_files_fail_typed() {
                     matches!(err, AuthError::Serde(_)),
                     "case {name}: expected the typed store-format error, got {err:?}"
                 );
+                assert_no_echo(&case, &err);
             }
             "credentials.json" => {
                 let err = store.load_credentials().expect_err(&format!(
@@ -394,8 +435,59 @@ fn hostile_store_files_fail_typed() {
                     matches!(err, AuthError::Serde(_)),
                     "case {name}: expected the typed store-format error, got {err:?}"
                 );
+                assert_no_echo(&case, &err);
             }
             other => panic!("fixture names an unknown store file {other:?}"),
+        }
+    }
+}
+
+/// Store contents a parser may accept or reject (nesting past its depth limit): loading
+/// either returns exactly the fixture's `expected` record or fails with the typed
+/// store-format error — never a panic (conformance `implementation_defined_store_files`).
+#[test]
+fn implementation_defined_store_files_load_exactly_or_fail_typed() {
+    let cases = fixture()["implementation_defined_store_files"]
+        .as_array()
+        .expect("implementation_defined_store_files table")
+        .clone();
+    assert!(!cases.is_empty(), "fixture shrank? {} cases", cases.len());
+
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let file = case["file"].as_str().unwrap();
+        assert_eq!(
+            file, "tokens.json",
+            "case {name}: only tokens.json cases are mapped"
+        );
+        let expected = &case["expected"];
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        std::fs::write(dir.path().join(file), case["content"].as_str().unwrap()).unwrap();
+
+        match store.load_tokens() {
+            Ok(tokens) => {
+                let tokens = tokens.expect("a loaded record");
+                assert_eq!(
+                    tokens.access_token,
+                    expected["access_token"].as_str().unwrap(),
+                    "case {name}"
+                );
+                assert_eq!(
+                    tokens.refresh_token,
+                    expected["refresh_token"].as_str().unwrap(),
+                    "case {name}"
+                );
+                assert_eq!(
+                    tokens.expires_at,
+                    expected["expires_at"].as_i64().unwrap(),
+                    "case {name}"
+                );
+            }
+            Err(err) => assert!(
+                matches!(err, AuthError::Serde(_)),
+                "case {name}: a failure must be the typed store-format error, got {err:?}"
+            ),
         }
     }
 }

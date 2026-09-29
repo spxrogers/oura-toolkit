@@ -12,12 +12,18 @@
 //     refresh_token/token_type fails typed; a lone surrogate in any of the four fields
 //     read — access_token, refresh_token, token_type, scope — is never persisted; a body with invalid UTF-8 ANYWHERE fails; an expires_in outside
 //     1..=2147483647, fractional, or a numeric string fails; trailing data after the
-//     one top-level value fails);
+//     one top-level value fails); a case's `must_not_echo` string appears nowhere in
+//     the error's text or any error it chains;
 //   - implementation-defined 2xx token responses (BOM, duplicate keys, deep nesting,
 //     3600.0, an upper-case key) → EITHER success persisting access_token
-//     "at-refreshed", OR typed *TokenEndpointError with the store byte-identical;
+//     "at-refreshed", refresh_token "rt-refreshed" or the prior one (never empty) and
+//     expires_at = refresh time + 3600, OR typed *TokenEndpointError with the store
+//     byte-identical;
 //   - hostile store files → typed *StoreFormatError, never a zero-valued record that
-//     would make IsAuthenticated lie, and never a panic;
+//     would make IsAuthenticated lie, and never a panic; a case's `must_not_echo`
+//     string appears nowhere in the error chain;
+//   - implementation-defined store files (deep nesting in an unknown field) → EITHER
+//     exactly the fixture's `expected` record OR the typed *StoreFormatError;
 //   - canonical valid records → load with exactly the fixture's field values and
 //     round-trip through this package's own persist path (the cross-language store
 //     compatibility check — field names are the shared wire format, #54);
@@ -28,7 +34,7 @@
 //     refresh_token or token_type keeps the prior value; expires_in at 1 and at the cap
 //     succeeds; an unknown field is never validated; the request SENT the prior
 //     refresh_token;
-//   - the fixture's top-level tables are exactly the five above, so a renamed/added
+//   - the fixture's top-level tables are exactly the six above, so a renamed/added
 //     table can't be silently skipped by this leg.
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs).
@@ -40,11 +46,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -108,16 +117,24 @@ type conformanceFixture struct {
 	HostileTokenResponses []struct {
 		Name string `json:"name"`
 		conformanceBody
+		MustNotEcho *string `json:"must_not_echo"`
 	} `json:"hostile_token_responses"`
 	ImplementationDefinedTokenResponses []struct {
 		Name string `json:"name"`
 		conformanceBody
 	} `json:"implementation_defined_token_responses"`
 	HostileStoreFiles []struct {
-		Name    string `json:"name"`
-		File    string `json:"file"`
-		Content string `json:"content"`
+		Name        string  `json:"name"`
+		File        string  `json:"file"`
+		Content     string  `json:"content"`
+		MustNotEcho *string `json:"must_not_echo"`
 	} `json:"hostile_store_files"`
+	ImplementationDefinedStoreFiles []struct {
+		Name     string          `json:"name"`
+		File     string          `json:"file"`
+		Content  string          `json:"content"`
+		Expected json.RawMessage `json:"expected"`
+	} `json:"implementation_defined_store_files"`
 	RefreshSuccessCases struct {
 		Prior struct {
 			AccessToken  string `json:"access_token"`
@@ -176,10 +193,10 @@ func readConformanceFixture(t *testing.T) []byte {
 	return data
 }
 
-// The fixture's top-level tables must be EXACTLY the five this leg iterates: a table
+// The fixture's top-level tables must be EXACTLY the six this leg iterates: a table
 // renamed (as refresh_scope_cases → refresh_success_cases was) or added upstream would
 // otherwise decode to a zero value / be ignored, silently skipping its cases here.
-func TestConformanceFixtureTopLevelTablesAreExactlyTheKnownFive(t *testing.T) {
+func TestConformanceFixtureTopLevelTablesAreExactlyTheKnownSix(t *testing.T) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(readConformanceFixture(t), &top); err != nil {
 		t.Fatalf("fixture is not a JSON object: %v", err)
@@ -191,7 +208,7 @@ func TestConformanceFixtureTopLevelTablesAreExactlyTheKnownFive(t *testing.T) {
 		}
 	}
 	sort.Strings(got)
-	want := []string{"hostile_store_files", "hostile_token_responses", "implementation_defined_token_responses", "refresh_success_cases", "valid_records"}
+	want := []string{"hostile_store_files", "hostile_token_responses", "implementation_defined_store_files", "implementation_defined_token_responses", "refresh_success_cases", "valid_records"}
 	if len(got) != len(want) {
 		t.Fatalf("fixture top-level tables = %v, want exactly %v (update this leg's harnesses for any added/renamed table)", got, want)
 	}
@@ -207,14 +224,59 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// assertNoEcho enforces a case's `must_not_echo`: the secret must appear NOWHERE in the
+// error's text, nor in the text (or %#v rendering) of any error it chains — walked
+// recursively through errors.Unwrap AND joined errors (Unwrap() []error), since a parser
+// message quoting the body/file would leak token material through a wrapped cause even
+// when the outer message is fixed. A nil mustNotEcho is a no-op; an empty one is a
+// fixture bug (it would match everything).
+func assertNoEcho(t *testing.T, name string, err error, mustNotEcho *string) {
+	t.Helper()
+	if mustNotEcho == nil {
+		return
+	}
+	secret := *mustNotEcho
+	if secret == "" {
+		t.Fatalf("case %s: must_not_echo is empty in the fixture", name)
+	}
+	var visited int
+	var walk func(e error, depth int)
+	walk = func(e error, depth int) {
+		if e == nil {
+			return
+		}
+		if depth > 64 {
+			t.Fatalf("case %s: error chain deeper than 64 — cyclic Unwrap?", name)
+		}
+		visited++
+		for _, rendered := range []string{e.Error(), fmt.Sprintf("%+v", e), fmt.Sprintf("%#v", e)} {
+			if strings.Contains(rendered, secret) {
+				t.Fatalf("case %s: the error chain echoes the must_not_echo secret %q (at depth %d, %T): %s", name, secret, depth, e, rendered)
+			}
+		}
+		switch u := e.(type) {
+		case interface{ Unwrap() []error }:
+			for _, inner := range u.Unwrap() {
+				walk(inner, depth+1)
+			}
+		case interface{ Unwrap() error }:
+			walk(u.Unwrap(), depth+1)
+		}
+	}
+	walk(err, 0)
+	if visited == 0 {
+		t.Fatalf("case %s: must_not_echo needs an error to inspect", name)
+	}
+}
+
 // Every hostile-but-2xx token response must fail the refresh with the typed
 // *TokenEndpointError and leave the persisted record byte-identical — the rotated
 // refresh token is never burned by a blank/expired Bearer. (A panic escaping to the
 // caller fails the t.Run outright, so reaching the assertions proves "never a panic".)
 func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileTokenResponses); n < 26 {
-		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 26", n)
+	if n := len(fixture.HostileTokenResponses); n < 27 {
+		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 27", n)
 	}
 
 	for _, tc := range fixture.HostileTokenResponses {
@@ -262,6 +324,7 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 			if n := calls.Load(); n != 1 {
 				t.Fatalf("a hostile 2xx must not trigger the reload-retry arm: want 1 endpoint call, got %d", n)
 			}
+			assertNoEcho(t, tc.Name, err, tc.MustNotEcho)
 
 			tokensAfter, err := os.ReadFile(store.TokensPath())
 			if err != nil {
@@ -283,10 +346,11 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 
 // Every implementation-defined 2xx token response (a leading UTF-8 BOM, duplicate keys,
 // deep nesting inside an unknown field, an integral float expires_in, a key in another
-// case) must EITHER succeed and persist access_token = "at-refreshed", OR fail with the
-// typed *TokenEndpointError (2xx status preserved) and leave both store files
-// byte-identical. Anything else — a panic, an untyped error, a wrong persisted access
-// token, a half-written store — fails, naming the case. The store/manager are seeded
+// case) must EITHER succeed and persist access_token = "at-refreshed", a refresh_token
+// that is "rt-refreshed" or the prior stored one (never empty), and expires_at = refresh
+// time + 3600, OR fail with the typed *TokenEndpointError (2xx status preserved) and leave
+// both store files byte-identical. Anything else — a panic, an untyped error, a wrong
+// persisted token or expiry, a half-written store — fails, naming the case. The store/manager are seeded
 // exactly as in the hostile harness.
 func TestConformanceImplementationDefinedTokenResponsesSucceedOrFailTypedUntouched(t *testing.T) {
 	fixture := loadConformanceFixture(t)
@@ -322,7 +386,9 @@ func TestConformanceImplementationDefinedTokenResponsesSucceedOrFailTypedUntouch
 			}
 
 			m := testManager(t, srv.URL, store, expiredTokens("r1"))
+			t0 := time.Now().Unix()
 			refreshErr := m.ForceRefresh(context.Background())
+			t1 := time.Now().Unix()
 			if n := calls.Load(); n != 1 {
 				t.Fatalf("case %s: want exactly 1 token-endpoint call (a 2xx never takes the reload-retry arm), got %d", tc.Name, n)
 			}
@@ -337,7 +403,15 @@ func TestConformanceImplementationDefinedTokenResponsesSucceedOrFailTypedUntouch
 				if persisted == nil || persisted.AccessToken != "at-refreshed" {
 					t.Fatalf("case %s: accepted, so the persisted access_token must be %q, got %+v", tc.Name, "at-refreshed", persisted)
 				}
-				t.Logf("case %s: accepted (persisted at-refreshed)", tc.Name)
+				// The rotation, or (the server's value dropped/blank) the prior stored one —
+				// never "" (the next refresh would 400) and never anything else.
+				if persisted.RefreshToken != "rt-refreshed" && persisted.RefreshToken != "r1" {
+					t.Fatalf("case %s: accepted, so the persisted refresh_token must be %q or the prior %q, got %q", tc.Name, "rt-refreshed", "r1", persisted.RefreshToken)
+				}
+				if lo, hi := t0+3600, t1+3600; persisted.ExpiresAt < lo || persisted.ExpiresAt > hi {
+					t.Fatalf("case %s: accepted, so the persisted expires_at must be within [%d, %d] (refresh time + 3600), got %d", tc.Name, lo, hi, persisted.ExpiresAt)
+				}
+				t.Logf("case %s: accepted (persisted at-refreshed, refresh_token %q)", tc.Name, persisted.RefreshToken)
 				return
 			}
 
@@ -372,8 +446,8 @@ func TestConformanceImplementationDefinedTokenResponsesSucceedOrFailTypedUntouch
 // zero-valued record (which would make IsAuthenticated lie), never a panic.
 func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileStoreFiles); n < 8 {
-		t.Fatalf("fixture shrank? hostile_store_files has %d cases, want >= 8", n)
+	if n := len(fixture.HostileStoreFiles); n < 14 {
+		t.Fatalf("fixture shrank? hostile_store_files has %d cases, want >= 14", n)
 	}
 
 	for _, tc := range fixture.HostileStoreFiles {
@@ -408,8 +482,91 @@ func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 			if !errors.As(loadErr, &sfe) {
 				t.Fatalf("want the typed *StoreFormatError, got %T: %v", loadErr, loadErr)
 			}
+			assertNoEcho(t, tc.Name, loadErr, tc.MustNotEcho)
 		})
 	}
+}
+
+// Every implementation-defined store file (content a parser may accept or reject, e.g.
+// nesting past its depth limit inside an unknown field) must EITHER load as exactly the
+// fixture's `expected` record OR fail with the typed *StoreFormatError (and no record) —
+// never an untyped error, a panic, or a record differing from `expected`. "Exactly" is
+// checked on the wire shape: the loaded record re-marshalled through this package's own
+// JSON tags must equal `expected` field-for-field.
+func TestConformanceImplementationDefinedStoreFilesLoadExactlyOrFailTyped(t *testing.T) {
+	fixture := loadConformanceFixture(t)
+	if n := len(fixture.ImplementationDefinedStoreFiles); n < 1 {
+		t.Fatalf("fixture shrank? implementation_defined_store_files has %d cases, want >= 1", n)
+	}
+
+	for _, tc := range fixture.ImplementationDefinedStoreFiles {
+		t.Run(tc.Name, func(t *testing.T) {
+			want := decodeJSONObject(t, tc.Name, "expected", tc.Expected)
+			if len(want) == 0 {
+				t.Fatalf("case %s: fixture `expected` is missing or empty", tc.Name)
+			}
+			store := NewStoreAt(t.TempDir())
+			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), []byte(tc.Content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var record any
+			var loadErr error
+			switch tc.File {
+			case "tokens.json":
+				tokens, err := store.LoadTokens()
+				if tokens != nil {
+					record = tokens
+				}
+				loadErr = err
+			case "credentials.json":
+				creds, err := store.LoadCredentials()
+				if creds != nil {
+					record = creds
+				}
+				loadErr = err
+			default:
+				t.Fatalf("fixture names an unknown store file %q", tc.File)
+			}
+
+			if loadErr != nil {
+				var sfe *StoreFormatError
+				if !errors.As(loadErr, &sfe) {
+					t.Fatalf("case %s: a rejection must be the typed *StoreFormatError, got %T: %v", tc.Name, loadErr, loadErr)
+				}
+				if record != nil {
+					t.Fatalf("case %s: a rejection must not also yield a record", tc.Name)
+				}
+				t.Logf("case %s: rejected typed (%v)", tc.Name, loadErr)
+				return
+			}
+			if record == nil {
+				t.Fatalf("case %s: loaded neither a record nor an error (an existing file read as absent)", tc.Name)
+			}
+			encoded, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := decodeJSONObject(t, tc.Name, "loaded record", encoded)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("case %s: accepted, so the loaded record must be exactly `expected`:\ngot:  %s\nwant: %s", tc.Name, encoded, tc.Expected)
+			}
+			t.Logf("case %s: accepted (exactly `expected`)", tc.Name)
+		})
+	}
+}
+
+// decodeJSONObject decodes a JSON object with numbers kept as json.Number (so an int64
+// expires_at compares exactly, never via float64 rounding).
+func decodeJSONObject(t *testing.T, name, what string, data []byte) map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		t.Fatalf("case %s: %s is not a JSON object: %v", name, what, err)
+	}
+	return m
 }
 
 // The canonical records load with exactly the fixture's values and survive a round-trip

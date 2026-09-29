@@ -294,8 +294,13 @@ function readRecord(filePath: string): Record<string, unknown> | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (e) {
-    throw new StoreFormatError(`${filePath} is not valid JSON: ${(e as Error).message}`);
+  } catch {
+    // The parser's own message is deliberately DROPPED (and the parse error is not
+    // chained as `cause`): V8's JSON.parse messages quote the input — e.g.
+    // `Unexpected token 'r', ..."en": rtSECRET, "... is not valid JSON` — and the store
+    // holds secrets. The file path alone locates the problem.
+    // Conformance: auth-cases.json hostile_store_files `must_not_echo` cases.
+    throw new StoreFormatError(`${filePath} is not valid JSON`);
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new StoreFormatError(`${filePath} must contain a JSON object`);

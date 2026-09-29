@@ -10,14 +10,21 @@ THERE, never here — its ``$comment`` is the contract):
   :class:`TokenEndpointError` (an :class:`AuthError` subclass — never a bare
   ``KeyError``/``TypeError``/``OverflowError``/``json.JSONDecodeError`` escaping), and
   ``tokens.json`` byte-identical afterwards (the rotated refresh token is never burned
-  by persisting a blank/expired Bearer);
+  by persisting a blank/expired Bearer); a case's ``must_not_echo`` string appears
+  nowhere in the error's text or any error it chains (``__cause__``/``__context__``);
 - implementation-defined 2xx token responses (a UTF-8 BOM, duplicate keys, deep
   nesting, an integral float ``expires_in``, an upper-case key) -> EITHER a successful
-  refresh that persists ``access_token == "at-refreshed"``, OR the typed
+  refresh that persists ``access_token == "at-refreshed"``, a refresh_token of
+  ``"rt-refreshed"`` or the prior stored one (never empty), and ``expires_at`` =
+  refresh time + 3600, OR the typed
   :class:`TokenEndpointError` (2xx status) with ``tokens.json`` byte-identical — never
   an untyped exception (e.g. ``RecursionError``) or a half-written store;
 - hostile store files -> the typed :class:`StoreFormatError`, never a default-filled
-  record that makes ``is_authenticated`` lie, and never an untyped exception;
+  record that makes ``is_authenticated`` lie, and never an untyped exception (plus the
+  same ``must_not_echo`` rule — the store holds secrets);
+- implementation-defined store files (nesting past a parser's depth limit) -> EITHER
+  exactly the case's ``expected`` record OR the typed :class:`StoreFormatError` —
+  never an untyped exception (e.g. ``RecursionError``);
 - successful refreshes from the fixture's stored ``prior`` record -> the persisted
   record carries EXACTLY the case's ``expected`` access_token, refresh_token, scope and
   token_type (an omitted/null/empty refresh_token or token_type, and a blank or
@@ -28,8 +35,9 @@ THERE, never here — its ``$comment`` is the contract):
   compatibility check — field names are the shared wire format, #54).
 
 Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-same fixture-shrink guards (>= 26 hostile token responses, >= 5 implementation-defined
-token responses, >= 8 hostile store files, >= 18 refresh-success cases) plus an exact top-level table-set guard, so a renamed or
+same fixture-shrink guards (>= 27 hostile token responses, >= 5 implementation-defined
+token responses, >= 14 hostile store files, >= 1 implementation-defined store file,
+>= 18 refresh-success cases) plus an exact top-level table-set guard, so a renamed or
 added table can't be silently skipped.
 Monorepo-only: the fixture is resolved by walking up from ``__file__`` to the repo
 root (nearest ancestor holding the justfile + README), never from the cwd.
@@ -74,6 +82,7 @@ FIXTURE = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 HOSTILE_TOKEN_RESPONSES = FIXTURE["hostile_token_responses"]
 IMPLEMENTATION_DEFINED_TOKEN_RESPONSES = FIXTURE["implementation_defined_token_responses"]
 HOSTILE_STORE_FILES = FIXTURE["hostile_store_files"]
+IMPLEMENTATION_DEFINED_STORE_FILES = FIXTURE["implementation_defined_store_files"]
 VALID_RECORDS = FIXTURE["valid_records"]
 REFRESH_SUCCESS = FIXTURE["refresh_success_cases"]
 REFRESH_SUCCESS_PRIOR = REFRESH_SUCCESS["prior"]
@@ -85,6 +94,7 @@ EXPECTED_TABLES = {
     "hostile_token_responses",
     "implementation_defined_token_responses",
     "hostile_store_files",
+    "implementation_defined_store_files",
     "refresh_success_cases",
     "valid_records",
 }
@@ -119,6 +129,40 @@ def response_body(case: dict) -> object:
     return case[column]
 
 
+def error_chain(err: BaseException) -> list:
+    """``err`` plus every error it chains — ``__cause__`` (``raise ... from``) and
+    ``__context__`` (implicit), recursively; a visited set guards against cycles."""
+    chain: list = []
+    seen: set = set()
+    pending = [err]
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        chain.append(current)
+        pending.extend((current.__cause__, current.__context__))
+    return chain
+
+
+def assert_does_not_echo(case: dict, err: BaseException) -> None:
+    """The fixture's ``must_not_echo`` rule: the secret appears NOWHERE in the error's
+    text or in any error it chains (a parser message can quote the input, and the
+    input carries token material). Both ``str()`` and ``repr()`` are checked — a
+    traceback or log line can render either."""
+    secret = case.get("must_not_echo")
+    if secret is None:
+        return
+    assert secret, f"case {case['name']}: must_not_echo must be a non-empty string"
+    for link in error_chain(err):
+        for rendering, text in (("str", str(link)), ("repr", repr(link))):
+            assert secret not in text, (
+                f"case {case['name']}: must_not_echo contract — the secret "
+                f"{secret!r} leaked into {rendering}() of the chained "
+                f"{type(link).__name__}"
+            )
+
+
 def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
     """Table-set guard: a renamed table (e.g. refresh_scope_cases ->
     refresh_success_cases) would KeyError at import, but an ADDED table would be
@@ -133,11 +177,12 @@ def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
 
 def test_fixture_has_not_shrunk() -> None:
     """Shrink guard: a fixture edit that drops hostile cases weakens EVERY language's
-    suite at once — fail loudly here (>= 26 hostile token responses, >= 5
-    implementation-defined token responses, >= 8 hostile store files, >= 18
-    refresh-success cases, like the other legs). pytest SKIPS a parametrize over an
+    suite at once — fail loudly here (>= 27 hostile token responses, >= 5
+    implementation-defined token responses, >= 14 hostile store files, >= 1
+    implementation-defined store file, >= 18 refresh-success cases, like the other
+    legs). pytest SKIPS a parametrize over an
     empty list, so an emptied table would otherwise pass silently."""
-    assert len(HOSTILE_TOKEN_RESPONSES) >= 26, (
+    assert len(HOSTILE_TOKEN_RESPONSES) >= 27, (
         f"fixture shrank? {len(HOSTILE_TOKEN_RESPONSES)} hostile_token_responses cases"
     )
     assert len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES) >= 5, (
@@ -145,8 +190,13 @@ def test_fixture_has_not_shrunk() -> None:
         f"{len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES)} "
         "implementation_defined_token_responses cases"
     )
-    assert len(HOSTILE_STORE_FILES) >= 8, (
+    assert len(HOSTILE_STORE_FILES) >= 14, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
+    )
+    assert len(IMPLEMENTATION_DEFINED_STORE_FILES) >= 1, (
+        "fixture shrank? "
+        f"{len(IMPLEMENTATION_DEFINED_STORE_FILES)} "
+        "implementation_defined_store_files cases"
     )
     assert len(REFRESH_SUCCESS_CASES) >= 18, (
         f"fixture shrank? {len(REFRESH_SUCCESS_CASES)} refresh_success_cases cases"
@@ -199,6 +249,7 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     assert len(token_endpoint.requests) == 1, (
         f"case {case['name']}: a hostile 2xx must not trigger the 400-reload-retry arm"
     )
+    assert_does_not_echo(case, err)
     # Burn-prevention: the on-disk record is byte-identical — the still-valid rotated
     # refresh token was never overwritten by a blank/expired Bearer.
     assert store.tokens_path.read_bytes() == bytes_before, (
@@ -216,7 +267,9 @@ def test_implementation_defined_2xx_token_response_succeeds_or_fails_typed_clean
     token_endpoint, tmp_path: Path, case: dict
 ) -> None:
     """Either outcome is allowed, but only in its clean form: a success persists
-    access_token == "at-refreshed" (the whole record reloads from disk), a failure is
+    access_token == "at-refreshed", a refresh_token that is "rt-refreshed" or the
+    prior stored one (never empty), and expires_at = refresh time + 3600 (the whole
+    record reloads from disk); a failure is
     the typed TokenEndpointError carrying the 2xx status with tokens.json
     byte-identical. An untyped exception, a wrong persisted token, or a half-written
     store fails, naming the case. Seeded exactly like the hostile harness."""
@@ -234,9 +287,12 @@ def test_implementation_defined_2xx_token_response_succeeds_or_fails_typed_clean
 
     contract = (
         "implementation_defined_token_responses contract: EITHER succeed and persist "
-        "access_token 'at-refreshed', OR fail with the typed TokenEndpointError (2xx) "
-        "and leave tokens.json untouched"
+        "access_token 'at-refreshed', refresh_token 'rt-refreshed' or the prior one "
+        "(never empty), expires_at = refresh time + 3600, OR fail with the typed "
+        "TokenEndpointError (2xx) and leave tokens.json untouched"
     )
+    prior_refresh_token = original_tokens().refresh_token
+    t0 = int(time.time())
     try:
         manager.force_refresh()
     except Exception as err:  # noqa: BLE001 — classifying ANY escape is the point
@@ -252,6 +308,7 @@ def test_implementation_defined_2xx_token_response_succeeds_or_fails_typed_clean
             f"byte-identical ({contract})"
         )
     else:
+        t1 = int(time.time())
         persisted = store.load_tokens()  # a half-written record raises StoreFormatError
         assert persisted is not None, (
             f"case {case['name']}: a successful refresh must persist tokens ({contract})"
@@ -259,6 +316,16 @@ def test_implementation_defined_2xx_token_response_succeeds_or_fails_typed_clean
         assert persisted.access_token == "at-refreshed", (
             f"case {case['name']}: a successful refresh must persist access_token "
             f"'at-refreshed', got {persisted.access_token!r} ({contract})"
+        )
+        assert persisted.refresh_token in ("rt-refreshed", prior_refresh_token), (
+            f"case {case['name']}: a successful refresh must persist refresh_token "
+            f"'rt-refreshed' or the prior {prior_refresh_token!r}, "
+            f"got {persisted.refresh_token!r} ({contract})"
+        )
+        assert t0 + 3600 <= persisted.expires_at <= t1 + 3600, (
+            f"case {case['name']}: expires_at must be (time of the refresh) + 3600, "
+            f"i.e. within [{t0 + 3600}, {t1 + 3600}], got {persisted.expires_at} "
+            f"({contract})"
         )
         assert manager.access_token() == "at-refreshed", (
             f"case {case['name']}: the manager must hand out the persisted token "
@@ -347,8 +414,49 @@ def test_hostile_store_file_fails_with_the_typed_store_format_error(
     err = excinfo.value
     assert isinstance(err, StoreFormatError), (
         f"case {case['name']}: expected the typed StoreFormatError, "
-        f"got {type(err).__name__}: {err!r}"
+        f"got {type(err).__name__}"
     )
+    assert_does_not_echo(case, err)
+
+
+@pytest.mark.parametrize(
+    "case",
+    IMPLEMENTATION_DEFINED_STORE_FILES,
+    ids=[c["name"] for c in IMPLEMENTATION_DEFINED_STORE_FILES],
+)
+def test_implementation_defined_store_file_loads_exactly_or_fails_typed(
+    tmp_path: Path, case: dict
+) -> None:
+    """Either outcome is allowed, but only in its clean form: the load returns EXACTLY
+    the case's ``expected`` fields, or raises the typed StoreFormatError. An untyped
+    exception (e.g. the RecursionError json.loads raises past the interpreter's
+    recursion limit) or a record with other values fails, naming the case."""
+    store = TokenStore(tmp_path)
+    (tmp_path / case["file"]).write_text(case["content"], encoding="utf-8")
+    assert case["file"] == "tokens.json", (
+        f"case {case['name']}: this harness only knows tokens.json, "
+        f"got {case['file']!r}"
+    )
+    contract = (
+        "implementation_defined_store_files contract: EITHER load exactly `expected` "
+        "OR fail with the typed StoreFormatError"
+    )
+    expected = case["expected"]
+    try:
+        tokens = store.load_tokens()
+    except Exception as err:  # noqa: BLE001 — classifying ANY escape is the point
+        assert isinstance(err, StoreFormatError), (
+            f"case {case['name']}: an untyped {type(err).__name__} escaped ({contract})"
+        )
+    else:
+        assert tokens is not None, (
+            f"case {case['name']}: an existing record must not load as None ({contract})"
+        )
+        for field, value in expected.items():
+            assert getattr(tokens, field) == value, (
+                f"case {case['name']}: loaded {field} must be {value!r}, "
+                f"got {getattr(tokens, field)!r} ({contract})"
+            )
 
 
 def test_canonical_valid_records_load_exactly_and_round_trip(tmp_path: Path) -> None:
