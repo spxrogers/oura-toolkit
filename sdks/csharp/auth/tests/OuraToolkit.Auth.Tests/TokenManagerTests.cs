@@ -237,6 +237,71 @@ public class TokenManagerTests
         Assert.Equal(1, endpoint.Calls);
     }
 
+    /// <summary>A 400 whose body bytes are NOT valid UTF-8 (a stray 0xFF inside the JSON text).</summary>
+    private static HttpResponseMessage BadRequestWithInvalidUtf8()
+    {
+        var bytes = Encoding.ASCII.GetBytes("{\"error\":\"invalid_grant\",\"x\":\"?\"}");
+        bytes[Array.IndexOf(bytes, (byte)'?')] = 0xFF;
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = content };
+    }
+
+    /// <summary>
+    /// A non-2xx body is diagnostics only, so it is decoded LENIENTLY: a 400 whose body is not
+    /// valid UTF-8 must still surface as the typed <see cref="TokenEndpointException"/> with
+    /// status 400 — the status is what the re-login arm (and the reload-retry arm below)
+    /// keys on. A strict decode would turn it into an untyped DecoderFallbackException.
+    /// </summary>
+    [Fact]
+    public async Task Refresh400WithInvalidUtf8BodyStillSurfacesTheTyped400()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r-dead"));
+        var tokensBefore = File.ReadAllBytes(temp.Store.TokensPath);
+        var endpoint = new MockTokenEndpoint(_ => BadRequestWithInvalidUtf8());
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r-dead"));
+
+        var thrown = await Record.ExceptionAsync(() => manager.GetAccessTokenAsync());
+        Assert.True(thrown is TokenEndpointException,
+            "a 400 with an invalid-UTF-8 body must surface the typed TokenEndpointException, got "
+            + (thrown is null ? "success" : $"{thrown.GetType().Name}: {thrown.Message}"));
+        var e = (TokenEndpointException)thrown!;
+        Assert.Equal(400, e.StatusCode);
+        Assert.Contains("invalid_grant", e.Body); // the readable diagnostics survive the bad byte
+        Assert.Equal(1, endpoint.Calls); // disk has not moved: no blind retry
+        Assert.True(tokensBefore.SequenceEqual(File.ReadAllBytes(temp.Store.TokensPath)),
+            "a failed refresh must leave tokens.json byte-identical");
+    }
+
+    /// <summary>
+    /// The reload-retry arm must still fire on a 400 whose body is not valid UTF-8: an
+    /// uncoordinated writer rotates to r2 mid-flight, the endpoint 400s r1 with a malformed
+    /// body, and the manager retries once with r2.
+    /// </summary>
+    [Fact]
+    public async Task Refresh400WithInvalidUtf8BodyStillTakesTheReloadRetryArm()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+        var endpoint = new MockTokenEndpoint(body =>
+        {
+            if (body.Contains("refresh_token=r1"))
+            {
+                temp.Store.SaveTokens(Fixtures.Expired("r2"));
+                return BadRequestWithInvalidUtf8();
+            }
+            return body.Contains("refresh_token=r2")
+                ? MockTokenEndpoint.TokenGrant("r3-access", "r3")
+                : MockTokenEndpoint.Json(HttpStatusCode.BadRequest, "\"unexpected refresh token\"");
+        });
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r1"));
+
+        Assert.Equal("r3-access", await manager.GetAccessTokenAsync());
+        Assert.Equal(2, endpoint.Calls); // r1 (400, invalid UTF-8) + r2 (retry)
+        Assert.Equal("r3", temp.Store.LoadTokens()!.RefreshToken);
+    }
+
     /// <summary>
     /// Refresh must start from the freshest persisted rotation, not stale memory — even
     /// when disk is also expired (so the adopt short-circuit does not apply).

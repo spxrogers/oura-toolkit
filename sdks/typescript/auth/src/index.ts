@@ -29,7 +29,6 @@ export type { EnvLookup } from "./store";
 export {
   accessTokenProvider,
   DEFAULT_SKEW_SECS,
-  MAX_EXPIRES_IN_SECS,
   TOKEN_ENDPOINT_TIMEOUT_MS,
   TokenManager,
 } from "./client";

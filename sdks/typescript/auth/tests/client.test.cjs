@@ -415,3 +415,9 @@ test("accessTokenProvider is a Configuration-compatible async accessToken functi
   assert.equal(await provider(), "fresh", "second call reuses the fresh token");
   assert.equal(endpoint.requests.length, 1);
 });
+
+test("the expires_in cap stays module-internal (not public API, like the other five companions)", () => {
+  // The cap is enforced inside the token-response parse (conformance: expires_in_at_cap /
+  // expires_in_above_cap); nothing consumes it, so exporting it would widen the API.
+  assert.equal("MAX_EXPIRES_IN_SECS" in auth, false, "MAX_EXPIRES_IN_SECS must not be exported");
+});

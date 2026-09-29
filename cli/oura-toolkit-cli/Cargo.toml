@@ -54,7 +54,6 @@ wiremock = "0.6"
 # Real IANA tz data for the DST gap/fold tests on DateRange::utc_bounds_in.
 chrono-tz = "0.10"
 serde_json = { workspace = true }
-tempfile = "3"
 # binary-level contract tests (exit codes / stream discipline) — see docs/cli-contract.md
 assert_cmd = "2"
 predicates = "3"

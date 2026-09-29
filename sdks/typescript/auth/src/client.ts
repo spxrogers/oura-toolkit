@@ -348,9 +348,11 @@ export class TokenManager {
  * `expires_at` is readable by every companion's store — including Rust's `i64` field and
  * the narrower integer types other languages decode into. Anything larger is not a real
  * expiry, so the response is rejected rather than clamped.
+ * Module-internal (not exported), like the other five companions' caps: nothing
+ * consumes it, and exporting it would widen the public API for no caller.
  * Conformance: auth-cases.json expires_in_at_cap / expires_in_above_cap.
  */
-export const MAX_EXPIRES_IN_SECS = 2_147_483_647;
+const MAX_EXPIRES_IN_SECS = 2_147_483_647;
 
 /** `value` if it is a non-empty string, else `undefined` (omitted/null/"" all fall back). */
 function nonEmptyString(value: unknown): string | undefined {

@@ -240,10 +240,11 @@ class TokenManager:
                 resp.status, resp.data.decode("utf-8", errors="replace")
             )
         # A hostile/broken 2xx body must surface as the typed TokenEndpointError, never
-        # a raw JSONDecodeError/KeyError/ValueError detonating downstream (mirrors the
-        # Rust crate's `resp.json::<TokenResponse>()?` -> AuthError::Serde mapping). The
-        # error body is a FIXED, secret-free description — the raw response is NOT echoed,
-        # since a partial 2xx body may carry token material.
+        # a raw JSONDecodeError/KeyError/ValueError/RecursionError detonating downstream
+        # (mirrors the Rust crate, which maps EVERY decode failure to
+        # `AuthError::InvalidTokenResponse` with a static message). The error body is a
+        # FIXED, secret-free description — the raw response is NOT echoed, since a
+        # partial 2xx body may carry token material.
         #
         # Strict UTF-8 first (conformance `body_invalid_utf8_*`; RFC 8259 §8.1): a body
         # that isn't valid UTF-8 ANYWHERE — unknown fields included — isn't JSON text at
@@ -256,11 +257,20 @@ class TokenManager:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response was not valid UTF-8"
             ) from e
+        # RecursionError too (conformance `body_deeply_nested`, an
+        # implementation_defined_token_responses case): json.loads recurses per nesting
+        # level, so a body nested past the interpreter's recursion limit — even inside
+        # an unknown field — raises RecursionError (a RuntimeError, NOT a ValueError).
+        # Rejecting it is allowed; letting it escape untyped is not.
         try:
             payload = json.loads(text)
         except ValueError as e:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response was not valid JSON"
+            ) from e
+        except RecursionError as e:
+            raise TokenEndpointError(
+                resp.status, "token-endpoint response was nested too deeply"
             ) from e
         if not isinstance(payload, dict):
             raise TokenEndpointError(

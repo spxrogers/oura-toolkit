@@ -27,15 +27,19 @@ pub enum AuthError {
     #[error("token endpoint returned HTTP {status}: {body}")]
     TokenEndpoint { status: u16, body: String },
 
-    /// The authorization-code exchange succeeded but returned no `refresh_token` — persisting
-    /// that state would break the next refresh, so it is rejected up front.
+    /// The authorization-code exchange succeeded but returned no (or an empty)
+    /// `refresh_token` — persisting that state would break the next refresh, so it is
+    /// rejected up front.
     #[error("token endpoint returned no refresh_token on the initial exchange")]
     MissingRefreshToken,
 
-    /// The token endpoint answered 2xx but the payload is unusable (empty `access_token`,
-    /// non-positive `expires_in`) — the hostile-but-2xx family (#58). Persisting it would
+    /// The token endpoint answered 2xx but the body is undecodable or unusable — the
+    /// hostile-but-2xx family (#58): not valid UTF-8, not a single well-formed JSON token
+    /// response (incl. a missing or wrong-typed required field, or trailing data), an empty
+    /// `access_token`, or an `expires_in` outside `1..=2147483647`. Persisting it would
     /// install a blank/expired Bearer AND burn the still-valid rotated refresh token, so it
-    /// is rejected up front and the store stays untouched.
+    /// is rejected up front and the store stays untouched. The message is static: it never
+    /// quotes the server's body.
     #[error("token endpoint returned an unusable success response: {0}")]
     InvalidTokenResponse(&'static str),
 
@@ -60,7 +64,9 @@ pub enum AuthError {
     #[error("token store format error: {0}")]
     Serde(#[from] serde_json::Error),
 
-    /// Transport error talking to the token endpoint.
+    /// Transport error talking to the token endpoint (connection, TLS, timeout, reading the
+    /// body). A 2xx body that arrives intact but can't be used is
+    /// [`AuthError::InvalidTokenResponse`] instead.
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
 }

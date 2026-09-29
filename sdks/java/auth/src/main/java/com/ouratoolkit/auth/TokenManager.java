@@ -67,7 +67,13 @@ public final class TokenManager {
     static final long MAX_EXPIRES_IN_SECS = 2_147_483_647L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            // A 2xx body is ONE JSON value and nothing but whitespace after it (RFC 8259 §2).
+            // Jackson's readTree otherwise stops after the first value and silently IGNORES
+            // the rest, so `{...} junk` or `{..}{..}` would be accepted and persisted while
+            // the other five companions reject it. Pinned by the fixture's
+            // body_trailing_data / body_two_objects hostile cases.
+            .configure(DeserializationFeature.FAIL_ON_TRAILING_TOKENS, true);
 
     private final TokenStore store;
     private final ClientCredentials credentials; // nullable: tokens-only use is legal
@@ -276,13 +282,17 @@ public final class TokenManager {
         try {
             node = MAPPER.readTree(bodyText);
         } catch (IOException e) {
-            throw new TransportException("token endpoint returned unparseable JSON", e);
+            // NO cause: Jackson's parse messages quote the offending body text (e.g.
+            // "Unrecognized token 'rt...'"), and a 2xx body may carry token material — a
+            // logged stack trace must not leak it (same as the UTF-8 branch above).
+            throw new TransportException("token endpoint returned unparseable JSON", null);
         }
         // A hostile or broken 2xx body must fail as a typed error, never a half-populated
         // token persisted to the store (an empty access_token or a non-positive expiry
         // would only resurface as a baffling 400 on the NEXT refresh, long after the cause).
-        // Mirrors go/auth/oauth.go:74-79. Messages carry NO token/secret material — the raw
-        // body is never echoed, since a partial 2xx payload may contain token material.
+        // Mirrors the Go companion's refreshTokens (sdks/go/auth/oauth.go). Messages carry
+        // NO token/secret material — the raw body is never echoed, since a partial 2xx
+        // payload may contain token material.
         // A string that isn't valid Unicode (e.g. a lone "\\ud800" escape, which Jackson
         // decodes into an unpaired UTF-16 surrogate) in any of the FOUR fields this companion
         // reads — access_token, refresh_token, token_type, scope — makes the RESPONSE

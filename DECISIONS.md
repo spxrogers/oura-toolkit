@@ -401,6 +401,9 @@ persisting a mangled refresh token would lose it anyway.
 - A body that isn't valid UTF-8 anywhere, unknown fields included (RFC 8259 §8.1: it isn't
   JSON text). Every companion checks the raw bytes before parsing, because Rust's decoder
   skips unread fields and TS/Java/C# otherwise decode bad bytes to U+FFFD.
+- Anything but whitespace after the one top-level JSON value (Java's Jackson silently ignored
+  trailing data and persisted the first object; its store reader did the same, so
+  `hostile_store_files` pins trailing data too).
 - A lone-surrogate escape like `"\ud800"` in any of the four fields a companion reads
   (`access_token`, `refresh_token`, `token_type`, `scope`; RFC 8259 §8.2). Unknown fields are
   not validated for this, and a case pins that too.
@@ -411,6 +414,13 @@ persisting a mangled refresh token would lose it anyway.
   overflow in debug builds, Go/Java/C# wrapped to a negative expiry, Python threw an untyped
   error on `1e400`, and TS/Python could write an `expires_at` Rust can't read back.
   `3600.0` is implementation-defined (TS can't tell it from `3600`).
+
+Some bodies are legitimately implementation-defined: a leading UTF-8 BOM (RFC 8259 §8.1 lets a
+parser ignore it; TS and C# do), duplicate keys (§4), nesting past a parser's depth limit, an
+integral float, a key in another case (Go matches keys case-insensitively). Rather than force
+one behavior, `implementation_defined_token_responses` pins the property that matters: each
+either succeeds with the returned access token or fails typed with the store untouched — it
+caught Python leaking an untyped `RecursionError` on deep nesting.
 
 Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
 untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even

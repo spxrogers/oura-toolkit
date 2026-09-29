@@ -96,7 +96,11 @@ public final class TokenStore {
                 // A JSON `null` for a primitive field (e.g. "expires_at": null) must be a typed
                 // store-format error, NOT silently coerced to 0L (which would masquerade as an
                 // already-expired token). serde rejects this; match it.
-                .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
+                .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true)
+                // A record is ONE JSON value: `{...} junk` or `{..}{..}` is a typed
+                // store-format error, as serde_json (and every other companion's parser)
+                // rejects it — Jackson's readValue otherwise silently ignores the rest.
+                .configure(DeserializationFeature.FAIL_ON_TRAILING_TOKENS, true);
         // A JSON number/boolean where a string field is expected (e.g. "client_id": 7)
         // must be a typed store-format error, NOT silently coerced to "7" — serde rejects
         // wrong-typed fields, and the shared store's wire format is serde's (conformance
@@ -257,8 +261,10 @@ public final class TokenStore {
             // Malformed JSON, a wrong-typed or missing required field, or a JSON null for a
             // primitive (FAIL_ON_NULL_FOR_PRIMITIVES): surface ONE typed store-format error,
             // mirroring the Rust store's typed Serde error. The message names the file but
-            // NEVER echoes its bytes (the record holds secrets).
-            throw new StoreException(path.getFileName() + " is not a valid store record", e);
+            // NEVER echoes its bytes (the record holds secrets) — and Jackson's exception is
+            // NOT chained as the cause, because its message quotes the offending text
+            // ("Unrecognized token 'rt…'"), which a logged stack trace would print.
+            throw new StoreException(path.getFileName() + " is not a valid store record", null);
         }
         if (value == null) {
             // A literal `null` JSON document deserializes to Java null. Left as

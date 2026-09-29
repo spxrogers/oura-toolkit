@@ -5,13 +5,19 @@
 // canonical store records that every companion suite must exercise; new cases are added
 // THERE, never here — and its `$comment` is the contract):
 //
-//  - the fixture's top-level tables are EXACTLY the four below, so a table added to the
+//  - the fixture's top-level tables are EXACTLY the five below, so a table added to the
 //    fixture can't be silently ignored by this leg;
 //  - hostile_token_responses: a hostile-but-2xx token response (`body` JSON, `raw_body`
 //    verbatim, or `raw_body_base64` decoded bytes — e.g. invalid UTF-8) -> typed
 //    TokenEndpointError (never a bare SyntaxError/TypeError escaping), tokens.json
 //    byte-identical afterwards (the rotated refresh token is never burned by persisting
-//    a blank/expired Bearer);
+//    a blank/expired Bearer) — incl. anything but whitespace after the one top-level
+//    JSON value (trailing junk, a second object);
+//  - implementation_defined_token_responses: a 2xx where companions may legitimately
+//    differ (leading BOM, duplicate keys, deep nesting, an integral float, an uppercase
+//    key) -> EITHER success persisting access_token "at-refreshed", OR the typed
+//    TokenEndpointError (2xx status) with tokens.json byte-identical — never an untyped
+//    throw, a wrong persisted token, or a half-written store;
 //  - refresh_success_cases: a successful refresh from the fixture's `prior` record
 //    persists EXACTLY `expected` (access_token, refresh_token, scope, token_type) and
 //    expires_at = refresh time + expected.expires_in — incl. the omitted/null/blank
@@ -23,8 +29,9 @@
 //    check — field names are the shared wire format, #54).
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-// same test structure, same fixture-shrink guards (>= 24 hostile token responses,
-// >= 17 refresh success cases, >= 8 hostile store files).
+// same test structure, same fixture-shrink guards (>= 26 hostile token responses, >= 5
+// implementation-defined token responses, >= 18 refresh success cases, >= 8 hostile
+// store files).
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -80,7 +87,13 @@ test("conformance: the fixture's top-level tables are exactly the ones this leg 
     .sort();
   assert.deepEqual(
     tables,
-    ["hostile_store_files", "hostile_token_responses", "refresh_success_cases", "valid_records"],
+    [
+      "hostile_store_files",
+      "hostile_token_responses",
+      "implementation_defined_token_responses",
+      "refresh_success_cases",
+      "valid_records",
+    ],
     "auth-cases.json top-level tables changed: iterate the new table in this suite"
   );
 });
@@ -88,7 +101,7 @@ test("conformance: the fixture's top-level tables are exactly the ones this leg 
 test("conformance: hostile 2xx token responses fail typed and leave the store untouched", async (t) => {
   const cases = fixture.hostile_token_responses;
   assert.ok(Array.isArray(cases), "hostile_token_responses table");
-  assert.ok(cases.length >= 24, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 26, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;
@@ -147,6 +160,74 @@ test("conformance: hostile 2xx token responses fail typed and leave the store un
   }
 });
 
+test("conformance: implementation-defined 2xx token responses succeed cleanly or fail typed", async (t) => {
+  const cases = fixture.implementation_defined_token_responses;
+  assert.ok(Array.isArray(cases), "implementation_defined_token_responses table");
+  assert.ok(cases.length >= 5, `fixture shrank? ${cases.length} cases`);
+
+  for (const c of cases) {
+    const name = c.name;
+    const payload = casePayload(c);
+
+    const endpoint = await startTokenEndpoint((_params, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(payload);
+    });
+    t.after(endpoint.close);
+
+    // Seeded exactly as the hostile harness seeds it.
+    const store = withTempStore(t);
+    store.saveCredentials(credentials());
+    store.saveTokens(expiredTokens("rt-original"));
+    const bytesBefore = fs.readFileSync(store.tokensPath());
+
+    const manager = new auth.TokenManager({
+      store,
+      credentials: credentials(),
+      tokens: expiredTokens("rt-original"),
+      tokenUrl: endpoint.url,
+    });
+
+    let thrown = null;
+    try {
+      await manager.forceRefresh();
+    } catch (e) {
+      thrown = e;
+    }
+    assert.equal(endpoint.requests.length, 1, `case ${name}: the refresh must call the endpoint exactly once`);
+
+    if (thrown === null) {
+      // Outcome A: success — the PERSISTED record (a fresh load from disk) carries the
+      // response's access token, never a stale/blank/mangled one.
+      const persisted = store.loadTokens();
+      assert.notEqual(persisted, null, `case ${name}: a successful refresh must persist tokens`);
+      assert.equal(
+        persisted.accessToken(),
+        "at-refreshed",
+        `case ${name}: a successful refresh must persist access_token "at-refreshed"`
+      );
+    } else {
+      // Outcome B: the TYPED failure — TokenEndpointError carrying the 2xx status (never
+      // an untyped SyntaxError/RangeError/TypeError, never a mis-filed variant) — with the
+      // store UNTOUCHED (no half-written record).
+      assert.ok(
+        thrown instanceof auth.TokenEndpointError,
+        `case ${name}: must succeed or fail with the typed TokenEndpointError, got ` +
+          `${thrown && thrown.constructor.name}: ${thrown}`
+      );
+      assert.ok(
+        thrown.status >= 200 && thrown.status <= 299,
+        `case ${name}: the typed failure must carry the 2xx status, got ${thrown.status}`
+      );
+      const bytesAfter = fs.readFileSync(store.tokensPath());
+      assert.ok(
+        bytesBefore.equals(bytesAfter),
+        `case ${name}: a typed failure must leave tokens.json byte-identical (no half-written store)`
+      );
+    }
+  }
+});
+
 test("conformance: refresh_success_cases persist exactly `expected`", async (t) => {
   const table = fixture.refresh_success_cases;
   assert.ok(table && typeof table === "object", "refresh_success_cases table");
@@ -158,7 +239,7 @@ test("conformance: refresh_success_cases persist exactly `expected`", async (t) 
   }
   const cases = table.cases;
   assert.ok(Array.isArray(cases), "refresh_success_cases.cases");
-  assert.ok(cases.length >= 17, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 18, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;

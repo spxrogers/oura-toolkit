@@ -24,7 +24,7 @@
 use oura_toolkit_auth::{
     exchange_code_at, AuthError, ClientCredentials, TokenManager, TokenStore, Tokens,
 };
-use wiremock::matchers::method;
+use wiremock::matchers::{body_string_contains, method};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Repo root: nearest ancestor holding the justfile + README (same walk as bundled_spec).
@@ -44,43 +44,37 @@ fn fixture() -> serde_json::Value {
         .expect("fixture is valid JSON")
 }
 
-/// The mock response for a fixture case: `raw_body_base64` (bytes JSON can't hold) or
-/// `raw_body` sent verbatim, else the JSON `body`.
+/// The mock response for a fixture case: exactly one of `body` (JSON), `raw_body` (sent
+/// verbatim) or `raw_body_base64` (bytes JSON can't hold) — a case naming two would silently
+/// test only one of them.
 fn response_for(case: &serde_json::Value) -> ResponseTemplate {
-    if let Some(b64) = case.get("raw_body_base64").and_then(|v| v.as_str()) {
-        ResponseTemplate::new(200).set_body_raw(base64_decode(b64), "application/json")
-    } else if let Some(raw) = case.get("raw_body").and_then(|v| v.as_str()) {
-        ResponseTemplate::new(200).set_body_raw(raw.as_bytes().to_vec(), "application/json")
-    } else {
-        ResponseTemplate::new(200).set_body_json(case["body"].clone())
-    }
-}
-
-/// Standard-alphabet base64 (padding required) — enough for the fixture, no extra dep.
-fn base64_decode(s: &str) -> Vec<u8> {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let sextet = |c: u8| {
-        ALPHABET
-            .iter()
-            .position(|&a| a == c)
-            .unwrap_or_else(|| panic!("fixture: invalid base64 byte {c:?}")) as u32
-    };
-    let bytes = s.as_bytes();
+    use base64::Engine as _;
+    let name = case["name"].as_str().unwrap_or("<unnamed>");
+    let columns: Vec<&str> = ["body", "raw_body", "raw_body_base64"]
+        .into_iter()
+        .filter(|k| case.get(*k).is_some())
+        .collect();
     assert_eq!(
-        bytes.len() % 4,
-        0,
-        "fixture: base64 length must be a multiple of 4"
+        columns.len(),
+        1,
+        "fixture case {name}: exactly one body column, got {columns:?}"
     );
-    let mut out = Vec::new();
-    for chunk in bytes.chunks(4) {
-        let pad = chunk.iter().filter(|&&c| c == b'=').count();
-        let n = chunk
-            .iter()
-            .map(|&c| if c == b'=' { 0 } else { sextet(c) })
-            .fold(0u32, |acc, v| (acc << 6) | v);
-        out.extend_from_slice(&n.to_be_bytes()[1..4 - pad]);
+    let raw = |k: &str| {
+        case[k]
+            .as_str()
+            .unwrap_or_else(|| panic!("case {name}: {k} is a string"))
+    };
+    match columns[0] {
+        "raw_body_base64" => ResponseTemplate::new(200).set_body_raw(
+            base64::engine::general_purpose::STANDARD
+                .decode(raw("raw_body_base64"))
+                .unwrap_or_else(|e| panic!("case {name}: bad base64: {e}")),
+            "application/json",
+        ),
+        "raw_body" => ResponseTemplate::new(200)
+            .set_body_raw(raw("raw_body").as_bytes().to_vec(), "application/json"),
+        _ => ResponseTemplate::new(200).set_body_json(case["body"].clone()),
     }
-    out
 }
 
 fn unix_now() -> i64 {
@@ -116,7 +110,7 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 24, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 26, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -165,7 +159,7 @@ async fn hostile_2xx_token_responses_fail_the_code_exchange_typed() {
         .as_array()
         .expect("hostile_token_responses table")
         .clone();
-    assert!(cases.len() >= 24, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 26, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -205,13 +199,19 @@ async fn refresh_success_cases_persist_the_expected_record() {
             .to_string()
     };
     let cases = table["cases"].as_array().expect("cases").clone();
-    assert!(cases.len() >= 17, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 18, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
         let expected = &case["expected"];
         let server = MockServer::start().await;
         Mock::given(method("POST"))
+            // The refresh must SEND the stored (prior) refresh token; `.expect(1)` then fails
+            // a request that sent anything else.
+            .and(body_string_contains(format!(
+                "refresh_token={}",
+                field(prior, "refresh_token")
+            )))
             .respond_with(response_for(&case))
             .named(name) // a failed `.expect(1)` (checked on drop) then names the case
             .expect(1)
@@ -276,6 +276,60 @@ async fn refresh_success_cases_persist_the_expected_record() {
     }
 }
 
+/// Bodies where companions may legitimately differ (BOM, duplicate keys, deep nesting, …):
+/// the refresh either succeeds with the returned access token, or fails with the typed
+/// invalid-response error and leaves the store byte-identical — never a panic, never a
+/// half-written store.
+#[tokio::test]
+async fn implementation_defined_token_responses_succeed_or_fail_typed() {
+    let cases = fixture()["implementation_defined_token_responses"]
+        .as_array()
+        .expect("implementation_defined_token_responses table")
+        .clone();
+    assert!(cases.len() >= 5, "fixture shrank? {} cases", cases.len());
+
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(response_for(&case))
+            .named(name)
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_credentials(&credentials()).unwrap();
+        store.save_tokens(&original_tokens()).unwrap();
+        let bytes_before = std::fs::read(store.tokens_path()).unwrap();
+        let mut manager =
+            TokenManager::from_parts(store.clone(), Some(credentials()), Some(original_tokens()));
+        manager.override_token_url(server.uri());
+
+        match manager.force_refresh().await {
+            Ok(_) => {
+                let saved = store.load_tokens().unwrap().expect("tokens persisted");
+                assert_eq!(
+                    saved.access_token, "at-refreshed",
+                    "case {name}: a success must persist the returned access token"
+                );
+            }
+            Err(err) => {
+                assert!(
+                    matches!(err, AuthError::InvalidTokenResponse(_)),
+                    "case {name}: a failure must be AuthError::InvalidTokenResponse, got {err:?}"
+                );
+                assert_eq!(
+                    std::fs::read(store.tokens_path()).unwrap(),
+                    bytes_before,
+                    "case {name}: a failure must leave the store UNTOUCHED"
+                );
+            }
+        }
+    }
+}
+
 /// Every fixture table is exercised by this suite: a table added to the fixture must be
 /// mapped here (and in the other five suites), never silently ignored.
 #[test]
@@ -293,6 +347,7 @@ fn every_fixture_table_is_mapped_by_this_suite() {
         [
             "hostile_store_files",
             "hostile_token_responses",
+            "implementation_defined_token_responses",
             "refresh_success_cases",
             "valid_records"
         ]

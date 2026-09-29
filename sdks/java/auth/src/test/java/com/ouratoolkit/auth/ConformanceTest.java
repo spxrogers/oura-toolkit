@@ -13,9 +13,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -40,6 +41,10 @@ import org.junit.jupiter.api.io.TempDir;
  *       not a 400 — the reload-retry arm must not misfire), and {@code tokens.json} /
  *       {@code credentials.json} byte-identical afterwards (persisting a blank/expired
  *       Bearer would burn the still-valid rotated refresh token);</li>
+ *   <li>implementation-defined 2xx token responses → EITHER a successful refresh that
+ *       persists access_token {@code at-refreshed}, OR the typed {@link TransportException}
+ *       with {@code tokens.json} byte-identical — never an unchecked throw, a wrong
+ *       persisted token, or a half-written store;</li>
  *   <li>hostile store files → the typed {@link StoreException}, never a null-filled
  *       {@link Tokens} that would make {@code isAuthenticated} lie, never an unchecked
  *       crash;</li>
@@ -101,19 +106,31 @@ class ConformanceTest {
      * (bytes JSON can't hold, e.g. invalid UTF-8), {@code raw_body} VERBATIM (deliberately
      * not JSON, or escapes a re-serialization would normalize), else the structured
      * {@code body} re-serialized, so a wrong-typed field (42, "soon") reaches the
-     * companion exactly as authored.
+     * companion exactly as authored. A case must carry EXACTLY ONE of the three — two
+     * would make which bytes are served depend on this helper's precedence (and differ
+     * across legs), none would serve nothing — and fails naming the case otherwise.
      */
     private static byte[] caseBody(JsonNode testCase) throws IOException {
-        if (testCase.hasNonNull("raw_body_base64")) {
-            return Base64.getDecoder().decode(testCase.get("raw_body_base64").asText());
+        String name = testCase.get("name").asText();
+        int sources = 0;
+        for (String key : new String[] {"body", "raw_body", "raw_body_base64"}) {
+            if (testCase.has(key)) {
+                sources++;
+            }
         }
-        if (testCase.hasNonNull("raw_body")) {
-            return testCase.get("raw_body").asText().getBytes(StandardCharsets.UTF_8);
+        assertEquals(1, sources, name + ": case must carry EXACTLY ONE of body / raw_body / "
+                + "raw_body_base64 (has " + sources + ")");
+        if (testCase.has("raw_body_base64")) {
+            JsonNode b64 = testCase.get("raw_body_base64");
+            assertTrue(b64.isTextual(), name + ": raw_body_base64 must be a string");
+            return Base64.getDecoder().decode(b64.asText());
         }
-        JsonNode body = testCase.get("body");
-        assertNotNull(body, testCase.get("name").asText()
-                + ": case has none of body / raw_body / raw_body_base64");
-        return MAPPER.writeValueAsBytes(body);
+        if (testCase.has("raw_body")) {
+            JsonNode raw = testCase.get("raw_body");
+            assertTrue(raw.isTextual(), name + ": raw_body must be a string");
+            return raw.asText().getBytes(StandardCharsets.UTF_8);
+        }
+        return MAPPER.writeValueAsBytes(testCase.get("body"));
     }
 
     // --- 1. hostile-but-2xx token responses ----------------------------------------------
@@ -130,9 +147,9 @@ class ConformanceTest {
             throws IOException {
         JsonNode cases = fixture().get("hostile_token_responses");
         assertNotNull(cases, "fixture lost its hostile_token_responses table");
-        assertTrue(cases.size() >= 24,
+        assertTrue(cases.size() >= 26,
                 "fixture shrank? hostile_token_responses has " + cases.size()
-                        + " cases, want >= 24");
+                        + " cases, want >= 26");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileTokenResponseRejected(c)));
@@ -170,6 +187,79 @@ class ConformanceTest {
             assertArrayEquals(credsBefore, Files.readAllBytes(store.credentialsPath()),
                     name + ": credentials.json must be byte-identical after a failed "
                             + "refresh");
+        }
+    }
+
+    // --- 1b. implementation-defined 2xx token responses ----------------------------------
+
+    /**
+     * 2xx bodies where companions may legitimately differ (a leading UTF-8 BOM, duplicate
+     * keys, nesting past a parser's depth limit, an integral float expires_in, an
+     * upper-case key). Seeded exactly like the hostile harness; the refresh must EITHER
+     * succeed and persist access_token {@code at-refreshed}, OR fail with the typed
+     * {@link TransportException} leaving both records byte-identical. Anything else — an
+     * unchecked exception/error (e.g. a StackOverflowError on deep nesting), a different
+     * persisted access token, or a changed store on failure — fails, naming the case.
+     */
+    @TestFactory
+    Stream<DynamicTest> implementationDefinedTokenResponsesSucceedOrFailTypedCleanly()
+            throws IOException {
+        JsonNode cases = fixture().get("implementation_defined_token_responses");
+        assertNotNull(cases, "fixture lost its implementation_defined_token_responses table");
+        assertTrue(cases.size() >= 5,
+                "fixture shrank? implementation_defined_token_responses has " + cases.size()
+                        + " cases, want >= 5");
+        return StreamSupport.stream(cases.spliterator(), false)
+                .map(c -> DynamicTest.dynamicTest(
+                        c.get("name").asText(),
+                        () -> assertImplementationDefinedResponseHandledCleanly(c)));
+    }
+
+    private void assertImplementationDefinedResponseHandledCleanly(JsonNode testCase)
+            throws Exception {
+        String name = testCase.get("name").asText();
+        byte[] body = caseBody(testCase);
+
+        Path dir = caseDir("impl-defined-" + name);
+        TokenStore store = new TokenStore(dir);
+        store.saveCredentials(new ClientCredentials("cid", "secret"));
+        store.saveTokens(expiredTokens("r1"));
+        byte[] tokensBefore = Files.readAllBytes(store.tokensPath());
+        byte[] credsBefore = Files.readAllBytes(store.credentialsPath());
+
+        try (TokenEndpointStub stub = new TokenEndpointStub(
+                form -> new TokenEndpointStub.Response(200, body))) {
+            TokenManager m = new TokenManager(
+                    store, new ClientCredentials("cid", "secret"), expiredTokens("r1"));
+            m.overrideTokenUrl(stub.url());
+
+            Throwable thrown = null;
+            try {
+                m.forceRefresh();
+            } catch (Throwable t) { // incl. Errors: a StackOverflowError must fail HERE, named
+                thrown = t;
+            }
+            assertEquals(1, stub.requests.get(),
+                    name + ": a 2xx is not a 400 — the endpoint must be hit exactly once");
+            if (thrown == null) {
+                Tokens persisted = store.loadTokens().orElseThrow(() -> new AssertionError(
+                        name + ": a successful refresh must persist tokens.json"));
+                assertEquals("at-refreshed", persisted.getAccessToken(),
+                        name + ": an ACCEPTED implementation-defined response must persist "
+                                + "access_token = at-refreshed exactly");
+            } else {
+                if (!(thrown instanceof TransportException)) {
+                    throw new AssertionError(name + ": an implementation-defined response "
+                            + "must either succeed or fail with the typed TransportException, "
+                            + "got " + thrown.getClass().getName(), thrown);
+                }
+                assertArrayEquals(tokensBefore, Files.readAllBytes(store.tokensPath()),
+                        name + ": a REJECTED implementation-defined response must leave "
+                                + "tokens.json byte-identical (no half-written store)");
+                assertArrayEquals(credsBefore, Files.readAllBytes(store.credentialsPath()),
+                        name + ": credentials.json must be byte-identical after a failed "
+                                + "refresh");
+            }
         }
     }
 
@@ -298,9 +388,9 @@ class ConformanceTest {
         assertNotNull(prior, "fixture's refresh_success_cases lost its prior record");
         JsonNode cases = table.get("cases");
         assertNotNull(cases, "fixture's refresh_success_cases lost its cases");
-        assertTrue(cases.size() >= 17,
+        assertTrue(cases.size() >= 18,
                 "fixture shrank? refresh_success_cases has " + cases.size()
-                        + " cases, want >= 17");
+                        + " cases, want >= 18");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(),
@@ -337,8 +427,11 @@ class ConformanceTest {
                 requiredText(priorRecord, "token_type", "prior"));
         store.saveTokens(prior);
 
-        try (TokenEndpointStub stub = new TokenEndpointStub(
-                form -> new TokenEndpointStub.Response(200, body))) {
+        AtomicReference<String> sentRefreshToken = new AtomicReference<>();
+        try (TokenEndpointStub stub = new TokenEndpointStub(form -> {
+            sentRefreshToken.set(form.get("refresh_token"));
+            return new TokenEndpointStub.Response(200, body);
+        })) {
             TokenManager m = new TokenManager(
                     store, new ClientCredentials("cid", "secret"), prior);
             m.overrideTokenUrl(stub.url());
@@ -349,6 +442,10 @@ class ConformanceTest {
 
             assertEquals(1, stub.requests.get(),
                     name + ": the refresh must call the token endpoint exactly once");
+            assertEquals("rt-prior", prior.getRefreshToken(),
+                    "fixture's refresh_success_cases.prior.refresh_token drifted from rt-prior");
+            assertEquals(prior.getRefreshToken(), sentRefreshToken.get(),
+                    name + ": the refresh request must SEND the prior refresh_token");
             Tokens persisted = store.loadTokens().orElseThrow(
                     () -> new AssertionError(name + ": a successful refresh must persist"));
             assertEquals(requiredText(expected, "access_token", name + ".expected"),
@@ -377,22 +474,24 @@ class ConformanceTest {
     // --- sanity: the fixture's tables are the ones this suite knows how to map ------------
 
     /**
-     * If the fixture grows a NEW table, this leg must be extended deliberately — an
-     * unknown top-level key failing here beats ten silently-unexercised cases.
+     * The fixture's tables must be EXACTLY the five this suite maps (plus {@code $comment}):
+     * a NEW table fails here (this leg must be extended deliberately — beats ten
+     * silently-unexercised cases), and so does a renamed/removed one.
      */
     @Test
     void everyFixtureTableIsMappedByThisSuite() throws IOException {
-        List<String> known = List.of(
-                "$comment", "hostile_token_responses", "hostile_store_files", "valid_records",
-                "refresh_success_cases");
-        List<String> unknown = new ArrayList<>();
-        fixture().fieldNames().forEachRemaining(f -> {
-            if (!known.contains(f)) {
-                unknown.add(f);
-            }
-        });
-        assertEquals(List.of(), unknown,
-                "the shared fixture grew tables this Java leg does not exercise — extend "
-                        + "ConformanceTest to map them");
+        Set<String> known = new TreeSet<>(Set.of(
+                "$comment",
+                "hostile_token_responses",
+                "implementation_defined_token_responses",
+                "hostile_store_files",
+                "refresh_success_cases",
+                "valid_records"));
+        Set<String> actual = new TreeSet<>();
+        fixture().fieldNames().forEachRemaining(actual::add);
+        assertEquals(known, actual,
+                "the shared fixture's tables must be exactly the ones this Java leg maps — "
+                        + "extend ConformanceTest for a new table; a missing one means the "
+                        + "fixture lost coverage");
     }
 }

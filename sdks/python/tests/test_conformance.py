@@ -11,6 +11,11 @@ THERE, never here — its ``$comment`` is the contract):
   ``KeyError``/``TypeError``/``OverflowError``/``json.JSONDecodeError`` escaping), and
   ``tokens.json`` byte-identical afterwards (the rotated refresh token is never burned
   by persisting a blank/expired Bearer);
+- implementation-defined 2xx token responses (a UTF-8 BOM, duplicate keys, deep
+  nesting, an integral float ``expires_in``, an upper-case key) -> EITHER a successful
+  refresh that persists ``access_token == "at-refreshed"``, OR the typed
+  :class:`TokenEndpointError` (2xx status) with ``tokens.json`` byte-identical — never
+  an untyped exception (e.g. ``RecursionError``) or a half-written store;
 - hostile store files -> the typed :class:`StoreFormatError`, never a default-filled
   record that makes ``is_authenticated`` lie, and never an untyped exception;
 - successful refreshes from the fixture's stored ``prior`` record -> the persisted
@@ -23,8 +28,8 @@ THERE, never here — its ``$comment`` is the contract):
   compatibility check — field names are the shared wire format, #54).
 
 Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-same fixture-shrink guards (>= 24 hostile token responses, >= 8 hostile store files,
->= 17 refresh-success cases) plus an exact top-level table-set guard, so a renamed or
+same fixture-shrink guards (>= 26 hostile token responses, >= 5 implementation-defined
+token responses, >= 8 hostile store files, >= 18 refresh-success cases) plus an exact top-level table-set guard, so a renamed or
 added table can't be silently skipped.
 Monorepo-only: the fixture is resolved by walking up from ``__file__`` to the repo
 root (nearest ancestor holding the justfile + README), never from the cwd.
@@ -67,6 +72,7 @@ FIXTURE_PATH = _repo_root() / "codegen" / "conformance" / "auth-cases.json"
 FIXTURE = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 
 HOSTILE_TOKEN_RESPONSES = FIXTURE["hostile_token_responses"]
+IMPLEMENTATION_DEFINED_TOKEN_RESPONSES = FIXTURE["implementation_defined_token_responses"]
 HOSTILE_STORE_FILES = FIXTURE["hostile_store_files"]
 VALID_RECORDS = FIXTURE["valid_records"]
 REFRESH_SUCCESS = FIXTURE["refresh_success_cases"]
@@ -77,6 +83,7 @@ REFRESH_SUCCESS_CASES = REFRESH_SUCCESS["cases"]
 #: fixture that this suite doesn't know about would otherwise be silently ignored.
 EXPECTED_TABLES = {
     "hostile_token_responses",
+    "implementation_defined_token_responses",
     "hostile_store_files",
     "refresh_success_cases",
     "valid_records",
@@ -126,16 +133,22 @@ def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
 
 def test_fixture_has_not_shrunk() -> None:
     """Shrink guard: a fixture edit that drops hostile cases weakens EVERY language's
-    suite at once — fail loudly here (>= 24 hostile token responses, >= 8 hostile store
-    files, >= 17 refresh-success cases, like the other legs). pytest SKIPS a
-    parametrize over an empty list, so an emptied table would otherwise pass silently."""
-    assert len(HOSTILE_TOKEN_RESPONSES) >= 24, (
+    suite at once — fail loudly here (>= 26 hostile token responses, >= 5
+    implementation-defined token responses, >= 8 hostile store files, >= 18
+    refresh-success cases, like the other legs). pytest SKIPS a parametrize over an
+    empty list, so an emptied table would otherwise pass silently."""
+    assert len(HOSTILE_TOKEN_RESPONSES) >= 26, (
         f"fixture shrank? {len(HOSTILE_TOKEN_RESPONSES)} hostile_token_responses cases"
+    )
+    assert len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES) >= 5, (
+        "fixture shrank? "
+        f"{len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES)} "
+        "implementation_defined_token_responses cases"
     )
     assert len(HOSTILE_STORE_FILES) >= 8, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
     )
-    assert len(REFRESH_SUCCESS_CASES) >= 17, (
+    assert len(REFRESH_SUCCESS_CASES) >= 18, (
         f"fixture shrank? {len(REFRESH_SUCCESS_CASES)} refresh_success_cases cases"
     )
 
@@ -191,6 +204,68 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     assert store.tokens_path.read_bytes() == bytes_before, (
         f"case {case['name']}: tokens.json must be byte-identical "
         "(store UNTOUCHED, rotation not burned)"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    IMPLEMENTATION_DEFINED_TOKEN_RESPONSES,
+    ids=[c["name"] for c in IMPLEMENTATION_DEFINED_TOKEN_RESPONSES],
+)
+def test_implementation_defined_2xx_token_response_succeeds_or_fails_typed_cleanly(
+    token_endpoint, tmp_path: Path, case: dict
+) -> None:
+    """Either outcome is allowed, but only in its clean form: a success persists
+    access_token == "at-refreshed" (the whole record reloads from disk), a failure is
+    the typed TokenEndpointError carrying the 2xx status with tokens.json
+    byte-identical. An untyped exception, a wrong persisted token, or a half-written
+    store fails, naming the case. Seeded exactly like the hostile harness."""
+    payload = response_body(case)
+    token_endpoint.handler = lambda form: (200, payload)
+
+    store = TokenStore(tmp_path)
+    store.save_credentials(CREDENTIALS)
+    store.save_tokens(original_tokens())
+    bytes_before = store.tokens_path.read_bytes()
+
+    manager = TokenManager(
+        store, CREDENTIALS, original_tokens(), token_url=token_endpoint.url
+    )
+
+    contract = (
+        "implementation_defined_token_responses contract: EITHER succeed and persist "
+        "access_token 'at-refreshed', OR fail with the typed TokenEndpointError (2xx) "
+        "and leave tokens.json untouched"
+    )
+    try:
+        manager.force_refresh()
+    except Exception as err:  # noqa: BLE001 — classifying ANY escape is the point
+        assert isinstance(err, TokenEndpointError), (
+            f"case {case['name']}: an untyped {type(err).__name__} escaped ({contract})"
+        )
+        assert 200 <= err.status < 300, (
+            f"case {case['name']}: the typed error must carry the 2xx status, "
+            f"got {err.status} ({contract})"
+        )
+        assert store.tokens_path.read_bytes() == bytes_before, (
+            f"case {case['name']}: a failed refresh must leave tokens.json "
+            f"byte-identical ({contract})"
+        )
+    else:
+        persisted = store.load_tokens()  # a half-written record raises StoreFormatError
+        assert persisted is not None, (
+            f"case {case['name']}: a successful refresh must persist tokens ({contract})"
+        )
+        assert persisted.access_token == "at-refreshed", (
+            f"case {case['name']}: a successful refresh must persist access_token "
+            f"'at-refreshed', got {persisted.access_token!r} ({contract})"
+        )
+        assert manager.access_token() == "at-refreshed", (
+            f"case {case['name']}: the manager must hand out the persisted token "
+            f"({contract})"
+        )
+    assert len(token_endpoint.requests) == 1, (
+        f"case {case['name']}: the refresh must call the token endpoint exactly once"
     )
 
 

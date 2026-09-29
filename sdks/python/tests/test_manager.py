@@ -180,8 +180,9 @@ class TestRefresh:
 class TestHostileTokenEndpointBodies:
     """A 2xx token-endpoint response whose body is broken or hostile must surface as the
     typed TokenEndpointError — never a raw JSONDecodeError/KeyError/ValueError detonating
-    downstream (Rust parity: `resp.json::<TokenResponse>()?` -> AuthError::Serde) — and
-    the surfaced message must NEVER echo token material (CLAUDE.md rule 5; ISSUE A)."""
+    downstream (Rust parity: every decode failure -> AuthError::InvalidTokenResponse with
+    a static message) — and the surfaced message must NEVER echo token material
+    (CLAUDE.md rule 5; ISSUE A)."""
 
     @pytest.mark.parametrize(
         "body",

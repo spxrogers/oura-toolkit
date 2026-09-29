@@ -16,23 +16,30 @@ namespace OuraToolkit.Auth.Tests;
 /// <list type="bullet">
 /// <item>hostile-but-2xx token responses (incl. a wrong-typed or lone-surrogate string in any
 /// of access_token / refresh_token / token_type / scope, an expires_in that is not an integer
-/// in 1..=2147483647, and a body that is not valid UTF-8 anywhere) → the typed <see cref="TokenEndpointException"/>
+/// in 1..=2147483647, a body that is not valid UTF-8 anywhere, and trailing data after the
+/// one top-level value) → the typed <see cref="TokenEndpointException"/>
 /// with the 2xx status (what the PR #56 guards throw — never a raw
 /// JsonException/NullReferenceException escaping), exactly ONE endpoint call (a hostile 2xx
 /// is not a 400 — the reload-retry arm must not misfire), and <c>tokens.json</c> /
 /// <c>credentials.json</c> byte-identical afterwards (persisting a blank/expired Bearer
 /// would burn the still-valid rotated refresh token);</item>
+/// <item>implementation-defined token responses (BOM, duplicate keys, deep nesting, an
+/// integral-float expires_in, an upper-case key) → EITHER a successful refresh persisting
+/// access_token = at-refreshed, OR the typed error with the store byte-identical — never an
+/// untyped exception or a half-written store;</item>
 /// <item>hostile store files → the typed <see cref="StoreFormatException"/>, never a
 /// default-filled record that makes is-authenticated lie, and never an untyped crash;</item>
 /// <item>canonical valid records → load with exactly the fixture's field values and
 /// round-trip through this companion's own persist path (the cross-language store
 /// compatibility check — field names are the shared wire format, #54);</item>
 /// <item>refresh success cases → a SUCCESSFUL refresh from the stored <c>prior</c> record
-/// persists exactly <c>expected</c> (access_token, refresh_token, scope, token_type) with
+/// SENDS the prior refresh_token and persists exactly <c>expected</c> (access_token,
+/// refresh_token, scope, token_type) with
 /// expires_at = refresh time + <c>expected.expires_in</c>: an omitted, null, empty,
 /// whitespace-only (incl. U+00A0), or non-string <c>scope</c> keeps the prior grant (and a
 /// non-string one must not fail the refresh); an omitted, null or empty refresh_token /
-/// token_type keeps the prior value; expires_in at the 2147483647 cap succeeds; a lone
+/// token_type keeps the prior value; expires_in at both bounds (1 and the 2147483647 cap)
+/// succeeds; a lone
 /// surrogate in an UNKNOWN field is not validated.</item>
 /// </list>
 ///
@@ -89,7 +96,8 @@ public class ConformanceTests
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
     /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
-    /// >= 24 hostile_token_responses, >= 8 hostile_store_files, >= 17 refresh_success_cases.
+    /// >= 26 hostile_token_responses, >= 5 implementation_defined_token_responses,
+    /// >= 10 hostile_store_files, >= 18 refresh_success_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -99,15 +107,19 @@ public class ConformanceTests
             "fixture lost its hostile_token_responses table");
         Assert.True(fixture.TryGetProperty("hostile_store_files", out var storeFiles),
             "fixture lost its hostile_store_files table");
-        Assert.True(responses.GetArrayLength() >= 24,
-            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 24");
-        Assert.True(storeFiles.GetArrayLength() >= 8,
-            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 8");
+        Assert.True(fixture.TryGetProperty("implementation_defined_token_responses", out var implDefined),
+            "fixture lost its implementation_defined_token_responses table");
+        Assert.True(responses.GetArrayLength() >= 26,
+            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 26");
+        Assert.True(implDefined.GetArrayLength() >= 5,
+            $"fixture shrank? implementation_defined_token_responses has {implDefined.GetArrayLength()} cases, want >= 5");
+        Assert.True(storeFiles.GetArrayLength() >= 10,
+            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 10");
         Assert.True(fixture.TryGetProperty("refresh_success_cases", out var successTable),
             "fixture lost its refresh_success_cases table");
         var successCases = successTable.GetProperty("cases").GetArrayLength();
-        Assert.True(successCases >= 17,
-            $"fixture shrank? refresh_success_cases has {successCases} cases, want >= 17");
+        Assert.True(successCases >= 18,
+            $"fixture shrank? refresh_success_cases has {successCases} cases, want >= 18");
     }
 
     /// <summary>
@@ -121,8 +133,8 @@ public class ConformanceTests
     {
         string[] known =
         [
-            "$comment", "hostile_token_responses", "hostile_store_files", "refresh_success_cases",
-            "valid_records",
+            "$comment", "hostile_token_responses", "implementation_defined_token_responses",
+            "hostile_store_files", "refresh_success_cases", "valid_records",
         ];
         var present = Fixture().EnumerateObject().Select(p => p.Name).ToList();
         var unknown = present.Where(name => !known.Contains(name)).ToList();
@@ -140,16 +152,30 @@ public class ConformanceTests
     /// JSON can't hold, e.g. invalid UTF-8), <c>raw_body</c> VERBATIM (deliberately not JSON),
     /// otherwise <c>body</c> re-emitted as its exact JSON text, so a wrong-typed field (42,
     /// "soon") reaches the companion exactly as authored. Returned base64-encoded so the
-    /// theory row stays a plain string.
+    /// theory row stays a plain string. A case must give EXACTLY ONE of the three: two would
+    /// make the served body depend on this helper's precedence (not the fixture author's
+    /// intent), none would silently serve nothing — either fails loading, naming the case.
     /// </summary>
     private static string BodyBase64(JsonElement c)
     {
-        if (c.TryGetProperty("raw_body_base64", out var b64))
+        var name = c.GetProperty("name").GetString();
+        string[] keys = ["body", "raw_body", "raw_body_base64"];
+        var given = keys.Where(k => c.TryGetProperty(k, out _)).ToList();
+        if (given.Count != 1)
         {
-            return b64.GetString()!;
+            throw new InvalidOperationException(
+                $"fixture case {name}: must give exactly one of body/raw_body/raw_body_base64, "
+                + $"got [{string.Join(", ", given)}]");
         }
-        var text = c.TryGetProperty("raw_body", out var raw) ? raw.GetString()! : c.GetProperty("body").GetRawText();
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+        switch (given[0])
+        {
+            case "raw_body_base64":
+                return c.GetProperty("raw_body_base64").GetString()!;
+            case "raw_body":
+                return Convert.ToBase64String(Encoding.UTF8.GetBytes(c.GetProperty("raw_body").GetString()!));
+            default:
+                return Convert.ToBase64String(Encoding.UTF8.GetBytes(c.GetProperty("body").GetRawText()));
+        }
     }
 
     /// <summary>
@@ -216,6 +242,84 @@ public class ConformanceTests
         Assert.True(
             credsBefore.SequenceEqual(File.ReadAllBytes(temp.Store.CredentialsPath)),
             $"case {name}: credentials.json must be byte-identical after a failed refresh");
+    }
+
+    // --- 1b. implementation-defined token responses ------------------------------------------
+
+    /// <summary>One (name, base64 of the exact 200 body bytes) pair per fixture case (<see cref="BodyBase64"/>).</summary>
+    public static TheoryData<string, string> ImplementationDefinedTokenResponses()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var c in Fixture().GetProperty("implementation_defined_token_responses").EnumerateArray())
+        {
+            data.Add(c.GetProperty("name").GetString()!, BodyBase64(c));
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// 2xx bodies where companions may legitimately differ (a leading UTF-8 BOM, duplicate
+    /// keys, nesting past the parser's depth limit, an integral float expires_in, an
+    /// upper-case key). Seeded exactly like the hostile harness, the refresh must land in ONE
+    /// of the two sound outcomes: SUCCEED and persist access_token = at-refreshed (a whole,
+    /// loadable, unexpired record), or FAIL with the typed <see cref="TokenEndpointException"/>
+    /// carrying the 2xx status and leave tokens.json / credentials.json byte-identical. An
+    /// untyped exception, a wrong persisted access token, or a half-written store fails,
+    /// naming the case. Either way it is exactly one endpoint call (a 2xx is not a 400).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ImplementationDefinedTokenResponses))]
+    public async Task ImplementationDefinedTokenResponseSucceedsOrFailsTypedCleanly(string name, string bodyBase64)
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveCredentials(Credentials());
+        temp.Store.SaveTokens(OriginalTokens());
+        var tokensBefore = File.ReadAllBytes(temp.Store.TokensPath);
+        var credsBefore = File.ReadAllBytes(temp.Store.CredentialsPath);
+
+        var endpoint = new MockTokenEndpoint(_ => OkBytes(bodyBase64));
+        using var manager = new TokenManager(temp.Store, Credentials(), OriginalTokens(),
+            handler: endpoint, tokenUrl: "http://token.invalid/oauth/token");
+
+        var t0 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var thrown = await Record.ExceptionAsync(() => manager.ForceRefreshAsync());
+        Assert.True(endpoint.Calls == 1, $"case {name}: want exactly one endpoint call, got {endpoint.Calls}");
+        Assert.True(
+            credsBefore.SequenceEqual(File.ReadAllBytes(temp.Store.CredentialsPath)),
+            $"case {name}: credentials.json must be byte-identical after a refresh");
+
+        if (thrown is null)
+        {
+            // Accepted: the persisted record must be whole and carry the refreshed Bearer.
+            Tokens? persisted;
+            try
+            {
+                persisted = temp.Store.LoadTokens();
+            }
+            catch (StoreFormatException e)
+            {
+                throw new Xunit.Sdk.XunitException(
+                    $"case {name}: an accepted refresh left a half-written tokens.json: {e.Message}");
+            }
+            Assert.True(persisted is not null, $"case {name}: an accepted refresh must persist a token record");
+            Assert.True(persisted!.AccessToken == "at-refreshed",
+                $"case {name}: an accepted refresh must persist access_token \"at-refreshed\", got \"{persisted.AccessToken}\"");
+            Assert.True(!string.IsNullOrEmpty(persisted.RefreshToken),
+                $"case {name}: an accepted refresh must never persist a blank refresh_token");
+            Assert.True(persisted.ExpiresAt > t0,
+                $"case {name}: an accepted refresh must persist an unexpired token, got expires_at {persisted.ExpiresAt}");
+            return;
+        }
+
+        // Rejected: only the typed error is sound, and the store must be untouched.
+        Assert.True(thrown is TokenEndpointException,
+            $"case {name}: an implementation-defined 2xx must either succeed or fail with the typed "
+            + $"TokenEndpointException, got untyped {thrown.GetType().Name}: {thrown.Message}");
+        Assert.True(((TokenEndpointException)thrown).StatusCode == 200,
+            $"case {name}: the typed error must carry the 2xx status, got {((TokenEndpointException)thrown).StatusCode}");
+        Assert.True(
+            tokensBefore.SequenceEqual(File.ReadAllBytes(temp.Store.TokensPath)),
+            $"case {name}: a rejected refresh must leave tokens.json byte-identical");
     }
 
     // --- 2. hostile store files ---------------------------------------------------------------
@@ -323,6 +427,11 @@ public class ConformanceTests
             $"case {name}: a valid 2xx must refresh SUCCESSFULLY, got {thrown?.GetType().Name}: {thrown?.Message}");
 
         Assert.True(endpoint.Calls == 1, $"case {name}: want exactly one endpoint call, got {endpoint.Calls}");
+        // The refresh must have SENT the prior refresh token (read from the fixture): a
+        // companion refreshing from anything else would be burning some other rotation.
+        var sent = FormField(endpoint.Bodies.Single(), "refresh_token");
+        Assert.True(sent == prior.RefreshToken,
+            $"case {name}: the refresh request must send the prior refresh_token \"{prior.RefreshToken}\", sent \"{sent}\"");
         var persisted = temp.Store.LoadTokens();
         Assert.True(persisted is not null, $"case {name}: the refresh must persist a token record");
         foreach (var (field, actual) in new[]
@@ -342,6 +451,21 @@ public class ConformanceTests
         Assert.True(persisted.ExpiresAt >= t0 + expiresIn && persisted.ExpiresAt <= t1 + expiresIn,
             $"case {name}: persisted expires_at must be refresh time + {expiresIn} "
             + $"(within [{t0 + expiresIn}, {t1 + expiresIn}]), got {persisted.ExpiresAt}");
+    }
+
+    /// <summary>
+    /// The single value of <paramref name="field"/> in an x-www-form-urlencoded body (null
+    /// when absent); a repeated field fails, so the assertion cannot pick an arbitrary copy.
+    /// </summary>
+    private static string? FormField(string form, string field)
+    {
+        var values = form.Split('&')
+            .Select(pair => pair.Split(['='], 2))
+            .Where(kv => WebUtility.UrlDecode(kv[0]) == field)
+            .Select(kv => kv.Length == 2 ? WebUtility.UrlDecode(kv[1]) : "")
+            .ToList();
+        Assert.True(values.Count <= 1, $"form field {field} was sent {values.Count} times");
+        return values.SingleOrDefault();
     }
 
     // --- 4. canonical valid records -------------------------------------------------------------
