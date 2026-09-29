@@ -387,6 +387,62 @@ pub async fn serve(
 mod tests {
     use super::DESCRIPTIONS;
 
+    /// "Exactly one note per session" under REAL contention (CLAUDE.md rule 4): the
+    /// protocol-level test in tests/mcp_server.rs can't guarantee its calls overlap inside
+    /// `with_scope_notice`, so a racy check-then-set would still pass there. Here 16 threads
+    /// released by one barrier hit the claim at once, over many fresh sessions; a
+    /// non-atomic `load` + `store` lets several through (each reads the store in between).
+    #[test]
+    fn concurrent_results_claim_the_session_note_exactly_once() {
+        use super::OuraMcp;
+        use oura_toolkit_auth::{TokenManager, TokenStore, Tokens};
+        use rmcp::model::{CallToolResult, ContentBlock};
+        use std::sync::{Arc, Barrier};
+
+        const THREADS: usize = 16;
+        for session in 0..50 {
+            let dir = tempfile::tempdir().unwrap();
+            let store = TokenStore::with_dir(dir.path());
+            store
+                .save_tokens(&Tokens {
+                    access_token: "at".into(),
+                    refresh_token: "rt".into(),
+                    expires_at: i64::MAX / 2,
+                    // A grant predating Oura's 1.41 scope rename: the check has a gap to note.
+                    scope: Some("personal daily heartrate workout tag session spo2Daily".into()),
+                    token_type: Some("Bearer".into()),
+                })
+                .unwrap();
+            let server = Arc::new(
+                OuraMcp::new(
+                    TokenManager::from_access_token("at".into()),
+                    "http://127.0.0.1:9".into(),
+                )
+                .with_scope_check(store),
+            );
+            let barrier = Arc::new(Barrier::new(THREADS));
+            let handles: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let (server, barrier) = (server.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        let result = server
+                            .with_scope_notice(Ok(CallToolResult::success(vec![
+                                ContentBlock::text("data"),
+                            ])))
+                            .unwrap();
+                        result.content.len() - 1 // blocks beyond the data block = notes
+                    })
+                })
+                .collect();
+            let notes: usize = handles.into_iter().map(|h| h.join().unwrap()).sum();
+            assert_eq!(
+                notes, 1,
+                "session {session}: {THREADS} concurrent successes must carry exactly one note"
+            );
+        }
+    }
+
     /// The plugin skills instruct Claude to call tools BY NAME — that's a functional
     /// contract, not prose. A `#[tool(name = …)]` rename that orphans a skill must fail
     /// CI. Monorepo-only by nature (the plugin lives beside the crate).

@@ -240,9 +240,28 @@ export class TokenManager {
     // response status so the caller's 400-retry arm never misfires, and the body is a
     // FIXED, secret-free description (a partial 2xx payload may carry token material).
     // Mirrors go/auth/oauth.go and python .../auth/manager.py.
+    //
+    // The body must be valid UTF-8 ANYWHERE — unknown fields included — before it is even
+    // considered JSON (RFC 8259 §8.1). `response.json()` / `response.text()` decode
+    // leniently, silently substituting U+FFFD for an invalid byte, which would turn a
+    // malformed response into a "valid" one carrying corrupted token material. So the raw
+    // bytes are read and decoded with a FATAL decoder first.
+    // Conformance: auth-cases.json body_invalid_utf8_* hostile cases.
+    let bytes: ArrayBuffer;
+    try {
+      bytes = await response.arrayBuffer();
+    } catch {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response body could not be read");
+    }
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response was not valid UTF-8");
+    }
     let json: unknown;
     try {
-      json = await response.json();
+      json = JSON.parse(text);
     } catch {
       throw new TokenEndpointError(status, "token-endpoint 2xx response was not valid JSON");
     }
@@ -257,7 +276,7 @@ export class TokenManager {
     // language's companion can read back, so it fails typed before anything is
     // persisted. A regex rather than String.prototype.isWellFormed because the engine
     // floor is Node 18. A non-string scope stays lenient (keeps the prior grant, see
-    // refresh_scope_cases); a non-string refresh_token/token_type fails typed below.
+    // refresh_success_cases); a non-string refresh_token/token_type fails typed below.
     // Conformance: auth-cases.json *_lone_surrogate / wrong_type_* hostile cases.
     const fields = json as Record<string, unknown>;
     for (const field of READ_FIELDS) {
@@ -273,20 +292,27 @@ export class TokenManager {
     if (typeof resp.access_token !== "string" || resp.access_token === "") {
       throw new TokenEndpointError(status, "token-endpoint 2xx response missing access_token");
     }
+    // expires_in must be an INTEGER in 1..=MAX_EXPIRES_IN_SECS. A fractional value, a
+    // numeric string ("3600"), anything above the cap, and a literal that overflowed to
+    // Infinity (`1e400`) are all malformed: there is no trustworthy expiry to persist.
+    // (Number.isInteger rejects non-numbers, fractions, NaN and ±Infinity.)
+    // Conformance: auth-cases.json *_expires_in / expires_in_* hostile cases.
     if (
-      typeof resp.expires_in !== "number" ||
-      !Number.isFinite(resp.expires_in) ||
-      resp.expires_in <= 0
+      !Number.isInteger(resp.expires_in) ||
+      (resp.expires_in as number) < 1 ||
+      (resp.expires_in as number) > MAX_EXPIRES_IN_SECS
     ) {
       throw new TokenEndpointError(
         status,
         "token-endpoint 2xx response missing or invalid expires_in"
       );
     }
-    // An omitted/null refresh_token or token_type falls back to the stored value (the
-    // server may omit an unchanged one), but a present non-string is a malformed
-    // response: silently keeping the old refresh token would persist one Oura has
-    // already invalidated. Conformance: wrong_type_refresh_token / wrong_type_token_type.
+    // An omitted/null/EMPTY refresh_token or token_type falls back to the stored value
+    // (the server didn't rotate it; persisting "" would make the next refresh 400), but
+    // a present non-string is a malformed response: silently keeping the old refresh
+    // token would persist one Oura has already invalidated.
+    // Conformance: wrong_type_refresh_token / wrong_type_token_type (hostile) and
+    // refresh_token_* / token_type_* (refresh_success_cases).
     for (const field of ["refresh_token", "token_type"] as const) {
       const value = resp[field] as unknown;
       if (value !== undefined && value !== null && typeof value !== "string") {
@@ -296,20 +322,39 @@ export class TokenManager {
         );
       }
     }
+    const expiresIn = resp.expires_in as number;
     return new Tokens({
       accessToken: resp.access_token,
-      // Persist the rotated token; fall back to the old one only if the server omits it.
-      refreshToken:
-        typeof resp.refresh_token === "string" ? resp.refresh_token : current.refreshToken(),
-      expiresAt: Math.floor(Date.now() / 1000) + resp.expires_in,
-      // An omitted/null/blank scope keeps the prior grant (RFC 6749 §5.1 lets the server
-      // omit an unchanged scope; persisting a blank would erase the grant the CLI's
-      // re-consent check reads). Conformance: auth-cases.json refresh_scope_cases.
+      // Persist the rotated token; fall back to the old one only if the server omits it
+      // (or sends null / an empty string).
+      refreshToken: nonEmptyString(resp.refresh_token) ?? current.refreshToken(),
+      expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
+      // An omitted/null/blank/non-string scope keeps the prior grant (RFC 6749 §5.1 lets
+      // the server omit an unchanged scope, and scope is informational, so a non-string
+      // one is not worth burning the rotated refresh token over; persisting a blank would
+      // erase the grant the CLI's re-consent check reads). JS `trim()` covers ASCII
+      // space/tab and U+00A0. Conformance: auth-cases.json refresh_success_cases scope_*.
       scope:
         typeof resp.scope === "string" && resp.scope.trim() !== "" ? resp.scope : current.scope,
-      tokenType: typeof resp.token_type === "string" ? resp.token_type : current.tokenType,
+      tokenType: nonEmptyString(resp.token_type) ?? current.tokenType,
     });
   }
+}
+
+/**
+ * Upper bound (inclusive) on a token response's `expires_in`, in seconds: i32::MAX
+ * (~68 years). Every companion enforces the same cap so `now + expires_in` stays an
+ * exact integer in every language (well inside JS's 2^53 safe range) and the persisted
+ * `expires_at` is readable by every companion's store — including Rust's `i64` field and
+ * the narrower integer types other languages decode into. Anything larger is not a real
+ * expiry, so the response is rejected rather than clamped.
+ * Conformance: auth-cases.json expires_in_at_cap / expires_in_above_cap.
+ */
+export const MAX_EXPIRES_IN_SECS = 2_147_483_647;
+
+/** `value` if it is a non-empty string, else `undefined` (omitted/null/"" all fall back). */
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 /** The token-response fields this companion reads — the only ones it validates. */

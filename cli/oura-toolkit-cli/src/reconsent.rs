@@ -185,29 +185,22 @@ fn save_state(store: &TokenStore, state: &NoticeState) {
     let Ok(data) = serde_json::to_vec_pretty(state) else {
         return;
     };
-    let target = state_path(store);
-    let tmp = store
-        .dir()
-        .join(format!(".{STATE_FILE}.{}.tmp", std::process::id()));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    // `create_new` refuses an existing path (never following a planted symlink). If it fails,
-    // the temp file isn't ours, so leave it alone.
-    let Ok(mut file) = options.open(&tmp) else {
+    // A RANDOMLY named temp file (0600 on Unix), exactly like the store's own atomic write: a
+    // fixed name (e.g. by PID — PIDs repeat, `oura` is often PID 1 in a container) left behind
+    // by a crash would block every later save, and the notice would then repeat on every run.
+    // Dropping the handle on a failed write removes the temp; `persist` renames it over the
+    // target, replacing a planted symlink rather than writing through it.
+    let Ok(mut tmp) = tempfile::NamedTempFile::new_in(store.dir()) else {
         return;
     };
-    let written = file
+    if tmp
         .write_all(&data)
-        .and_then(|()| file.sync_all())
-        .and_then(|()| std::fs::rename(&tmp, &target));
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+        .and_then(|()| tmp.as_file().sync_all())
+        .is_err()
+    {
+        return;
     }
+    let _ = tmp.persist(state_path(store));
 }
 
 /// Forget everything the user was told (`oura auth logout --all`: a full reset re-arms the
@@ -791,22 +784,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_planted_temp_file_is_left_alone_not_deleted() {
-        // `create_new` refusing an existing temp path means it isn't ours: never remove it.
+    async fn a_temp_file_left_by_a_crashed_run_never_blocks_the_save() {
+        // A crash between creating the temp and renaming it leaves the temp behind. Plant one
+        // at the name a PID-based scheme would reuse (PIDs repeat — `oura` is often PID 1 in
+        // a container): the save must still land, and the stray file isn't ours to delete.
         let (store, _dir) = store_with(Some(PRE_1_41));
-        let tmp = store
+        let stray = store
             .dir()
             .join(format!(".{STATE_FILE}.{}.tmp", std::process::id()));
-        std::fs::write(&tmp, "someone else's").unwrap();
+        std::fs::write(&stray, "left by a crash").unwrap();
         run_check(&store, false, "").await;
-        // Proves the planted path IS the one save_state uses (else this test is vacuous):
-        // the write was refused, so no record was created…
         assert!(
-            !state_path(&store).exists(),
-            "the planted temp must have blocked the write"
+            state_path(&store).exists(),
+            "a leftover temp file must not block the record's save"
         );
-        // …and the file that blocked it is untouched.
-        assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "someone else's");
+        assert_eq!(std::fs::read_to_string(&stray).unwrap(), "left by a crash");
     }
 
     // --- mcp_notice ------------------------------------------------------------------------

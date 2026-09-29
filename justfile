@@ -142,6 +142,19 @@ spec-overlay:
     jq -f codegen/overlay.jq {{spec_file}} > {{overlaid_spec}}
     @echo "Overlaid spec -> {{overlaid_spec}}"
 
+# Hermetic self-test of the overlay's NON-NEGOTIABLE servers[0].url fix: the pinned export is
+# already correct upstream, so without this nothing would notice the fix being dropped. Feeds a
+# spec carrying the leaked `api.None.com` through the overlay and requires the real host back.
+# Runs in CI (the gen-drift job). Break-verify: delete the url line in codegen/overlay.jq.
+[group('spec')]
+spec-overlay-selftest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url="$(jq '.servers[0].url = "https://api.None.com"' {{spec_file}} | jq -f codegen/overlay.jq | jq -r '.servers[0].url')"
+    [[ "$url" == "https://api.ouraring.com" ]] \
+      || { echo "spec-overlay-selftest: servers[0].url came out as '$url', want https://api.ouraring.com"; exit 1; }
+    echo "spec-overlay-selftest: the servers[0].url regression guard holds"
+
 # Detect upstream Oura OpenAPI drift (#29): the pinned export re-published with changes, or a
 # newer openapi-<major>.<minor> exists. WATCH-ONLY — never edits the spec. Hits the network, so
 # it is NOT in `just ci`; the scheduled spec-drift workflow runs it and opens/updates an issue.

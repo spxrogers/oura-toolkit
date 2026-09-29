@@ -32,7 +32,7 @@ sdks/rust/oura-toolkit-api  (the Rust SDK)   sdks/{typescript,python,go,java,csh
 
 - **Shared overlay** (`codegen/overlay.jq`) fixes the spec's known defects for *every*
   language: the server URL (the leaked `api.None.com` through 1.37, still pinned as a
-  guard), the `MultiDocumentResponseDict` union branch, per-op security narrowed to Bearer,
+  guard and checked by `just spec-overlay-selftest`), the `MultiDocumentResponseDict` union branch, per-op security narrowed to Bearer,
   and the `start_date`/`end_date` param types collapsed to plain `date`. See [CLAUDE.md → SPEC / Known spec issues](CLAUDE.md).
 - **Rust** goes one step further with a 3.1→3.0 down-convert, because progenitor only reads
   3.0. The breadth generators are 3.1-native and skip it. Details and rationale in

@@ -14,14 +14,15 @@ from urllib.parse import parse_qs
 
 import pytest
 
-# (status, json-able body or raw string)
+# (status, json-able body, raw string, or raw bytes)
 Response = Tuple[int, object]
 Handler = Callable[[Dict[str, str]], Response]
 
 
 class MockTokenEndpoint:
     """A scriptable token endpoint. ``handler`` maps the POSTed form (flattened
-    single-value dict) to a ``(status, body)`` response; every request form is
+    single-value dict) to a ``(status, body)`` response (``bytes`` bodies are sent
+    verbatim, ``str`` as UTF-8, anything else as JSON); every request form is
     recorded in ``requests`` for load-bearing assertions (call counts, exact
     refresh_token sent, client_secret present)."""
 
@@ -40,11 +41,15 @@ class MockTokenEndpoint:
                 with endpoint._requests_mutex:
                     endpoint.requests.append(form)
                 status, body = endpoint.handler(form)
-                payload = (
-                    body.encode("utf-8")
-                    if isinstance(body, str)
-                    else json.dumps(body).encode("utf-8")
-                )
+                # bytes are sent VERBATIM (conformance `raw_body_base64`: bodies that
+                # aren't valid UTF-8, which neither a str nor JSON can carry); a str
+                # is sent as its UTF-8 encoding; anything else is json.dumps'd.
+                if isinstance(body, bytes):
+                    payload = body
+                elif isinstance(body, str):
+                    payload = body.encode("utf-8")
+                else:
+                    payload = json.dumps(body).encode("utf-8")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))

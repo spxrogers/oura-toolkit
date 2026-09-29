@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,6 +36,18 @@ public sealed class TokenManager : IDisposable
     /// chain a second endpoint call under the same lock).
     /// </summary>
     public static readonly TimeSpan TokenEndpointTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// The largest <c>expires_in</c> (seconds) a token response may carry: <see cref="int.MaxValue"/>
+    /// (2147483647, ~68 years). Shared across every companion by the conformance fixture. It
+    /// keeps <c>now + expires_in</c> exact (no overflow in the <c>expires_at</c> sum) and the
+    /// resulting <c>expires_at</c> readable by every companion's store, including Rust's i64 and
+    /// languages whose JSON numbers are doubles. Anything larger is rejected typed.
+    /// </summary>
+    private const long MaxExpiresInSeconds = int.MaxValue;
+
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static readonly UTF8Encoding LenientUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
 
     private readonly TokenStore _store;
     private readonly ClientCredentials? _credentials;
@@ -265,12 +278,14 @@ public sealed class TokenManager : IDisposable
         using (response)
         {
             var status = (int)response.StatusCode;
-            // The CancellationToken overload of ReadAsStringAsync is net5+; netstandard2.0 has
-            // only the parameterless form. The read is bounded either way by _http.Timeout.
+            // Read the RAW BYTES, not ReadAsStringAsync: that decodes leniently, silently
+            // substituting U+FFFD for invalid UTF-8, which would let a malformed 2xx body pass as
+            // JSON (see the strict decode below). The CancellationToken overload is net5+;
+            // netstandard2.0 has only the parameterless form. Bounded either way by _http.Timeout.
 #if NETSTANDARD2_0
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
 #else
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
 #endif
 
             // Defense-in-depth against a redirect leaking the confidential form: the default
@@ -280,11 +295,13 @@ public sealed class TokenManager : IDisposable
             // cannot slip past as a silent no-op.
             if (status is >= 300 and < 400)
             {
-                throw new TokenEndpointException(status, body);
+                throw new TokenEndpointException(status, LenientUtf8.GetString(bytes));
             }
             if (!response.IsSuccessStatusCode)
             {
-                throw new TokenEndpointException(status, body);
+                // A non-2xx body is diagnostics only (never parsed or persisted), so it is decoded
+                // leniently: a stray invalid byte there must not mask the real HTTP error.
+                throw new TokenEndpointException(status, LenientUtf8.GetString(bytes));
             }
 
             // A hostile or broken 2xx body must fail as the typed TokenEndpointException, never a
@@ -293,7 +310,25 @@ public sealed class TokenManager : IDisposable
             // 400 on the NEXT refresh, long after the cause). These throws all run BEFORE the
             // store is written, so a hostile 2xx never burns the stored rotation. Messages are
             // FIXED and secret-free: the raw body is never echoed, since a partial 2xx payload may
-            // carry token material. Mirrors go/auth/oauth.go:70-97.
+            // carry token material. Mirrors the Go companion's refreshTokens (sdks/go/auth/oauth.go).
+            string body;
+            try
+            {
+                // STRICT UTF-8 over the WHOLE body, unknown fields included: bytes that are not
+                // UTF-8 are not JSON text at all (RFC 8259 §8.1). This must run on the raw bytes —
+                // System.Text.Json does not validate the contents of properties it skips, so an
+                // invalid byte inside an unknown field would otherwise slip through (shared
+                // fixture cases body_invalid_utf8_in_scope / body_invalid_utf8_in_unknown_field).
+                // A leading UTF-8 BOM is skipped (RFC 8259 §8.1 lets parsers ignore it), matching
+                // what the lenient ReadAsStringAsync used to do.
+                var start = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+                body = StrictUtf8.GetString(bytes, start, bytes.Length - start);
+            }
+            catch (DecoderFallbackException)
+            {
+                throw new TokenEndpointException(status, "token-endpoint 2xx response was not valid UTF-8");
+            }
+
             TokenResponse? parsed;
             try
             {
@@ -301,11 +336,13 @@ public sealed class TokenManager : IDisposable
             }
             catch (JsonException)
             {
-                // Also the typed arm for the strictly-typed string fields (access_token,
-                // refresh_token, token_type): a non-string value or a lone-surrogate escape in
-                // one surfaces from System.Text.Json as a JsonException (shared fixture cases
-                // wrong_type_*, *_lone_surrogate). Unknown fields are never materialized.
-                throw new TokenEndpointException(status, "token-endpoint 2xx response was not valid JSON");
+                // Covers both a body that is not JSON at all AND a well-formed body whose
+                // strictly-typed string field (access_token, refresh_token, token_type) holds a
+                // non-string value or a lone-surrogate escape — System.Text.Json reports both as
+                // a JsonException (shared fixture cases body_not_json, body_json_array,
+                // wrong_type_*, *_lone_surrogate). Unknown fields are never materialized. The
+                // message stays fixed: the server's keys/values are never echoed.
+                throw new TokenEndpointException(status, "token-endpoint 2xx response was not a well-formed token response");
             }
             if (parsed is null)
             {
@@ -316,7 +353,7 @@ public sealed class TokenManager : IDisposable
             {
                 throw new TokenEndpointException(status, "token-endpoint 2xx response missing access_token");
             }
-            if (parsed.ExpiresIn <= 0)
+            if (parsed.ValidExpiresIn() is not { } expiresIn)
             {
                 throw new TokenEndpointException(status, "token-endpoint 2xx response missing or invalid expires_in");
             }
@@ -344,14 +381,17 @@ public sealed class TokenManager : IDisposable
                 // keep the current (still-valid) token. An empty refresh_token would clobber the
                 // good one and 400 every future refresh.
                 RefreshToken = string.IsNullOrEmpty(parsed.RefreshToken) ? current.RefreshToken : parsed.RefreshToken!,
-                ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + parsed.ExpiresIn,
+                // Cannot overflow: expiresIn <= MaxExpiresInSeconds (see ValidExpiresIn).
+                ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + expiresIn,
                 // An omitted, null, empty, whitespace-only (incl. U+00A0), or non-string scope
                 // keeps the prior grant (RFC 6749 §5.1 lets the server omit an unchanged scope);
                 // persisting a blank would erase the grant the CLI's re-consent check reads, and
                 // failing on a wrong-typed scope would burn the rotated refresh token over
-                // informational junk. Pinned by the shared fixture's refresh_scope_cases
+                // informational junk. Pinned by the shared fixture's refresh_success_cases
                 // (ConformanceTests).
                 Scope = scope ?? current.Scope,
+                // Same rule as refresh_token: an omitted, null or EMPTY token_type keeps the
+                // current value (shared fixture cases token_type_null / token_type_empty).
                 TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
             };
         }
@@ -373,8 +413,12 @@ public sealed class TokenManager : IDisposable
         [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; init; }
 
+        /// <summary>
+        /// Deliberately untyped, so the integer/range rule lives in ONE explicit place
+        /// (<see cref="ValidExpiresIn"/>) rather than in the serializer's number converter.
+        /// </summary>
         [JsonPropertyName("expires_in")]
-        public long ExpiresIn { get; init; }
+        public JsonElement? ExpiresIn { get; init; }
 
         [JsonPropertyName("token_type")]
         public string? TokenType { get; init; }
@@ -386,6 +430,24 @@ public sealed class TokenManager : IDisposable
         /// </summary>
         [JsonPropertyName("scope")]
         public JsonElement? Scope { get; init; }
+
+        /// <summary>
+        /// <c>expires_in</c> when it is a JSON integer in 1..=<see cref="MaxExpiresInSeconds"/>;
+        /// otherwise null (missing, null, zero/negative, fractional like <c>3600.5</c>, a numeric
+        /// string like <c>"3600"</c>, above the cap, or beyond any machine integer like
+        /// <c>1e400</c>) — the caller fails the refresh typed. <see cref="JsonElement.TryGetInt64"/>
+        /// rejects any non-integral or out-of-range number.
+        /// </summary>
+        public long? ValidExpiresIn()
+        {
+            if (ExpiresIn is { ValueKind: JsonValueKind.Number } element
+                && element.TryGetInt64(out var seconds)
+                && seconds is >= 1 and <= MaxExpiresInSeconds)
+            {
+                return seconds;
+            }
+            return null;
+        }
 
         /// <summary>
         /// The scope when it is a JSON string with non-whitespace content (U+00A0 counts as
@@ -426,6 +488,6 @@ public sealed class TokenManager : IDisposable
         /// </summary>
         public override string ToString() =>
             "TokenResponse { access_token = [REDACTED], refresh_token = [REDACTED], " +
-            $"expires_in = {ExpiresIn}, token_type = {TokenType ?? "null"}, scope = {DescribeScope()} }}";
+            $"expires_in = {ValidExpiresIn()?.ToString() ?? "invalid"}, token_type = {TokenType ?? "null"}, scope = {DescribeScope()} }}";
     }
 }

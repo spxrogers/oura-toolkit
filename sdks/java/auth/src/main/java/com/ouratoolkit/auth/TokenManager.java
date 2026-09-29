@@ -6,6 +6,9 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -52,6 +55,16 @@ public final class TokenManager {
      * waiting on it.
      */
     public static final Duration DEFAULT_ENDPOINT_TIMEOUT = Duration.ofSeconds(30);
+
+    /**
+     * The largest {@code expires_in} (seconds) a token response may carry: {@code
+     * 2^31 - 1}, the shared cross-companion cap (conformance fixture, #58). It keeps
+     * {@code now + expires_in} exact (no overflow, no float rounding) and the resulting
+     * {@code expires_at} readable by EVERY companion's store — including Rust's {@code
+     * i64} and the double-precision JSON numbers of TypeScript/Python. A larger value is a
+     * malformed response and fails typed rather than persisting an unreadable expiry.
+     */
+    static final long MAX_EXPIRES_IN_SECS = 2_147_483_647L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -225,9 +238,11 @@ public final class TokenManager {
                 .POST(HttpRequest.BodyPublishers.ofString(encodeForm(form)))
                 .build();
 
-        final HttpResponse<String> response;
+        // Read BYTES, not ofString(): the JDK's string handler silently substitutes U+FFFD
+        // for invalid UTF-8, which would let a malformed body through as mojibake.
+        final HttpResponse<byte[]> response;
         try {
-            response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
         } catch (IOException e) {
             // Includes HttpTimeoutException: the hard timeout that bounds lock-hold time.
             throw new TransportException("token endpoint request failed", e);
@@ -237,12 +252,29 @@ public final class TokenManager {
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new TokenEndpointException(response.statusCode(), response.body());
+            // A non-2xx error body is only carried for diagnostics: a lenient decode is fine.
+            throw new TokenEndpointException(
+                    response.statusCode(), new String(response.body(), StandardCharsets.UTF_8));
+        }
+
+        // A 2xx body that isn't valid UTF-8 ANYWHERE (unknown fields included) isn't JSON
+        // text at all (RFC 8259 §8.1): decode STRICTLY and fail typed, before anything is
+        // persisted. Pinned by the fixture's body_invalid_utf8_* cases.
+        final String bodyText;
+        try {
+            bodyText = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(response.body()))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            throw new TransportException(
+                    "token endpoint 2xx response is not valid UTF-8", null);
         }
 
         final JsonNode node;
         try {
-            node = MAPPER.readTree(response.body());
+            node = MAPPER.readTree(bodyText);
         } catch (IOException e) {
             throw new TransportException("token endpoint returned unparseable JSON", e);
         }
@@ -276,32 +308,50 @@ public final class TokenManager {
                     "token endpoint 2xx response missing or empty access_token",
                     null);
         }
-        // Reject 0, negative, AND non-numeric (e.g. "expires_in":"abc", where a bare
-        // asLong() would silently coerce to 0 and be treated as immediately expired).
-        if (expiresIn == null || !expiresIn.canConvertToLong() || expiresIn.asLong() <= 0) {
+        // expires_in must be an INTEGRAL JSON number in 1..=MAX_EXPIRES_IN_SECS. Rejects 0,
+        // negative, textual ("soon", and the numeric string "3600" — asLong() would coerce
+        // either), fractional (3600.5 — canConvertToLong() alone would truncate it to
+        // 3600), above the cap, beyond any machine integer (a BigIntegerNode), and 1e400
+        // (Jackson parses it as an infinite DoubleNode: not integral).
+        if (expiresIn == null
+                || !expiresIn.isIntegralNumber()
+                || !expiresIn.canConvertToLong()
+                || expiresIn.asLong() < 1
+                || expiresIn.asLong() > MAX_EXPIRES_IN_SECS) {
             throw new TransportException(
                     "token endpoint 2xx response missing or invalid expires_in",
                     null);
         }
-        // An omitted/null refresh_token or token_type keeps the current value (the server
-        // omitted rotation); a NON-STRING one (e.g. 42) is a malformed response and fails
-        // typed — asText() would otherwise persist "42" as the rotated refresh token (burning
-        // the real one) or "" for an object. Pinned by the fixture's wrong_type_refresh_token
-        // and wrong_type_token_type cases.
+        // An omitted, null or EMPTY refresh_token or token_type keeps the current value (the
+        // server didn't rotate it; persisting "" would make the next refresh 400); a
+        // NON-STRING one (e.g. 42) is a malformed response and fails typed — asText() would
+        // otherwise persist "42" as the rotated refresh token (burning the real one) or ""
+        // for an object. Pinned by the fixture's wrong_type_refresh_token /
+        // wrong_type_token_type hostile cases and the refresh_token_* / token_type_*
+        // refresh_success_cases.
         String rotatedRefresh = optionalString(node, "refresh_token", current.getRefreshToken());
         // An omitted, null, non-string, empty, or whitespace-only scope keeps the prior grant
         // (RFC 6749 §5.1 lets the server omit an unchanged scope); persisting a blank would
         // erase the grant the CLI's re-consent check reads. Pinned by the shared conformance
-        // fixture's refresh_scope_cases table.
+        // fixture's refresh_success_cases table.
         JsonNode scopeNode = node.get("scope");
         String scope = scopeNode != null && scopeNode.isTextual() && !isBlankScope(scopeNode.asText())
                 ? scopeNode.asText()
                 : current.getScope();
         String tokenType = optionalString(node, "token_type", current.getTokenType());
+        // Cannot overflow: expires_in is capped at MAX_EXPIRES_IN_SECS above; addExact makes
+        // that a checked invariant rather than a silent wrap.
+        final long expiresAt;
+        try {
+            expiresAt = Math.addExact(Instant.now().getEpochSecond(), expiresIn.asLong());
+        } catch (ArithmeticException e) {
+            throw new TransportException(
+                    "token endpoint 2xx response missing or invalid expires_in", null);
+        }
         return new Tokens(
                 accessToken.asText(),
                 rotatedRefresh,
-                Instant.now().getEpochSecond() + expiresIn.asLong(),
+                expiresAt,
                 scope,
                 tokenType);
     }
@@ -312,8 +362,9 @@ public final class TokenManager {
     };
 
     /**
-     * The string value of {@code field}, or {@code fallback} when it is omitted or null.
-     * A present non-string value is a malformed response: typed {@link TransportException}.
+     * The string value of {@code field}, or {@code fallback} when it is omitted, null, or
+     * the empty string (the server didn't rotate it). A present non-string value is a
+     * malformed response: typed {@link TransportException}.
      */
     private static String optionalString(JsonNode node, String field, String fallback)
             throws TransportException {
@@ -324,6 +375,9 @@ public final class TokenManager {
         if (!value.isTextual()) {
             throw new TransportException(
                     "token endpoint 2xx response has a non-string " + field, null);
+        }
+        if (value.asText().isEmpty()) {
+            return fallback;
         }
         return value.asText();
     }

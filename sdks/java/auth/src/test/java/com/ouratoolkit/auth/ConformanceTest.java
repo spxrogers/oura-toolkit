@@ -12,7 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -41,9 +43,11 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>hostile store files → the typed {@link StoreException}, never a null-filled
  *       {@link Tokens} that would make {@code isAuthenticated} lie, never an unchecked
  *       crash;</li>
- *   <li>refresh scope cases → a successful refresh from a stored {@code prior_scope}
- *       persists exactly {@code expected_scope} (an omitted/null/non-string/empty/
- *       whitespace-only scope keeps the prior grant, a real scope string replaces it);</li>
+ *   <li>refresh success cases → a successful refresh from the stored {@code prior} record
+ *       persists EXACTLY {@code expected}'s access_token, refresh_token, scope and
+ *       token_type, with expires_at = (time of the refresh) + {@code expected.expires_in}
+ *       (an omitted/null/non-string/empty/whitespace-only scope keeps the prior grant; an
+ *       omitted/null/empty refresh_token or token_type keeps the prior value);</li>
  *   <li>canonical valid records → load with exactly the fixture's field values and
  *       round-trip through this module's own persist path (the cross-language store
  *       compatibility check — field names are the shared wire format, #54).</li>
@@ -92,6 +96,26 @@ class ConformanceTest {
         return new Tokens("stale-access", refreshToken, 0L, null, null);
     }
 
+    /**
+     * The exact bytes a case's token endpoint serves: {@code raw_body_base64} decoded
+     * (bytes JSON can't hold, e.g. invalid UTF-8), {@code raw_body} VERBATIM (deliberately
+     * not JSON, or escapes a re-serialization would normalize), else the structured
+     * {@code body} re-serialized, so a wrong-typed field (42, "soon") reaches the
+     * companion exactly as authored.
+     */
+    private static byte[] caseBody(JsonNode testCase) throws IOException {
+        if (testCase.hasNonNull("raw_body_base64")) {
+            return Base64.getDecoder().decode(testCase.get("raw_body_base64").asText());
+        }
+        if (testCase.hasNonNull("raw_body")) {
+            return testCase.get("raw_body").asText().getBytes(StandardCharsets.UTF_8);
+        }
+        JsonNode body = testCase.get("body");
+        assertNotNull(body, testCase.get("name").asText()
+                + ": case has none of body / raw_body / raw_body_base64");
+        return MAPPER.writeValueAsBytes(body);
+    }
+
     // --- 1. hostile-but-2xx token responses ----------------------------------------------
 
     /**
@@ -106,9 +130,9 @@ class ConformanceTest {
             throws IOException {
         JsonNode cases = fixture().get("hostile_token_responses");
         assertNotNull(cases, "fixture lost its hostile_token_responses table");
-        assertTrue(cases.size() >= 17,
+        assertTrue(cases.size() >= 24,
                 "fixture shrank? hostile_token_responses has " + cases.size()
-                        + " cases, want >= 17");
+                        + " cases, want >= 24");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(), () -> assertHostileTokenResponseRejected(c)));
@@ -116,12 +140,7 @@ class ConformanceTest {
 
     private void assertHostileTokenResponseRejected(JsonNode testCase) throws Exception {
         String name = testCase.get("name").asText();
-        // raw_body is replayed VERBATIM (deliberately not JSON); a structured body is the
-        // fixture's JSON re-serialized, so a wrong-typed field (42, "soon") reaches the
-        // companion exactly as authored.
-        String body = testCase.hasNonNull("raw_body")
-                ? testCase.get("raw_body").asText()
-                : MAPPER.writeValueAsString(testCase.get("body"));
+        byte[] body = caseBody(testCase);
 
         Path dir = caseDir("hostile2xx-" + name);
         TokenStore store = new TokenStore(dir);
@@ -259,46 +278,63 @@ class ConformanceTest {
                         + "through the persist path unchanged");
     }
 
-    // --- 4. refresh scope handling --------------------------------------------------------
+    // --- 4. successful refresh: exact persisted record ----------------------------------
 
     /**
-     * A SUCCESSFUL refresh starting from a stored grant of {@code prior_scope} must persist
-     * exactly each case's {@code expected_scope}: an omitted/null/empty/whitespace-only
-     * (incl. U+00A0) {@code scope} keeps the prior grant, and so does a NON-STRING one
-     * (number, object, …) — the refresh still succeeds; a real scope string (incl. a valid
-     * surrogate pair) replaces it. (A scope string that isn't valid Unicode is a hostile
-     * response instead — see the {@code scope_lone_*surrogate} cases in
-     * hostile_token_responses.)
+     * A SUCCESSFUL refresh starting from the fixture's stored {@code prior} record must
+     * persist EXACTLY each case's {@code expected} access_token, refresh_token, scope and
+     * token_type, with expires_at = (time of the refresh) + {@code expected.expires_in}.
+     * Fallbacks under test: an omitted/null/empty/whitespace-only (incl. U+00A0) or
+     * NON-STRING {@code scope} keeps the prior grant; an omitted/null/EMPTY refresh_token or
+     * token_type keeps the prior value; expires_in at the cap (2^31 - 1) succeeds; a lone
+     * surrogate in an UNKNOWN field is not validated. (Malformed read fields are hostile
+     * responses instead — see hostile_token_responses.)
      */
     @TestFactory
-    Stream<DynamicTest> refreshScopeCasesPersistExpectedScope() throws IOException {
-        JsonNode table = fixture().get("refresh_scope_cases");
-        assertNotNull(table, "fixture lost its refresh_scope_cases table");
-        JsonNode prior = table.get("prior_scope");
-        assertNotNull(prior, "fixture's refresh_scope_cases lost its prior_scope");
-        String priorScope = prior.asText();
+    Stream<DynamicTest> refreshSuccessCasesPersistExpectedRecord() throws IOException {
+        JsonNode table = fixture().get("refresh_success_cases");
+        assertNotNull(table, "fixture lost its refresh_success_cases table");
+        JsonNode prior = table.get("prior");
+        assertNotNull(prior, "fixture's refresh_success_cases lost its prior record");
         JsonNode cases = table.get("cases");
-        assertNotNull(cases, "fixture's refresh_scope_cases lost its cases");
-        assertTrue(cases.size() >= 9,
-                "fixture shrank? refresh_scope_cases has " + cases.size()
-                        + " cases, want >= 9");
+        assertNotNull(cases, "fixture's refresh_success_cases lost its cases");
+        assertTrue(cases.size() >= 17,
+                "fixture shrank? refresh_success_cases has " + cases.size()
+                        + " cases, want >= 17");
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(),
-                        () -> assertRefreshPersistsExpectedScope(priorScope, c)));
+                        () -> assertRefreshPersistsExpectedRecord(prior, c)));
     }
 
-    private void assertRefreshPersistsExpectedScope(String priorScope, JsonNode testCase)
+    private static String requiredText(JsonNode record, String field, String what) {
+        JsonNode value = record.get(field);
+        assertNotNull(value, what + " lacks " + field);
+        assertTrue(value.isTextual(), what + "." + field + " must be a string");
+        return value.asText();
+    }
+
+    private void assertRefreshPersistsExpectedRecord(JsonNode priorRecord, JsonNode testCase)
             throws Exception {
         String name = testCase.get("name").asText();
-        String body = MAPPER.writeValueAsString(testCase.get("body"));
-        String expectedScope = testCase.get("expected_scope").asText();
+        byte[] body = caseBody(testCase);
+        JsonNode expected = testCase.get("expected");
+        assertNotNull(expected, name + ": case lacks its expected record");
+        JsonNode expiresInNode = expected.get("expires_in");
+        assertTrue(expiresInNode != null && expiresInNode.canConvertToLong(),
+                name + ": expected.expires_in must be an integer");
+        long expectedExpiresIn = expiresInNode.asLong();
 
-        Path dir = caseDir("refresh-scope-" + name);
+        Path dir = caseDir("refresh-success-" + name);
         TokenStore store = new TokenStore(dir);
         store.saveCredentials(new ClientCredentials("cid", "secret"));
         // Expired on purpose (expires_at 0), so the refresh genuinely calls the endpoint.
-        Tokens prior = new Tokens("stale-access", "r1", 0L, priorScope, "Bearer");
+        Tokens prior = new Tokens(
+                requiredText(priorRecord, "access_token", "prior"),
+                requiredText(priorRecord, "refresh_token", "prior"),
+                0L,
+                requiredText(priorRecord, "scope", "prior"),
+                requiredText(priorRecord, "token_type", "prior"));
         store.saveTokens(prior);
 
         try (TokenEndpointStub stub = new TokenEndpointStub(
@@ -307,17 +343,34 @@ class ConformanceTest {
                     store, new ClientCredentials("cid", "secret"), prior);
             m.overrideTokenUrl(stub.url());
 
+            long t0 = Instant.now().getEpochSecond();
             m.forceRefresh();
+            long t1 = Instant.now().getEpochSecond();
 
             assertEquals(1, stub.requests.get(),
                     name + ": the refresh must call the token endpoint exactly once");
             Tokens persisted = store.loadTokens().orElseThrow(
                     () -> new AssertionError(name + ": a successful refresh must persist"));
-            assertEquals("at-refreshed", persisted.getAccessToken(),
-                    name + ": the refreshed access token must be persisted");
-            assertEquals(expectedScope, persisted.getScope(),
-                    name + ": a blank/absent refresh scope must keep the prior grant ("
-                            + priorScope + "); a real scope string must replace it");
+            assertEquals(requiredText(expected, "access_token", name + ".expected"),
+                    persisted.getAccessToken(),
+                    name + ": persisted access_token must equal expected exactly");
+            assertEquals(requiredText(expected, "refresh_token", name + ".expected"),
+                    persisted.getRefreshToken(),
+                    name + ": persisted refresh_token must equal expected exactly (an "
+                            + "omitted/null/empty one keeps the prior value)");
+            assertEquals(requiredText(expected, "scope", name + ".expected"),
+                    persisted.getScope(),
+                    name + ": persisted scope must equal expected exactly (a blank/absent/"
+                            + "non-string scope keeps the prior grant)");
+            assertEquals(requiredText(expected, "token_type", name + ".expected"),
+                    persisted.getTokenType(),
+                    name + ": persisted token_type must equal expected exactly (an "
+                            + "omitted/null/empty one keeps the prior value)");
+            long expiresAt = persisted.getExpiresAt();
+            assertTrue(expiresAt >= t0 + expectedExpiresIn && expiresAt <= t1 + expectedExpiresIn,
+                    name + ": persisted expires_at " + expiresAt + " must be the refresh time + "
+                            + expectedExpiresIn + ", i.e. within [" + (t0 + expectedExpiresIn)
+                            + ", " + (t1 + expectedExpiresIn) + "]");
         }
     }
 
@@ -331,7 +384,7 @@ class ConformanceTest {
     void everyFixtureTableIsMappedByThisSuite() throws IOException {
         List<String> known = List.of(
                 "$comment", "hostile_token_responses", "hostile_store_files", "valid_records",
-                "refresh_scope_cases");
+                "refresh_success_cases");
         List<String> unknown = new ArrayList<>();
         fixture().fieldNames().forEachRemaining(f -> {
             if (!known.contains(f)) {

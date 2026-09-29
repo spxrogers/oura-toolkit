@@ -27,7 +27,7 @@ struct TokenResponse {
     token_type: Option<String>,
     /// Informational, so lenient: a non-string `scope` reads as absent (keep the prior grant)
     /// rather than failing a refresh whose rotated refresh token would then be burned
-    /// (conformance `refresh_scope_cases`: `scope_wrong_type`).
+    /// (conformance `refresh_success_cases`: `scope_wrong_type`).
     #[serde(default, deserialize_with = "string_or_absent")]
     scope: Option<String>,
 }
@@ -79,7 +79,7 @@ pub async fn refresh(
 
 // --- URL-injectable cores (so tests can point at a mock token endpoint) ----------------------
 
-pub(crate) async fn exchange_code_at(
+pub async fn exchange_code_at(
     token_url: &str,
     http: &reqwest::Client,
     credentials: &ClientCredentials,
@@ -94,9 +94,13 @@ pub(crate) async fn exchange_code_at(
         ("client_secret", credentials.client_secret.as_str()),
     ];
     let resp = post_token(token_url, http, &params).await?;
-    // The initial exchange must return a refresh token — persisting an empty one would only
-    // surface as a baffling 400 on the NEXT refresh, long after the cause. Fail loud now.
-    let refresh_token = resp.refresh_token.ok_or(AuthError::MissingRefreshToken)?;
+    // The initial exchange must return a refresh token — persisting an absent or EMPTY one
+    // would only surface as a baffling 400 on the NEXT refresh, long after the cause. Fail
+    // loud now (there is no prior token to fall back to, unlike a refresh).
+    let refresh_token = resp
+        .refresh_token
+        .filter(|t| !t.is_empty())
+        .ok_or(AuthError::MissingRefreshToken)?;
     Ok(Tokens {
         access_token: resp.access_token,
         refresh_token,
@@ -121,19 +125,25 @@ pub(crate) async fn refresh_at(
     let resp = post_token(token_url, http, &params).await?;
     Ok(Tokens {
         access_token: resp.access_token,
-        // Persist the rotated token; fall back to the old one only if the server omits it.
+        // Persist the rotated token; fall back to the old one only if the server omits it
+        // (absent, null or EMPTY — persisting "" would make the next refresh 400; conformance
+        // `refresh_success_cases`: refresh_token_empty).
         refresh_token: resp
             .refresh_token
+            .filter(|t| !t.is_empty())
             .unwrap_or_else(|| current.refresh_token.clone()),
         expires_at: expires_at(resp.expires_in),
         // An omitted OR blank scope keeps the recorded grant (RFC 6749 §5.1 lets the server
         // omit an unchanged scope; a blank would erase the grant the CLI's re-consent check
-        // reads — conformance `refresh_scope_cases`).
+        // reads — conformance `refresh_success_cases`).
         scope: resp
             .scope
             .filter(|s| !s.trim().is_empty())
             .or_else(|| current.scope.clone()),
-        token_type: resp.token_type.or_else(|| current.token_type.clone()),
+        token_type: resp
+            .token_type
+            .filter(|t| !t.is_empty())
+            .or_else(|| current.token_type.clone()),
     })
 }
 
@@ -151,22 +161,38 @@ async fn post_token(
             body,
         });
     }
-    let resp = resp.json::<TokenResponse>().await?;
+    let bytes = resp.bytes().await?;
+    // The body must be UTF-8 JSON text (RFC 8259 §8.1) — checked over the WHOLE body, since
+    // serde_json doesn't validate the strings of fields it skips. Conformance:
+    // body_invalid_utf8_in_scope / body_invalid_utf8_in_unknown_field.
+    if std::str::from_utf8(&bytes).is_err() {
+        return Err(AuthError::InvalidTokenResponse("body is not valid UTF-8"));
+    }
+    // Static messages: a serde error can quote the server's values back.
+    let resp = serde_json::from_slice::<TokenResponse>(&bytes)
+        .map_err(|_| AuthError::InvalidTokenResponse("body is not a well-formed token response"))?;
     // Hostile-but-2xx burn prevention (#58, conformance: codegen/conformance/
     // auth-cases.json): a 200 whose payload would install a blank or already-expired
     // Bearer must fail typed BEFORE any caller can persist it — persisting would also
     // burn the still-valid rotated refresh token. (Missing/wrong-typed fields already
-    // fail serde decode above; these two are the well-typed-but-unusable shapes.)
+    // fail serde decode above; these are the well-typed-but-unusable shapes.)
     if resp.access_token.is_empty() {
         return Err(AuthError::InvalidTokenResponse("empty access_token"));
     }
-    if resp.expires_in <= 0 {
-        return Err(AuthError::InvalidTokenResponse("non-positive expires_in"));
+    if !(1..=MAX_EXPIRES_IN_SECS).contains(&resp.expires_in) {
+        return Err(AuthError::InvalidTokenResponse("expires_in out of range"));
     }
     Ok(resp)
 }
 
+/// The largest `expires_in` (seconds, ~68 years) any companion accepts. Capping it keeps
+/// `now + expires_in` exact in every language's store (a JS double, Rust's `i64`) so no
+/// companion can write an `expires_at` another can't read back; Oura's real lifetimes are
+/// about a day. Shared contract: conformance expires_in_above_cap / expires_in_at_cap.
+pub(crate) const MAX_EXPIRES_IN_SECS: i64 = 2_147_483_647;
+
 fn expires_at(expires_in: i64) -> i64 {
+    // Can't overflow: post_token capped expires_in at MAX_EXPIRES_IN_SECS.
     OffsetDateTime::now_utc().unix_timestamp() + expires_in
 }
 
@@ -239,26 +265,43 @@ mod tests {
 
     #[tokio::test]
     async fn exchange_without_refresh_token_errors() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "access_token": "new_access",
-                "expires_in": 3600
-            })))
-            .mount(&server)
-            .await;
+        // Absent, null and EMPTY all mean "no refresh token": the exchange has no prior
+        // token to fall back to, so each must fail loud rather than persist a dead login.
+        for (name, body) in [
+            (
+                "absent",
+                json!({ "access_token": "new_access", "expires_in": 3600 }),
+            ),
+            (
+                "null",
+                json!({ "access_token": "new_access", "expires_in": 3600, "refresh_token": null }),
+            ),
+            (
+                "empty",
+                json!({ "access_token": "new_access", "expires_in": 3600, "refresh_token": "" }),
+            ),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
 
-        let http = reqwest::Client::new();
-        let err = exchange_code_at(
-            &server.uri(),
-            &http,
-            &credentials(),
-            "code",
-            "http://localhost:8788/callback",
-        )
-        .await
-        .unwrap_err();
-        assert!(matches!(err, AuthError::MissingRefreshToken));
+            let http = reqwest::Client::new();
+            let err = exchange_code_at(
+                &server.uri(),
+                &http,
+                &credentials(),
+                "code",
+                "http://localhost:8788/callback",
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(err, AuthError::MissingRefreshToken),
+                "{name} refresh_token: expected MissingRefreshToken, got {err:?}"
+            );
+        }
     }
 
     #[tokio::test]

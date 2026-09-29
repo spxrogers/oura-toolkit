@@ -12,6 +12,14 @@ import (
 	"unicode/utf8"
 )
 
+// maxExpiresIn is the largest expires_in (seconds, ~68 years) a token response may carry:
+// 2147483647 (i32::MAX), the shared conformance cap. It keeps `now + expires_in` exact
+// (far inside int64, so the ExpiresAt sum below can never overflow or wrap negative) and
+// the resulting expires_at readable by EVERY companion's store (incl. those whose numeric
+// type is a double or a 32-bit-bounded duration). Anything larger is a hostile/broken
+// response, rejected typed (hostile_token_responses/expires_in_above_cap, _i64_max).
+const maxExpiresIn = 2147483647
+
 // tokenResponse is the raw token-endpoint response (Oura returns a rotated
 // refresh_token on every call).
 type tokenResponse struct {
@@ -106,6 +114,16 @@ func refreshTokens(
 	// on the NEXT refresh, long after the cause — fail loud here, leaving the store
 	// untouched). The Body is a FIXED, secret-free description: the raw response is NOT
 	// echoed, since a partial 2xx payload may carry token material.
+	//
+	// The body must be valid UTF-8 ANYWHERE, unknown fields included (RFC 8259 §8.1: it
+	// isn't JSON text otherwise). encoding/json would silently substitute U+FFFD for the
+	// bad bytes, and in an unknown field nothing downstream would ever notice
+	// (hostile_token_responses/body_invalid_utf8_*).
+	if !utf8.Valid(body) {
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response was not valid UTF-8"}
+	}
+	// expires_in decodes into an int64, so a fractional (3600.5), numeric-string ("3600")
+	// or beyond-any-machine-integer (1e400) value already fails this Unmarshal.
 	var tr tokenResponse
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response was not valid JSON"}
@@ -124,22 +142,31 @@ func refreshTokens(
 	if tr.ExpiresIn <= 0 {
 		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response missing or invalid expires_in"}
 	}
+	if tr.ExpiresIn > maxExpiresIn {
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: "token-endpoint 2xx response expires_in exceeds the supported maximum"}
+	}
 
 	refreshed := &Tokens{
 		AccessToken: tr.AccessToken,
-		// Persist the rotated token; fall back to the old one only if the server omits it.
+		// Persist the rotated token; fall back to the old one only if the server omits it
+		// (omitted, null and "" all decode to "" — see below).
 		RefreshToken: tr.RefreshToken,
-		ExpiresAt:    time.Now().Unix() + tr.ExpiresIn,
-		Scope:        tr.grantedScope(),
-		TokenType:    tr.TokenType,
+		// Exact: 1 <= ExpiresIn <= maxExpiresIn, so the sum cannot overflow int64.
+		ExpiresAt: time.Now().Unix() + tr.ExpiresIn,
+		Scope:     tr.grantedScope(),
+		TokenType: tr.TokenType,
 	}
+	// An omitted, null or EMPTY refresh_token/token_type all decode to "" and mean "the
+	// server didn't rotate it": keep the current value (persisting "" would make the next
+	// refresh 400). Pinned by the shared refresh_success_cases table
+	// (refresh_token_{omitted,null,empty}, token_type_{null,empty}).
 	if refreshed.RefreshToken == "" {
 		refreshed.RefreshToken = current.RefreshToken
 	}
 	// An omitted, null, empty, whitespace-only (incl. U+00A0), or non-string scope means
 	// "unchanged" (RFC 6749 §5.1 lets the server omit it): keep the prior grant rather than
 	// persisting a blank that would erase it (#116's re-consent check reads it). Pinned by
-	// the shared refresh_scope_cases conformance table.
+	// the shared refresh_success_cases conformance table.
 	if refreshed.Scope == "" {
 		refreshed.Scope = current.Scope
 	}

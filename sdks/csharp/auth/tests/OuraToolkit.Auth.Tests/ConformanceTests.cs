@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 
@@ -13,7 +15,8 @@ namespace OuraToolkit.Auth.Tests;
 ///
 /// <list type="bullet">
 /// <item>hostile-but-2xx token responses (incl. a wrong-typed or lone-surrogate string in any
-/// of access_token / refresh_token / token_type / scope) → the typed <see cref="TokenEndpointException"/>
+/// of access_token / refresh_token / token_type / scope, an expires_in that is not an integer
+/// in 1..=2147483647, and a body that is not valid UTF-8 anywhere) → the typed <see cref="TokenEndpointException"/>
 /// with the 2xx status (what the PR #56 guards throw — never a raw
 /// JsonException/NullReferenceException escaping), exactly ONE endpoint call (a hostile 2xx
 /// is not a 400 — the reload-retry arm must not misfire), and <c>tokens.json</c> /
@@ -24,10 +27,13 @@ namespace OuraToolkit.Auth.Tests;
 /// <item>canonical valid records → load with exactly the fixture's field values and
 /// round-trip through this companion's own persist path (the cross-language store
 /// compatibility check — field names are the shared wire format, #54);</item>
-/// <item>refresh scope cases → a SUCCESSFUL refresh from a stored grant of
-/// <c>prior_scope</c> persists exactly <c>expected_scope</c>: an omitted, null, empty,
+/// <item>refresh success cases → a SUCCESSFUL refresh from the stored <c>prior</c> record
+/// persists exactly <c>expected</c> (access_token, refresh_token, scope, token_type) with
+/// expires_at = refresh time + <c>expected.expires_in</c>: an omitted, null, empty,
 /// whitespace-only (incl. U+00A0), or non-string <c>scope</c> keeps the prior grant (and a
-/// non-string one must not fail the refresh); a real scope string replaces it.</item>
+/// non-string one must not fail the refresh); an omitted, null or empty refresh_token /
+/// token_type keeps the prior value; expires_in at the 2147483647 cap succeeds; a lone
+/// surrogate in an UNKNOWN field is not validated.</item>
 /// </list>
 ///
 /// Mirrors the Rust reference leg (<c>sdks/rust/oura-toolkit-auth/tests/conformance.rs</c>)
@@ -83,7 +89,7 @@ public class ConformanceTests
     /// <summary>
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
     /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
-    /// >= 17 hostile_token_responses, >= 8 hostile_store_files, >= 9 refresh_scope_cases.
+    /// >= 24 hostile_token_responses, >= 8 hostile_store_files, >= 17 refresh_success_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -93,56 +99,79 @@ public class ConformanceTests
             "fixture lost its hostile_token_responses table");
         Assert.True(fixture.TryGetProperty("hostile_store_files", out var storeFiles),
             "fixture lost its hostile_store_files table");
-        Assert.True(responses.GetArrayLength() >= 17,
-            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 17");
+        Assert.True(responses.GetArrayLength() >= 24,
+            $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 24");
         Assert.True(storeFiles.GetArrayLength() >= 8,
             $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 8");
-        Assert.True(fixture.TryGetProperty("refresh_scope_cases", out var scopeTable),
-            "fixture lost its refresh_scope_cases table");
-        var scopeCases = scopeTable.GetProperty("cases").GetArrayLength();
-        Assert.True(scopeCases >= 9,
-            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 9");
+        Assert.True(fixture.TryGetProperty("refresh_success_cases", out var successTable),
+            "fixture lost its refresh_success_cases table");
+        var successCases = successTable.GetProperty("cases").GetArrayLength();
+        Assert.True(successCases >= 17,
+            $"fixture shrank? refresh_success_cases has {successCases} cases, want >= 17");
     }
 
     /// <summary>
     /// If the fixture grows a NEW table, this leg must be extended deliberately — an unknown
     /// top-level key failing here beats ten silently-unexercised cases (mirrors the Java leg).
+    /// Every mapped table must also be PRESENT: a renamed table (e.g. the old
+    /// refresh_scope_cases) fails here rather than leaving its theory iterating nothing.
     /// </summary>
     [Fact]
     public void EveryFixtureTableIsMappedByThisSuite()
     {
         string[] known =
         [
-            "$comment", "hostile_token_responses", "hostile_store_files", "refresh_scope_cases",
+            "$comment", "hostile_token_responses", "hostile_store_files", "refresh_success_cases",
             "valid_records",
         ];
-        var unknown = Fixture().EnumerateObject()
-            .Select(p => p.Name)
-            .Where(name => !known.Contains(name))
-            .ToList();
+        var present = Fixture().EnumerateObject().Select(p => p.Name).ToList();
+        var unknown = present.Where(name => !known.Contains(name)).ToList();
         Assert.True(unknown.Count == 0,
             "the shared fixture grew tables this C# leg does not exercise — extend "
             + $"ConformanceTests to map them: {string.Join(", ", unknown)}");
+        var missing = known.Where(name => !present.Contains(name)).ToList();
+        Assert.True(missing.Count == 0,
+            "the shared fixture lost (or renamed) tables this C# leg maps — update "
+            + $"ConformanceTests: {string.Join(", ", missing)}");
+    }
+
+    /// <summary>
+    /// A case's 200 body as the exact bytes to serve: <c>raw_body_base64</c> decoded (bytes
+    /// JSON can't hold, e.g. invalid UTF-8), <c>raw_body</c> VERBATIM (deliberately not JSON),
+    /// otherwise <c>body</c> re-emitted as its exact JSON text, so a wrong-typed field (42,
+    /// "soon") reaches the companion exactly as authored. Returned base64-encoded so the
+    /// theory row stays a plain string.
+    /// </summary>
+    private static string BodyBase64(JsonElement c)
+    {
+        if (c.TryGetProperty("raw_body_base64", out var b64))
+        {
+            return b64.GetString()!;
+        }
+        var text = c.TryGetProperty("raw_body", out var raw) ? raw.GetString()! : c.GetProperty("body").GetRawText();
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+    }
+
+    /// <summary>
+    /// A 200 serving exactly <paramref name="bodyBase64"/>'s bytes — a ByteArrayContent, so
+    /// invalid UTF-8 reaches the companion untouched (a StringContent would re-encode it).
+    /// </summary>
+    private static HttpResponseMessage OkBytes(string bodyBase64)
+    {
+        var content = new ByteArrayContent(Convert.FromBase64String(bodyBase64));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
     }
 
     // --- 1. hostile-but-2xx token responses --------------------------------------------------
 
-    /// <summary>
-    /// One (name, verbatim 200 body) pair per fixture case: <c>raw_body</c> is replayed
-    /// VERBATIM (deliberately not JSON) when present; otherwise <c>body</c> is re-emitted as
-    /// its exact JSON text, so a wrong-typed field (42, "soon") reaches the companion exactly
-    /// as authored.
-    /// </summary>
+    /// <summary>One (name, base64 of the exact 200 body bytes) pair per fixture case (<see cref="BodyBase64"/>).</summary>
     public static TheoryData<string, string> HostileTokenResponses()
     {
         var data = new TheoryData<string, string>();
         foreach (var c in Fixture().GetProperty("hostile_token_responses").EnumerateArray())
         {
-            var name = c.GetProperty("name").GetString()!;
-            var body = c.TryGetProperty("raw_body", out var raw)
-                ? raw.GetString()!
-                : c.GetProperty("body").GetRawText();
-            data.Add(name, body);
+            data.Add(c.GetProperty("name").GetString()!, BodyBase64(c));
         }
         return data;
     }
@@ -157,7 +186,7 @@ public class ConformanceTests
     /// </summary>
     [Theory]
     [MemberData(nameof(HostileTokenResponses))]
-    public async Task HostileTokenResponseFailsTypedAndLeavesTheStoreUntouched(string name, string body)
+    public async Task HostileTokenResponseFailsTypedAndLeavesTheStoreUntouched(string name, string bodyBase64)
     {
         using var temp = new TempStore();
         temp.Store.SaveCredentials(Credentials());
@@ -165,11 +194,15 @@ public class ConformanceTests
         var tokensBefore = File.ReadAllBytes(temp.Store.TokensPath);
         var credsBefore = File.ReadAllBytes(temp.Store.CredentialsPath);
 
-        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK, body));
+        var endpoint = new MockTokenEndpoint(_ => OkBytes(bodyBase64));
         using var manager = new TokenManager(temp.Store, Credentials(), OriginalTokens(),
             handler: endpoint, tokenUrl: "http://token.invalid/oauth/token");
 
-        var e = await Assert.ThrowsAsync<TokenEndpointException>(() => manager.ForceRefreshAsync());
+        var thrown = await Record.ExceptionAsync(() => manager.ForceRefreshAsync());
+        Assert.True(thrown is TokenEndpointException,
+            $"case {name}: a hostile 2xx must fail with the typed TokenEndpointException, got "
+            + (thrown is null ? "a SUCCESSFUL refresh" : thrown.GetType().Name));
+        var e = (TokenEndpointException)thrown!;
         Assert.Equal(200, e.StatusCode); // a 2xx, so the 400-retry arm cannot claim it
         // The typed error's diagnostic is FIXED and secret-free — a partial 2xx payload may
         // carry token material, so the raw body is never echoed (PR #56).
@@ -224,60 +257,91 @@ public class ConformanceTests
         Assert.Contains(file, e.Message); // the typed error names the offending record
     }
 
-    // --- 3. refresh scope cases ---------------------------------------------------------------
+    // --- 3. refresh success cases -------------------------------------------------------------
 
-    /// <summary>One (name, verbatim 200 body, expected persisted scope) triple per case.</summary>
-    public static TheoryData<string, string, string> RefreshScopeCases()
+    /// <summary>
+    /// One (name, base64 of the exact 200 body bytes, expected record JSON) triple per case;
+    /// <c>expected</c> travels as raw JSON text so the theory row stays plain strings.
+    /// </summary>
+    public static TheoryData<string, string, string> RefreshSuccessCases()
     {
         var data = new TheoryData<string, string, string>();
-        foreach (var c in Fixture().GetProperty("refresh_scope_cases").GetProperty("cases").EnumerateArray())
+        foreach (var c in Fixture().GetProperty("refresh_success_cases").GetProperty("cases").EnumerateArray())
         {
-            data.Add(
-                c.GetProperty("name").GetString()!,
-                c.GetProperty("body").GetRawText(),
-                c.GetProperty("expected_scope").GetString()!);
+            data.Add(c.GetProperty("name").GetString()!, BodyBase64(c), c.GetProperty("expected").GetRawText());
         }
         return data;
     }
 
-    /// <summary>The table's shared starting grant, read FROM THE FILE.</summary>
-    private static string PriorScope() =>
-        Fixture().GetProperty("refresh_scope_cases").GetProperty("prior_scope").GetString()!;
+    /// <summary>
+    /// The table's shared starting record, read FROM THE FILE, with an already-expired
+    /// expires_at so the refresh genuinely calls the endpoint.
+    /// </summary>
+    private static Tokens PriorTokens()
+    {
+        var prior = Fixture().GetProperty("refresh_success_cases").GetProperty("prior");
+        return new Tokens
+        {
+            AccessToken = prior.GetProperty("access_token").GetString()!,
+            RefreshToken = prior.GetProperty("refresh_token").GetString()!,
+            Scope = prior.GetProperty("scope").GetString(),
+            TokenType = prior.GetProperty("token_type").GetString(),
+            ExpiresAt = 0,
+        };
+    }
 
     /// <summary>
-    /// A SUCCESSFUL refresh starting from a stored grant of <c>prior_scope</c> must persist
-    /// exactly <c>expected_scope</c>. An omitted, null, empty, whitespace-only (incl. U+00A0),
-    /// or non-string scope keeps the prior grant, and a non-string scope must not fail the
-    /// refresh (which would burn the rotated refresh token). RFC 6749 §5.1 lets the server omit
-    /// an unchanged scope, and persisting a blank would erase the grant the CLI's re-consent
-    /// check reads. A real scope replaces it.
-    /// The PERSISTED record is asserted (not just the returned value), and the access token
-    /// must have become the fixture's rotated one — proving the refresh really happened.
+    /// A SUCCESSFUL refresh starting from the stored <c>prior</c> record must persist EXACTLY
+    /// <c>expected</c>: access_token, refresh_token, scope and token_type, and expires_at within
+    /// [t0 + expires_in, t1 + expires_in] where t0/t1 are unix seconds just before/after the
+    /// refresh. Fallbacks under test: an omitted/null/empty/whitespace/non-string scope keeps
+    /// the prior grant (RFC 6749 §5.1; a blank would erase the grant #116's re-consent reads);
+    /// an omitted/null/EMPTY refresh_token or token_type keeps the prior value (persisting ""
+    /// would 400 the next refresh); expires_in at the 2147483647 cap succeeds; a lone surrogate
+    /// in an unknown field is not validated. The PERSISTED record is asserted, not just the
+    /// returned value.
     /// </summary>
     [Theory]
-    [MemberData(nameof(RefreshScopeCases))]
-    public async Task RefreshScopeCasesPersistExpectedScope(string name, string body, string expectedScope)
+    [MemberData(nameof(RefreshSuccessCases))]
+    public async Task RefreshSuccessCasesPersistExpectedRecord(string name, string bodyBase64, string expectedJson)
     {
-        var prior = OriginalTokens() with { Scope = PriorScope() };
+        using var expectedDoc = JsonDocument.Parse(expectedJson);
+        var expected = expectedDoc.RootElement;
+        var prior = PriorTokens();
         using var temp = new TempStore();
         temp.Store.SaveCredentials(Credentials());
         temp.Store.SaveTokens(prior);
 
-        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK, body));
+        var endpoint = new MockTokenEndpoint(_ => OkBytes(bodyBase64));
         using var manager = new TokenManager(temp.Store, Credentials(), prior,
             handler: endpoint, tokenUrl: "http://token.invalid/oauth/token");
 
-        await manager.ForceRefreshAsync();
+        var t0 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var thrown = await Record.ExceptionAsync(() => manager.ForceRefreshAsync());
+        var t1 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        Assert.True(thrown is null,
+            $"case {name}: a valid 2xx must refresh SUCCESSFULLY, got {thrown?.GetType().Name}: {thrown?.Message}");
 
-        Assert.Equal(1, endpoint.Calls);
+        Assert.True(endpoint.Calls == 1, $"case {name}: want exactly one endpoint call, got {endpoint.Calls}");
         var persisted = temp.Store.LoadTokens();
-        Assert.NotNull(persisted);
-        Assert.True(persisted!.AccessToken == "at-refreshed",
-            $"case {name}: the refresh must persist the new access token, got {persisted.AccessToken}");
-        Assert.True(persisted.Scope == expectedScope,
-            $"case {name}: a refresh from prior grant \"{PriorScope()}\" must persist scope "
-            + $"\"{expectedScope}\" (omitted/null/empty/whitespace/non-string keeps the prior grant), "
-            + $"got \"{persisted.Scope}\"");
+        Assert.True(persisted is not null, $"case {name}: the refresh must persist a token record");
+        foreach (var (field, actual) in new[]
+        {
+            ("access_token", persisted!.AccessToken),
+            ("refresh_token", persisted.RefreshToken),
+            ("scope", persisted.Scope),
+            ("token_type", persisted.TokenType),
+        })
+        {
+            var want = expected.GetProperty(field).GetString();
+            Assert.True(actual == want,
+                $"case {name}: persisted {field} must be exactly \"{want}\" (prior "
+                + $"{prior}; omitted/null/empty keeps the prior value), got \"{actual}\"");
+        }
+        var expiresIn = expected.GetProperty("expires_in").GetInt64();
+        Assert.True(persisted.ExpiresAt >= t0 + expiresIn && persisted.ExpiresAt <= t1 + expiresIn,
+            $"case {name}: persisted expires_at must be refresh time + {expiresIn} "
+            + $"(within [{t0 + expiresIn}, {t1 + expiresIn}]), got {persisted.ExpiresAt}");
     }
 
     // --- 4. canonical valid records -------------------------------------------------------------

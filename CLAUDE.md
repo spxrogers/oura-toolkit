@@ -101,7 +101,8 @@ The shared overlay (`codegen/overlay.jq`, 3.1, all languages) is **non-negotiabl
 1. `servers[0].url` was literally `"https://api.None.com"` (a leaked Python `None`) through
    `openapi-1.37`; Oura fixed it upstream in `openapi-1.41`, but the overlay KEEPS pinning it
    to `"https://api.ouraring.com"` as a regression guard — a wrong server URL breaks every
-   call. **NON-NEGOTIABLE.**
+   call. **NON-NEGOTIABLE.** The pinned export no longer exercises the fix, so
+   `just spec-overlay-selftest` (CI) pins it against a synthetic `api.None.com` spec.
 2. Strip the `MultiDocumentResponseDict` branch from every `anyOf` multi-doc response so
    generated models stay clean.
 3. For the generated **CLIENT only**, narrow per-op security to **BearerAuth**.
@@ -245,8 +246,8 @@ Every change MUST satisfy all of the following:
    anything. Never add an assertion-free test to move the number.
 
 **Cross-language auth conformance (#58):** `codegen/conformance/auth-cases.json` is the SINGLE
-SOURCE for the hostile token-endpoint responses, hostile store files, refresh scope handling
-(`refresh_scope_cases`), and canonical store records every auth companion must survive. ALL SIX companion suites — the Rust reference
+SOURCE for the hostile token-endpoint responses, hostile store files, successful-refresh
+fallbacks (`refresh_success_cases`), and canonical store records every auth companion must survive. ALL SIX companion suites — the Rust reference
 included — iterate the fixture FROM THE FILE. A new hostile case goes into the fixture, never
 into just one language's suite; a companion that fails a case gets fixed — the fixture is never
 weakened to accommodate an implementation.

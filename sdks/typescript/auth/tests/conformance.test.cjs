@@ -1,24 +1,30 @@
 // Cross-language auth-companion conformance (#58) — the TYPESCRIPT leg.
 //
 // Iterates codegen/conformance/auth-cases.json (the single source for the hostile
-// token-endpoint responses, hostile store files, and canonical store records that every
-// companion suite must exercise; new cases are added THERE, never here):
+// token-endpoint responses, successful-refresh fallbacks, hostile store files, and
+// canonical store records that every companion suite must exercise; new cases are added
+// THERE, never here — and its `$comment` is the contract):
 //
-//  - hostile-but-2xx token responses -> typed AuthError subclass (never a bare
-//    SyntaxError/TypeError escaping), tokens.json byte-identical afterwards (the rotated
-//    refresh token is never burned by persisting a blank/expired Bearer);
-//  - successful refreshes whose scope is omitted/null/blank/non-string -> the persisted
-//    record keeps the prior grant; a real scope string (incl. a valid surrogate pair)
-//    replaces it (refresh_scope_cases);
-//  - hostile store files -> the typed StoreFormatError, never a default/null-filled
+//  - the fixture's top-level tables are EXACTLY the four below, so a table added to the
+//    fixture can't be silently ignored by this leg;
+//  - hostile_token_responses: a hostile-but-2xx token response (`body` JSON, `raw_body`
+//    verbatim, or `raw_body_base64` decoded bytes — e.g. invalid UTF-8) -> typed
+//    TokenEndpointError (never a bare SyntaxError/TypeError escaping), tokens.json
+//    byte-identical afterwards (the rotated refresh token is never burned by persisting
+//    a blank/expired Bearer);
+//  - refresh_success_cases: a successful refresh from the fixture's `prior` record
+//    persists EXACTLY `expected` (access_token, refresh_token, scope, token_type) and
+//    expires_at = refresh time + expected.expires_in — incl. the omitted/null/blank
+//    scope and omitted/null/empty refresh_token/token_type fallbacks to `prior`;
+//  - hostile_store_files -> the typed StoreFormatError, never a default/null-filled
 //    record and never an untyped throw;
-//  - canonical valid records -> load with exactly the fixture's field values and
-//    round-trip through this companion's own persist path (the cross-language store
-//    compatibility check — field names are the shared wire format, #54).
+//  - valid_records -> load with exactly the fixture's field values and round-trip
+//    through this companion's own persist path (the cross-language store compatibility
+//    check — field names are the shared wire format, #54).
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-// same test structure, same fixture-shrink guards (>= 17 hostile token responses,
-// >= 9 refresh scope cases, >= 8 hostile store files).
+// same test structure, same fixture-shrink guards (>= 24 hostile token responses,
+// >= 17 refresh success cases, >= 8 hostile store files).
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -50,16 +56,43 @@ function withTempStore(t) {
   return new auth.TokenStore(dir);
 }
 
+/**
+ * The exact bytes a case's token endpoint sends: `raw_body_base64` decoded (bytes JSON
+ * can't hold, e.g. invalid UTF-8), else `raw_body` verbatim, else the JSON-encoded
+ * `body` — same rule as the Rust leg's ResponseTemplate selection. A case must carry
+ * exactly one of the three, so a typo'd column can't silently send `undefined`.
+ */
+function casePayload(c) {
+  const columns = ["body", "raw_body", "raw_body_base64"].filter((k) => k in c);
+  assert.equal(columns.length, 1, `case ${c.name}: exactly one of body/raw_body/raw_body_base64, got ${columns}`);
+  if (typeof c.raw_body_base64 === "string") return Buffer.from(c.raw_body_base64, "base64");
+  if (typeof c.raw_body === "string") return Buffer.from(c.raw_body, "utf8");
+  assert.ok("body" in c, `case ${c.name}: payload column has the wrong type`);
+  return Buffer.from(JSON.stringify(c.body), "utf8");
+}
+
+test("conformance: the fixture's top-level tables are exactly the ones this leg iterates", () => {
+  // A table added to (or renamed in) the fixture must fail here until this leg iterates
+  // it — otherwise new cases would be silently ignored (e.g. the refresh_scope_cases ->
+  // refresh_success_cases rename).
+  const tables = Object.keys(fixture)
+    .filter((k) => k !== "$comment")
+    .sort();
+  assert.deepEqual(
+    tables,
+    ["hostile_store_files", "hostile_token_responses", "refresh_success_cases", "valid_records"],
+    "auth-cases.json top-level tables changed: iterate the new table in this suite"
+  );
+});
+
 test("conformance: hostile 2xx token responses fail typed and leave the store untouched", async (t) => {
   const cases = fixture.hostile_token_responses;
   assert.ok(Array.isArray(cases), "hostile_token_responses table");
-  assert.ok(cases.length >= 17, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 24, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;
-    // raw_body verbatim when present, else the JSON-encoded body — same rule as the
-    // Rust leg's ResponseTemplate selection.
-    const payload = typeof c.raw_body === "string" ? c.raw_body : JSON.stringify(c.body);
+    const payload = casePayload(c);
 
     const endpoint = await startTokenEndpoint((_params, res) => {
       res.writeHead(200, { "content-type": "application/json" });
@@ -114,31 +147,39 @@ test("conformance: hostile 2xx token responses fail typed and leave the store un
   }
 });
 
-test("conformance: refresh_scope_cases persist expected_scope", async (t) => {
-  const table = fixture.refresh_scope_cases;
-  assert.ok(table && typeof table === "object", "refresh_scope_cases table");
-  const prior = table.prior_scope;
-  assert.equal(typeof prior, "string", "refresh_scope_cases.prior_scope");
-  assert.notEqual(prior.trim(), "", "refresh_scope_cases.prior_scope must be a real grant");
+test("conformance: refresh_success_cases persist exactly `expected`", async (t) => {
+  const table = fixture.refresh_success_cases;
+  assert.ok(table && typeof table === "object", "refresh_success_cases table");
+  const prior = table.prior;
+  assert.ok(prior && typeof prior === "object", "refresh_success_cases.prior");
+  for (const field of ["access_token", "refresh_token", "scope", "token_type"]) {
+    assert.equal(typeof prior[field], "string", `refresh_success_cases.prior.${field}`);
+    assert.notEqual(prior[field].trim(), "", `refresh_success_cases.prior.${field} must be non-blank`);
+  }
   const cases = table.cases;
-  assert.ok(Array.isArray(cases), "refresh_scope_cases.cases");
-  assert.ok(cases.length >= 9, `fixture shrank? ${cases.length} cases`);
+  assert.ok(Array.isArray(cases), "refresh_success_cases.cases");
+  assert.ok(cases.length >= 17, `fixture shrank? ${cases.length} cases`);
 
   for (const c of cases) {
     const name = c.name;
+    const expected = c.expected;
+    assert.ok(expected && typeof expected === "object", `case ${name}: expected`);
+    const payload = casePayload(c);
     const endpoint = await startTokenEndpoint((_params, res) => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(c.body));
+      res.end(payload);
     });
     t.after(endpoint.close);
 
-    // Expired, so the refresh genuinely calls the endpoint; stored grant = prior_scope.
+    // Seeded with the fixture's `prior` and an already-expired expiry, so the refresh
+    // genuinely calls the endpoint.
     const startTokens = () =>
       new auth.Tokens({
-        accessToken: "stale-access-rt-original",
-        refreshToken: "rt-original",
+        accessToken: prior.access_token,
+        refreshToken: prior.refresh_token,
         expiresAt: 0,
-        scope: prior,
+        scope: prior.scope,
+        tokenType: prior.token_type,
       });
     const store = withTempStore(t);
     store.saveCredentials(credentials());
@@ -151,22 +192,44 @@ test("conformance: refresh_scope_cases persist expected_scope", async (t) => {
       tokenUrl: endpoint.url,
     });
 
-    await manager.forceRefresh();
+    const t0 = Math.floor(Date.now() / 1000);
+    try {
+      await manager.forceRefresh();
+    } catch (e) {
+      assert.fail(`case ${name}: the refresh must SUCCEED, got ${e && e.constructor.name}: ${e}`);
+    }
+    const t1 = Math.floor(Date.now() / 1000);
     assert.equal(endpoint.requests.length, 1, `case ${name}: the refresh must call the endpoint once`);
+    assert.equal(
+      endpoint.requests[0].params.get("refresh_token"),
+      prior.refresh_token,
+      `case ${name}: the refresh must send the prior refresh token`
+    );
 
     // Assert against the PERSISTED record (a fresh load from disk), not in-memory state.
     const persisted = store.loadTokens();
     assert.notEqual(persisted, null, `case ${name}: tokens must be persisted`);
+    assert.equal(persisted.accessToken(), expected.access_token, `case ${name}: persisted access_token`);
     assert.equal(
-      persisted.accessToken(),
-      "at-refreshed",
-      `case ${name}: the refresh must land (persisted access token)`
+      persisted.refreshToken(),
+      expected.refresh_token,
+      `case ${name}: persisted refresh_token (omitted/null/empty keeps prior ${JSON.stringify(prior.refresh_token)})`
     );
     assert.equal(
       persisted.scope,
-      c.expected_scope,
-      `case ${name}: persisted scope must be ${JSON.stringify(c.expected_scope)} ` +
-        `(prior ${JSON.stringify(prior)}; a blank/omitted scope keeps the prior grant)`
+      expected.scope,
+      `case ${name}: persisted scope (omitted/null/blank/non-string keeps prior ${JSON.stringify(prior.scope)})`
+    );
+    assert.equal(
+      persisted.tokenType,
+      expected.token_type,
+      `case ${name}: persisted token_type (omitted/null/empty keeps prior ${JSON.stringify(prior.token_type)})`
+    );
+    assert.equal(typeof expected.expires_in, "number", `case ${name}: expected.expires_in`);
+    assert.ok(
+      persisted.expiresAt >= t0 + expected.expires_in && persisted.expiresAt <= t1 + expected.expires_in,
+      `case ${name}: persisted expires_at ${persisted.expiresAt} must be refresh time + ` +
+        `${expected.expires_in} (within [${t0 + expected.expires_in}, ${t1 + expected.expires_in}])`
     );
   }
 });

@@ -82,7 +82,8 @@ just gen                # regenerate every client; run twice for the zero-diff c
 ```
 
 Review the generated diff (the overlays + down-convert absorb most upstream churn) and land
-it through the usual review loop. `just spec-drift-selftest` (hermetic) guards the detector.
+it through the usual review loop. `just spec-drift-selftest` (hermetic) guards the detector,
+and `just spec-overlay-selftest` guards the overlay's `servers[0].url` fix.
 
 The C# recipes (`just sdk-check-csharp` / `just sdk-test-csharp` / `just gen-csharp`)
 need a **.NET 10 SDK**: the C# client and auth companion multi-target

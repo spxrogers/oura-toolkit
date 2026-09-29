@@ -1,33 +1,40 @@
 """Cross-language auth-companion conformance (#58) — the PYTHON leg.
 
 Iterates ``codegen/conformance/auth-cases.json`` (the single source for the hostile
-token-endpoint responses, hostile store files, and canonical store records that every
-companion suite must exercise; new cases are added THERE, never here):
+token-endpoint responses, hostile store files, successful-refresh fallbacks, and
+canonical store records that every companion suite must exercise; new cases are added
+THERE, never here — its ``$comment`` is the contract):
 
-- hostile-but-2xx token responses -> the typed :class:`TokenEndpointError` (an
-  :class:`AuthError` subclass — never a bare ``KeyError``/``TypeError``/
-  ``json.JSONDecodeError`` escaping), and ``tokens.json`` byte-identical afterwards
-  (the rotated refresh token is never burned by persisting a blank/expired Bearer);
+- hostile-but-2xx token responses (``body`` JSON, ``raw_body`` verbatim string, or
+  ``raw_body_base64`` verbatim bytes — e.g. invalid UTF-8) -> the typed
+  :class:`TokenEndpointError` (an :class:`AuthError` subclass — never a bare
+  ``KeyError``/``TypeError``/``OverflowError``/``json.JSONDecodeError`` escaping), and
+  ``tokens.json`` byte-identical afterwards (the rotated refresh token is never burned
+  by persisting a blank/expired Bearer);
 - hostile store files -> the typed :class:`StoreFormatError`, never a default-filled
   record that makes ``is_authenticated`` lie, and never an untyped exception;
-- successful refreshes with omitted/null/empty/whitespace/non-string/real ``scope``
-  (incl. a valid surrogate pair) -> the persisted record carries exactly the
-  fixture's ``expected_scope`` (a blank or non-string scope keeps the prior grant; a
-  real one replaces it);
+- successful refreshes from the fixture's stored ``prior`` record -> the persisted
+  record carries EXACTLY the case's ``expected`` access_token, refresh_token, scope and
+  token_type (an omitted/null/empty refresh_token or token_type, and a blank or
+  non-string scope, keep the prior value), and ``expires_at`` = refresh time +
+  ``expected.expires_in``;
 - canonical valid records -> load with exactly the fixture's field values and
   round-trip through this companion's own persist path (the cross-language store
   compatibility check — field names are the shared wire format, #54).
 
 Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
-same three-test structure, same fixture-shrink guards (>= 17 hostile token responses,
->= 8 hostile store files, >= 9 refresh-scope cases).
+same fixture-shrink guards (>= 24 hostile token responses, >= 8 hostile store files,
+>= 17 refresh-success cases) plus an exact top-level table-set guard, so a renamed or
+added table can't be silently skipped.
 Monorepo-only: the fixture is resolved by walking up from ``__file__`` to the repo
 root (nearest ancestor holding the justfile + README), never from the cwd.
 """
 
 from __future__ import annotations
 
+import base64
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -62,8 +69,21 @@ FIXTURE = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 HOSTILE_TOKEN_RESPONSES = FIXTURE["hostile_token_responses"]
 HOSTILE_STORE_FILES = FIXTURE["hostile_store_files"]
 VALID_RECORDS = FIXTURE["valid_records"]
-REFRESH_SCOPE = FIXTURE["refresh_scope_cases"]
-REFRESH_SCOPE_CASES = REFRESH_SCOPE["cases"]
+REFRESH_SUCCESS = FIXTURE["refresh_success_cases"]
+REFRESH_SUCCESS_PRIOR = REFRESH_SUCCESS["prior"]
+REFRESH_SUCCESS_CASES = REFRESH_SUCCESS["cases"]
+
+#: The exact top-level tables this leg iterates. A table added to (or renamed in) the
+#: fixture that this suite doesn't know about would otherwise be silently ignored.
+EXPECTED_TABLES = {
+    "hostile_token_responses",
+    "hostile_store_files",
+    "refresh_success_cases",
+    "valid_records",
+}
+
+#: The mutually exclusive ways a case gives its token-endpoint response body.
+BODY_COLUMNS = ("body", "raw_body", "raw_body_base64")
 
 CREDENTIALS = ClientCredentials(client_id="cid", client_secret="cs")
 
@@ -76,20 +96,47 @@ def original_tokens() -> Tokens:
     )
 
 
+def response_body(case: dict) -> object:
+    """The case's response body, for the conftest mock: ``raw_body_base64`` -> the
+    decoded bytes (sent verbatim — bytes JSON can't hold, e.g. invalid UTF-8),
+    ``raw_body`` -> the string (sent verbatim), ``body`` -> the JSON value (json.dumps'd
+    by the mock). Exactly one column must be present — an ambiguous case is a fixture
+    bug, not something to resolve by precedence."""
+    present = [column for column in BODY_COLUMNS if column in case]
+    assert len(present) == 1, (
+        f"case {case['name']}: expected exactly one of {BODY_COLUMNS}, got {present}"
+    )
+    column = present[0]
+    if column == "raw_body_base64":
+        return base64.b64decode(case[column], validate=True)
+    return case[column]
+
+
+def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
+    """Table-set guard: a renamed table (e.g. refresh_scope_cases ->
+    refresh_success_cases) would KeyError at import, but an ADDED table would be
+    silently ignored — pin the exact set so every fixture table has a harness here."""
+    tables = set(FIXTURE) - {"$comment"}
+    assert tables == EXPECTED_TABLES, (
+        "auth-cases.json top-level tables changed: "
+        f"unknown to this suite {sorted(tables - EXPECTED_TABLES)}, "
+        f"missing from the fixture {sorted(EXPECTED_TABLES - tables)}"
+    )
+
+
 def test_fixture_has_not_shrunk() -> None:
     """Shrink guard: a fixture edit that drops hostile cases weakens EVERY language's
-    suite at once — fail loudly here (>= 17 hostile token responses, >= 8 hostile store
-    files, >= 9 refresh-scope cases, like the other legs)."""
-    assert len(HOSTILE_TOKEN_RESPONSES) >= 17, (
+    suite at once — fail loudly here (>= 24 hostile token responses, >= 8 hostile store
+    files, >= 17 refresh-success cases, like the other legs). pytest SKIPS a
+    parametrize over an empty list, so an emptied table would otherwise pass silently."""
+    assert len(HOSTILE_TOKEN_RESPONSES) >= 24, (
         f"fixture shrank? {len(HOSTILE_TOKEN_RESPONSES)} hostile_token_responses cases"
     )
     assert len(HOSTILE_STORE_FILES) >= 8, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
     )
-    # pytest SKIPS a parametrize over an empty list, so an emptied refresh_scope_cases
-    # table would pass silently without this guard.
-    assert len(REFRESH_SCOPE_CASES) >= 9, (
-        f"fixture shrank? {len(REFRESH_SCOPE_CASES)} refresh_scope_cases cases"
+    assert len(REFRESH_SUCCESS_CASES) >= 17, (
+        f"fixture shrank? {len(REFRESH_SUCCESS_CASES)} refresh_success_cases cases"
     )
 
 
@@ -99,10 +146,9 @@ def test_fixture_has_not_shrunk() -> None:
 def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     token_endpoint, tmp_path: Path, case: dict
 ) -> None:
-    # raw_body verbatim when present, else the JSON-encoded body — same rule as the
-    # Rust leg's ResponseTemplate selection (the conftest mock sends str bodies
-    # verbatim and json.dumps's everything else).
-    payload = case["raw_body"] if "raw_body" in case else case["body"]
+    # raw_body_base64 / raw_body verbatim, else the JSON-encoded body — same rule as
+    # the Rust leg's ResponseTemplate selection.
+    payload = response_body(case)
     token_endpoint.handler = lambda form: (200, payload)
 
     store = TokenStore(tmp_path)
@@ -120,7 +166,9 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     # Typed: the companion's own error class — never a bare KeyError/TypeError/
     # JSONDecodeError from the decode detonating downstream, and never a mis-filed
     # variant that would trigger remediation hints for a server-side fault.
-    assert not isinstance(err, (KeyError, TypeError, json.JSONDecodeError)), (
+    assert not isinstance(
+        err, (KeyError, TypeError, OverflowError, json.JSONDecodeError)
+    ), (
         f"case {case['name']}: an untyped {type(err).__name__} escaped: {err!r}"
     )
     assert isinstance(err, AuthError), (
@@ -147,40 +195,55 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
 
 
 @pytest.mark.parametrize(
-    "case", REFRESH_SCOPE_CASES, ids=[c["name"] for c in REFRESH_SCOPE_CASES]
+    "case", REFRESH_SUCCESS_CASES, ids=[c["name"] for c in REFRESH_SUCCESS_CASES]
 )
-def test_refresh_scope_cases_persist_expected_scope(
+def test_refresh_success_cases_persist_exactly_the_expected_record(
     token_endpoint, tmp_path: Path, case: dict
 ) -> None:
-    body = case["body"]
-    token_endpoint.handler = lambda form: (200, body)
+    payload = response_body(case)
+    token_endpoint.handler = lambda form: (200, payload)
 
     prior = Tokens(
-        access_token="at-original",
-        refresh_token="rt-original",
-        expires_at=0,  # expired, so the refresh genuinely calls the endpoint
-        scope=REFRESH_SCOPE["prior_scope"],
+        access_token=REFRESH_SUCCESS_PRIOR["access_token"],
+        refresh_token=REFRESH_SUCCESS_PRIOR["refresh_token"],
+        expires_at=0,  # already expired, so the refresh genuinely calls the endpoint
+        scope=REFRESH_SUCCESS_PRIOR["scope"],
+        token_type=REFRESH_SUCCESS_PRIOR["token_type"],
     )
     store = TokenStore(tmp_path)
     store.save_credentials(CREDENTIALS)
     store.save_tokens(prior)
 
     manager = TokenManager(store, CREDENTIALS, prior, token_url=token_endpoint.url)
-    manager.force_refresh()
+    expected = case["expected"]
+    t0 = int(time.time())
+    returned = manager.access_token()  # the proactive path: prior is expired
+    t1 = int(time.time())
 
     assert len(token_endpoint.requests) == 1, (
         f"case {case['name']}: the refresh must call the token endpoint exactly once"
     )
+    assert token_endpoint.requests[0].get("refresh_token") == prior.refresh_token, (
+        f"case {case['name']}: the refresh must send the prior refresh token"
+    )
+    assert returned == expected["access_token"], (
+        f"case {case['name']}: access_token() must hand out the refreshed token, "
+        f"got {returned!r}"
+    )
     persisted = store.load_tokens()
     assert persisted is not None, f"case {case['name']}: tokens must be persisted"
-    assert persisted.access_token == "at-refreshed", (
-        f"case {case['name']}: the refreshed access token must be persisted, "
-        f"got {persisted.access_token!r}"
-    )
-    assert persisted.scope == case["expected_scope"], (
-        f"case {case['name']}: refresh_scope_cases contract — a blank/omitted scope "
-        f"keeps the prior grant {REFRESH_SCOPE['prior_scope']!r}, a real one replaces "
-        f"it; expected {case['expected_scope']!r}, persisted {persisted.scope!r}"
+    for field in ("access_token", "refresh_token", "scope", "token_type"):
+        assert getattr(persisted, field) == expected[field], (
+            f"case {case['name']}: refresh_success_cases contract — persisted {field} "
+            f"must be {expected[field]!r} (an omitted/null/empty refresh_token or "
+            "token_type, or a blank/non-string scope, keeps the prior "
+            f"{REFRESH_SUCCESS_PRIOR.get(field)!r}), got {getattr(persisted, field)!r}"
+        )
+    lifetime = expected["expires_in"]
+    assert t0 + lifetime <= persisted.expires_at <= t1 + lifetime, (
+        f"case {case['name']}: expires_at must be (time of the refresh) + "
+        f"{lifetime}, i.e. within [{t0 + lifetime}, {t1 + lifetime}], "
+        f"got {persisted.expires_at}"
     )
 
 

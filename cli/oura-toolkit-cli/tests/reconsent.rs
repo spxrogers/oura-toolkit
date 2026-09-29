@@ -219,6 +219,14 @@ fn a_stale_login_gets_one_stderr_notice_and_the_command_still_succeeds() {
         !stdout.contains(NOTICE_PREFIX),
         "the notice is prose — stderr only (contract → Streams): {stdout}"
     );
+    // "stdout and exit code are unchanged": byte-identical to the same command on a
+    // current login, which never runs the notice.
+    let baseline = Fixture::new(Some(&current_grant())).run(&[]);
+    assert!(baseline.status.success());
+    assert_eq!(
+        first.stdout, baseline.stdout,
+        "the notice must not change stdout by a single byte"
+    );
     assert_eq!(
         stderr.lines().count(),
         1,
@@ -436,6 +444,45 @@ fn on_a_terminal_the_prompt_goes_to_the_terminal_and_the_result_to_stdout() {
     );
     let state = std::fs::read_to_string(fx.state_file()).unwrap();
     assert!(state.contains("declined"), "the n was remembered: {state}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_script_run_first_leaves_the_prompt_and_a_decline_leaves_status_showing_the_gap() {
+    // The notice and the prompt are tracked separately: a cron job or pipe running first
+    // (the stderr note) must not use up the one chance to ask the person at a terminal.
+    let fx = Fixture::new(Some(PRE_1_41_GRANT));
+    let scripted = fx.run(&[]);
+    assert!(
+        text(&scripted.stderr).starts_with(NOTICE_PREFIX),
+        "the script run got the note: {}",
+        text(&scripted.stderr)
+    );
+    let transcript = on_a_terminal(
+        &fx,
+        r#""$OURA_BIN" sleep --date 2026-06-26 > "$OUT""#,
+        "n\n",
+        &[],
+    );
+    assert!(
+        transcript.contains(PROMPT_QUESTION),
+        "the terminal still gets its prompt after a script run: {transcript:?}"
+    );
+    // Declined for this scope set: data commands go quiet, but `auth status` always reports
+    // the gap (contract → "`oura auth status` always shows the gap").
+    let quiet = fx.run(&[]);
+    assert_eq!(
+        text(&quiet.stderr),
+        "",
+        "a decline silences the data commands"
+    );
+    let status = fx.run_args(&["auth", "status"], &[]);
+    assert!(status.status.success(), "{}", text(&status.stderr));
+    let report = text(&status.stdout);
+    assert!(
+        report.contains("Missing scopes") && report.contains("spo2 heart_health"),
+        "status shows the gap even after a decline: {report}"
+    );
 }
 
 #[cfg(target_os = "linux")]

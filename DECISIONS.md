@@ -307,7 +307,7 @@ as tidying.
 ### Cross-language auth conformance is one fixture (#58)
 Four independent companion review loops found the **same two bug families**.
 `codegen/conformance/auth-cases.json` is now the SINGLE SOURCE for hostile token-endpoint
-responses, hostile store files, refresh scope handling (`refresh_scope_cases`, #116), and
+responses, hostile store files, successful-refresh fallbacks (`refresh_success_cases`, #116), and
 canonical store records — all six companion suites
 (Rust reference included) iterate it from the file. A new hostile case goes in the fixture,
 never one language's suite; a failing companion gets fixed, the fixture is never weakened.
@@ -386,26 +386,35 @@ are implementation-defined), or not a string, and the refresh still succeeds: `s
 informational, and failing would burn the rotated refresh token. The six had drifted. All six
 let a whitespace-only scope replace the grant, and three also let `""` do it. On a non-string
 scope, Rust/Go/C# failed the whole refresh, Java persisted it as text (`"42"`), Python
-persisted the raw number, and only TypeScript kept the prior grant. That's pinned for all six
-by the shared conformance table `refresh_scope_cases`.
+persisted the raw number, and only TypeScript kept the prior grant. The same fallback now
+covers an omitted, null or EMPTY `refresh_token` or `token_type` (the server didn't rotate it;
+persisting `""` would make the next refresh 400). Go and C# already did that while Rust, TS,
+Python and Java stored `""`. The code exchange has no prior token, so there an
+absent/null/empty `refresh_token` fails typed. All of it is pinned for all six by the shared
+table `refresh_success_cases`, which asserts the WHOLE persisted record (access and refresh
+token, scope, token type, and `expires_at`), not just the scope.
 
-**Malformed vs wrong-typed.** A string that isn't valid Unicode (a lone-surrogate escape like
-`"\ud800"`) in any of the four fields a companion reads (`access_token`, `refresh_token`,
-`token_type`, `scope`) makes the response malformed JSON text (RFC 8259 §8.2), not merely
-wrong-typed. So it fails typed with the store untouched (`hostile_token_responses`), even
-though that loses the refresh token the server just rotated: there is no trustworthy value to
-persist, and persisting a mangled refresh token would lose it anyway. The same holds for a
-non-string `refresh_token` or `token_type`. Only `scope` is informational enough to stay
-lenient when wrong-typed. Before this, the six diverged badly:
-- Rust failed typed.
-- Python crashed untyped while persisting, and stored a non-string refresh token as-is.
-- Go, TypeScript and Java persisted a lossy grant. The escaped surrogate that TS and Java wrote
-  even made Rust reject the shared `tokens.json`.
-- C# threw untyped.
+**Malformed vs wrong-typed.** Some responses are malformed rather than merely wrong-typed, and
+fail typed with the store untouched (`hostile_token_responses`), even though that loses the
+refresh token the server just rotated: there is no trustworthy value to persist, and
+persisting a mangled refresh token would lose it anyway.
+- A body that isn't valid UTF-8 anywhere, unknown fields included (RFC 8259 §8.1: it isn't
+  JSON text). Every companion checks the raw bytes before parsing, because Rust's decoder
+  skips unread fields and TS/Java/C# otherwise decode bad bytes to U+FFFD.
+- A lone-surrogate escape like `"\ud800"` in any of the four fields a companion reads
+  (`access_token`, `refresh_token`, `token_type`, `scope`; RFC 8259 §8.2). Unknown fields are
+  not validated for this, and a case pins that too.
+- A non-string `access_token`, `refresh_token` or `token_type`. Only `scope` is informational
+  enough to stay lenient when wrong-typed.
+- An `expires_in` that isn't an integer in 1..=2147483647 (~68 years; Oura's are about a
+  day). The cap keeps `now + expires_in` exact in every store: before it, Rust panicked on
+  overflow in debug builds, Go/Java/C# wrapped to a negative expiry, Python threw an untyped
+  error on `1e400`, and TS/Python could write an `expires_at` Rust can't read back.
+  `3600.0` is implementation-defined (TS can't tell it from `3600`).
 
-Unknown response fields are not validated. Known gap: RAW invalid UTF-8 bytes (as opposed to an
-escape) can't be expressed in the JSON fixture. Rust, Go and Python reject them; TS, Java and
-C# decode them to U+FFFD.
+Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
+untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even
+made Rust reject the shared `tokens.json`), and C# threw untyped.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified
