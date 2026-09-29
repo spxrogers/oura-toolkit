@@ -269,13 +269,14 @@ pub mod types {
         pub tag_type_code: ::std::option::Option<::std::string::String>,
     }
 
-    #[doc = "`ExtApiV2DataType`"]
+    #[doc = "Data types that partners can subscribe to via ExtApiV2 webhooks."]
     #[doc = r""]
     #[doc = r" <details><summary>JSON schema</summary>"]
     #[doc = r""]
     #[doc = r" ```json"]
     #[doc = "{"]
     #[doc = "  \"title\": \"ExtApiV2DataType\","]
+    #[doc = "  \"description\": \"Data types that partners can subscribe to via ExtApiV2 webhooks.\","]
     #[doc = "  \"type\": \"string\","]
     #[doc = "  \"enum\": ["]
     #[doc = "    \"tag\","]
@@ -2522,7 +2523,7 @@ pub mod types {
     #[doc = "    },"]
     #[doc = "    \"ring_id\": {"]
     #[doc = "      \"title\": \"Ring Id\","]
-    #[doc = "      \"description\": \"Encrypted identifier of the ring that produced this sleep data.\","]
+    #[doc = "      \"description\": \"Encrypted identifier of the ring that produced this sleep data. Deprecated, returns null.\","]
     #[doc = "      \"type\": ["]
     #[doc = "        \"string\","]
     #[doc = "        \"null\""]
@@ -2682,7 +2683,7 @@ pub mod types {
         #[doc = "Number of restless periods during sleep."]
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub restless_periods: ::std::option::Option<i64>,
-        #[doc = "Encrypted identifier of the ring that produced this sleep data."]
+        #[doc = "Encrypted identifier of the ring that produced this sleep data. Deprecated, returns null."]
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ring_id: ::std::option::Option<::std::string::String>,
         #[doc = "Version of the sleep algorithm used to calculate the sleep data."]
@@ -4934,7 +4935,9 @@ pub mod types {
     #[doc = "    \"manual\","]
     #[doc = "    \"autodetected\","]
     #[doc = "    \"confirmed\","]
-    #[doc = "    \"workout_heart_rate\""]
+    #[doc = "    \"workout_heart_rate\","]
+    #[doc = "    \"live_third_party_heart_rate\","]
+    #[doc = "    \"live_oura_heart_rate\""]
     #[doc = "  ]"]
     #[doc = "}"]
     #[doc = r" ```"]
@@ -4960,6 +4963,10 @@ pub mod types {
         Confirmed,
         #[serde(rename = "workout_heart_rate")]
         WorkoutHeartRate,
+        #[serde(rename = "live_third_party_heart_rate")]
+        LiveThirdPartyHeartRate,
+        #[serde(rename = "live_oura_heart_rate")]
+        LiveOuraHeartRate,
     }
 
     impl ::std::fmt::Display for PublicWorkoutSource {
@@ -4969,6 +4976,8 @@ pub mod types {
                 Self::Autodetected => f.write_str("autodetected"),
                 Self::Confirmed => f.write_str("confirmed"),
                 Self::WorkoutHeartRate => f.write_str("workout_heart_rate"),
+                Self::LiveThirdPartyHeartRate => f.write_str("live_third_party_heart_rate"),
+                Self::LiveOuraHeartRate => f.write_str("live_oura_heart_rate"),
             }
         }
     }
@@ -4981,6 +4990,8 @@ pub mod types {
                 "autodetected" => Ok(Self::Autodetected),
                 "confirmed" => Ok(Self::Confirmed),
                 "workout_heart_rate" => Ok(Self::WorkoutHeartRate),
+                "live_third_party_heart_rate" => Ok(Self::LiveThirdPartyHeartRate),
+                "live_oura_heart_rate" => Ok(Self::LiveOuraHeartRate),
                 _ => Err("invalid value".into()),
             }
         }

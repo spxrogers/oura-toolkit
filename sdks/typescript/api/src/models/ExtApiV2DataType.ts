@@ -14,7 +14,7 @@
 
 
 /**
- * 
+ * Data types that partners can subscribe to via ExtApiV2 webhooks.
  * @export
  */
 export const ExtApiV2DataType = {

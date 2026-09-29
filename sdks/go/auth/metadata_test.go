@@ -81,8 +81,8 @@ func TestMetadataMatchesSpec(t *testing.T) {
 
 func TestDefaultScopesAreAllValidAndExcludeEmail(t *testing.T) {
 	scopes := DefaultScopes()
-	if len(scopes) != 7 {
-		t.Fatalf("default scopes must be the 7 non-email scopes, got %d: %v", len(scopes), scopes)
+	if len(scopes) != 8 {
+		t.Fatalf("default scopes must be the 8 non-email scopes, got %d: %v", len(scopes), scopes)
 	}
 	if slices.Contains(scopes, "email") {
 		t.Fatalf("default scopes must omit email (CLAUDE.md default-consent policy): %v", scopes)

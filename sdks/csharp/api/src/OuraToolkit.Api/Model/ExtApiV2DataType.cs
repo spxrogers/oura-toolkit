@@ -27,8 +27,9 @@ using OpenAPIDateConverter = OuraToolkit.Api.Client.OpenAPIDateConverter;
 namespace OuraToolkit.Api.Model
 {
     /// <summary>
-    /// Defines ExtApiV2DataType
+    /// Data types that partners can subscribe to via ExtApiV2 webhooks.
     /// </summary>
+    /// <value>Data types that partners can subscribe to via ExtApiV2 webhooks.</value>
     [JsonConverter(typeof(StringEnumConverter))]
     public enum ExtApiV2DataType
     {

@@ -375,11 +375,12 @@ Authentication schemes defined for the API:
   - email: Email address of the user
   - personal: Personal information (gender, age, height, weight)
   - daily: Daily summaries of sleep, activity and readiness
-  - heartrate: Time series heart rate for Gen 3 users
+  - heartrate: Time series heart rate for users
   - workout: Summaries for auto-detected and user entered workouts
   - tag: User entered tags
   - session: Guided and unguided sessions in the Oura app
-  - spo2Daily: SpO2 Average recorded during sleep
+  - spo2: SpO2 Average recorded during sleep
+  - heart_health: Heart health data
 
 <a id="ClientIdAuth"></a>
 ### ClientIdAuth

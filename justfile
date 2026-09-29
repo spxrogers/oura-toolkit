@@ -12,7 +12,7 @@
 # ---------------------------------------------------------------------------------------------
 
 # Pinned Oura OpenAPI export (v3.1.0, title "Oura API Documentation", version 2.0).
-spec_version  := "openapi-1.37"
+spec_version  := "openapi-1.41"
 spec_url      := "https://api.ouraring.com/v2/static/json/" + spec_version + ".json"
 
 # Pristine vendored spec (committed) and the derived overlay output (gitignored).

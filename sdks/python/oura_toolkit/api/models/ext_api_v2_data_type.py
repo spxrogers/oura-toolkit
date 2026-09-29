@@ -20,7 +20,7 @@ from typing_extensions import Self
 
 class ExtApiV2DataType(str, Enum):
     """
-    ExtApiV2DataType
+    Data types that partners can subscribe to via ExtApiV2 webhooks.
     """
 
     """

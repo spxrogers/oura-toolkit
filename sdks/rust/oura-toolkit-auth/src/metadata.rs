@@ -19,7 +19,8 @@ const DEFAULT_SCOPE_NAMES: &[&str] = &[
     "workout",
     "tag",
     "session",
-    "spo2Daily",
+    "spo2",
+    "heart_health",
 ];
 
 /// The default scopes, verified to all exist in the spec-advertised [`ALL_SCOPES`].
@@ -67,7 +68,7 @@ mod tests {
         assert_eq!(AUTHORIZE_URL, "https://cloud.ouraring.com/oauth/authorize");
         assert_eq!(TOKEN_URL, "https://api.ouraring.com/oauth/token");
         assert!(ALL_SCOPES.contains(&"personal"));
-        assert_eq!(ALL_SCOPES.len(), 8);
+        assert_eq!(ALL_SCOPES.len(), 9);
     }
 
     #[test]

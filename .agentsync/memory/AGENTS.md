@@ -73,7 +73,7 @@ Vendor Oura's OpenAPI **v3.1** spec (title "Oura API Documentation", version **2
 it at `spec/openapi.json` from the versioned export:
 
 ```
-https://api.ouraring.com/v2/static/json/openapi-1.37.json
+https://api.ouraring.com/v2/static/json/openapi-1.41.json
 ```
 
 - Fetched via `just spec-fetch`. The spec drives **EVERYTHING** downstream — the Rust client,
@@ -91,8 +91,10 @@ https://api.ouraring.com/v2/static/json/openapi-1.37.json
 
 The shared overlay (`codegen/overlay.jq`, 3.1, all languages) is **non-negotiable**:
 
-1. `servers[0].url` is literally `"https://api.None.com"` (a leaked Python `None`) — rewrite
-   to `"https://api.ouraring.com"`. Nothing resolves until this is fixed. **NON-NEGOTIABLE.**
+1. `servers[0].url` was literally `"https://api.None.com"` (a leaked Python `None`) through
+   `openapi-1.37`; Oura fixed it upstream in `openapi-1.41`, but the overlay KEEPS pinning it
+   to `"https://api.ouraring.com"` as a regression guard — a wrong server URL breaks every
+   call. **NON-NEGOTIABLE.**
 2. Strip the `MultiDocumentResponseDict` branch from every `anyOf` multi-doc response so
    generated models stay clean.
 3. For the generated **CLIENT only**, narrow per-op security to **BearerAuth**.
@@ -132,7 +134,7 @@ The spec generates the data plane; it does **NOT** generate the interactive OAut
 the spec's `components.securitySchemes`: **BearerAuth** (`http`/`bearer`) is how data requests
 authenticate; **OAuth2** is `authorizationCode` with `authorizationUrl`
 `https://cloud.ouraring.com/oauth/authorize`, `tokenUrl` `https://api.ouraring.com/oauth/token`
-and 8 scopes (`email personal daily heartrate workout tag session spo2Daily`);
+and 9 scopes (`email personal daily heartrate workout tag session spo2 heart_health`);
 **ClientIdAuth/ClientSecretAuth** apiKey headers are used only by webhook endpoints.
 
 ### Invariants (get these exactly right)
@@ -159,7 +161,7 @@ and 8 scopes (`email personal daily heartrate workout tag session spo2Daily`);
   8788** (`redirect_uri http://localhost:8788/callback`, `--port` override; Oura requires an
   EXACT pre-registered match). `--no-browser` swaps the loopback catch for a
   paste-the-redirect-URL flow (still `state` CSRF-checked).
-- **Default scope request**: `personal daily heartrate workout tag session spo2Daily` (omit
+- **Default scope request**: `personal daily heartrate workout tag session spo2 heart_health` (omit
   `email` unless needed).
 - **Headless**: `OURA_ACCESS_TOKEN` injects a raw Bearer that bypasses the store (no login, no
   refresh); `OURA_API_BASE_URL` points the client at an alternate host/proxy/mock.

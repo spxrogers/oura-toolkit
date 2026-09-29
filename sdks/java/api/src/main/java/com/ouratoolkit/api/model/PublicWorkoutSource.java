@@ -36,7 +36,11 @@ public enum PublicWorkoutSource {
   
   CONFIRMED("confirmed"),
   
-  WORKOUT_HEART_RATE("workout_heart_rate");
+  WORKOUT_HEART_RATE("workout_heart_rate"),
+  
+  LIVE_THIRD_PARTY_HEART_RATE("live_third_party_heart_rate"),
+  
+  LIVE_OURA_HEART_RATE("live_oura_heart_rate");
 
   private String value;
 

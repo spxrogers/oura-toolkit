@@ -66,7 +66,7 @@ which does the following, interactively:
    exact values to enter on Oura's form:
    - **Application name**: anything (e.g. `oura-toolkit`)
    - **Redirect URI**: `http://localhost:8788/callback` — must match exactly
-   - **Scopes**: `personal daily heartrate workout tag session spo2Daily`
+   - **Scopes**: `personal daily heartrate workout tag session spo2 heart_health`
 2. Prompts for the app's **client id** and **client secret** in the terminal (the secret
    with hidden input — it never leaves your machine).
 3. Chains straight into `oura auth login`: your browser opens Oura's consent page, a

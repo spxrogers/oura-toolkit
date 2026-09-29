@@ -15,7 +15,7 @@ import (
 	"fmt"
 )
 
-// ExtApiV2DataType the model 'ExtApiV2DataType'
+// ExtApiV2DataType Data types that partners can subscribe to via ExtApiV2 webhooks.
 type ExtApiV2DataType string
 
 // List of ExtApiV2DataType
