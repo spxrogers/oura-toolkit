@@ -115,7 +115,13 @@ pub(crate) async fn refresh_at(
             .refresh_token
             .unwrap_or_else(|| current.refresh_token.clone()),
         expires_at: expires_at(resp.expires_in),
-        scope: resp.scope.or_else(|| current.scope.clone()),
+        // An omitted OR blank scope keeps the recorded grant (RFC 6749 §5.1 lets the server
+        // omit an unchanged scope; a blank would erase the grant the CLI's re-consent check
+        // reads — conformance `refresh_scope_cases`).
+        scope: resp
+            .scope
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| current.scope.clone()),
         token_type: resp.token_type.or_else(|| current.token_type.clone()),
     })
 }

@@ -22,7 +22,10 @@ namespace OuraToolkit.Auth.Tests;
 /// default-filled record that makes is-authenticated lie, and never an untyped crash;</item>
 /// <item>canonical valid records → load with exactly the fixture's field values and
 /// round-trip through this companion's own persist path (the cross-language store
-/// compatibility check — field names are the shared wire format, #54).</item>
+/// compatibility check — field names are the shared wire format, #54);</item>
+/// <item>refresh scope cases → a SUCCESSFUL refresh from a stored grant of
+/// <c>prior_scope</c> persists exactly <c>expected_scope</c>: an omitted, null, empty, or
+/// whitespace-only <c>scope</c> keeps the prior grant; a real scope string replaces it.</item>
 /// </list>
 ///
 /// Mirrors the Rust reference leg (<c>sdks/rust/oura-toolkit-auth/tests/conformance.rs</c>)
@@ -91,6 +94,11 @@ public class ConformanceTests
             $"fixture shrank? hostile_token_responses has {responses.GetArrayLength()} cases, want >= 8");
         Assert.True(storeFiles.GetArrayLength() >= 8,
             $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 8");
+        Assert.True(fixture.TryGetProperty("refresh_scope_cases", out var scopeTable),
+            "fixture lost its refresh_scope_cases table");
+        var scopeCases = scopeTable.GetProperty("cases").GetArrayLength();
+        Assert.True(scopeCases >= 5,
+            $"fixture shrank? refresh_scope_cases has {scopeCases} cases, want >= 5");
     }
 
     /// <summary>
@@ -100,7 +108,11 @@ public class ConformanceTests
     [Fact]
     public void EveryFixtureTableIsMappedByThisSuite()
     {
-        string[] known = ["$comment", "hostile_token_responses", "hostile_store_files", "valid_records"];
+        string[] known =
+        [
+            "$comment", "hostile_token_responses", "hostile_store_files", "refresh_scope_cases",
+            "valid_records",
+        ];
         var unknown = Fixture().EnumerateObject()
             .Select(p => p.Name)
             .Where(name => !known.Contains(name))
@@ -209,7 +221,61 @@ public class ConformanceTests
         Assert.Contains(file, e.Message); // the typed error names the offending record
     }
 
-    // --- 3. canonical valid records -------------------------------------------------------------
+    // --- 3. refresh scope cases ---------------------------------------------------------------
+
+    /// <summary>One (name, verbatim 200 body, expected persisted scope) triple per case.</summary>
+    public static TheoryData<string, string, string> RefreshScopeCases()
+    {
+        var data = new TheoryData<string, string, string>();
+        foreach (var c in Fixture().GetProperty("refresh_scope_cases").GetProperty("cases").EnumerateArray())
+        {
+            data.Add(
+                c.GetProperty("name").GetString()!,
+                c.GetProperty("body").GetRawText(),
+                c.GetProperty("expected_scope").GetString()!);
+        }
+        return data;
+    }
+
+    /// <summary>The table's shared starting grant, read FROM THE FILE.</summary>
+    private static string PriorScope() =>
+        Fixture().GetProperty("refresh_scope_cases").GetProperty("prior_scope").GetString()!;
+
+    /// <summary>
+    /// A SUCCESSFUL refresh starting from a stored grant of <c>prior_scope</c> must persist
+    /// exactly <c>expected_scope</c>: an omitted, null, empty, or whitespace-only scope keeps
+    /// the prior grant (RFC 6749 §5.1 lets the server omit an unchanged scope; persisting a
+    /// blank would erase the grant the CLI's re-consent check reads), a real one replaces it.
+    /// The PERSISTED record is asserted (not just the returned value), and the access token
+    /// must have become the fixture's rotated one — proving the refresh really happened.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RefreshScopeCases))]
+    public async Task RefreshPersistsTheFixtureScope(string name, string body, string expectedScope)
+    {
+        var prior = OriginalTokens() with { Scope = PriorScope() };
+        using var temp = new TempStore();
+        temp.Store.SaveCredentials(Credentials());
+        temp.Store.SaveTokens(prior);
+
+        var endpoint = new MockTokenEndpoint(_ => MockTokenEndpoint.Json(HttpStatusCode.OK, body));
+        using var manager = new TokenManager(temp.Store, Credentials(), prior,
+            handler: endpoint, tokenUrl: "http://token.invalid/oauth/token");
+
+        await manager.ForceRefreshAsync();
+
+        Assert.Equal(1, endpoint.Calls);
+        var persisted = temp.Store.LoadTokens();
+        Assert.NotNull(persisted);
+        Assert.True(persisted!.AccessToken == "at-refreshed",
+            $"case {name}: the refresh must persist the new access token, got {persisted.AccessToken}");
+        Assert.True(persisted.Scope == expectedScope,
+            $"case {name}: a refresh from prior grant \"{PriorScope()}\" must persist scope "
+            + $"\"{expectedScope}\" (omitted/null/empty/whitespace keeps the prior grant), "
+            + $"got \"{persisted.Scope}\"");
+    }
+
+    // --- 4. canonical valid records -------------------------------------------------------------
 
     /// <summary>
     /// The canonical records load with exactly the fixture's values and survive a round-trip

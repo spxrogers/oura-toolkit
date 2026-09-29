@@ -359,7 +359,11 @@ command is worse UX. But a login can fail for reasons the prompt can't foresee: 
 custom `--port` registration (a 300s callback wait), or missing credentials. So any failure is
 reported, remembered for the scope set, and the command carries on with the existing login
 (still valid for everything it covered). Without remembering it, a default-yes prompt would
-trap the user in that wait on every run.
+trap the user in that wait on every run. "Headless" is detected from the SSH variables only;
+in a container the loopback flow may never receive its callback, which then degrades the same
+way (reported, remembered, command continues). `scope-notice.json` is read-modify-written
+without the store lock: two racing `oura` runs can cost one extra notice, which isn't worth
+serializing every data command on.
 
 **MCP gets a note, once per session.** MCP can't prompt, and stdio MCP auth stays out of band
 (no OAuth in the server). So the same decision becomes a note on the first *successful* tool
@@ -375,10 +379,10 @@ still shows the gap.
 The bookkeeping is a CLI-only `scope-notice.json`, not a
 `tokens.json` field, so the six-language store records and their conformance fixture are
 untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
-§5.1), so the check can tell a current grant from a stale one. A refresh response with a blank
-`scope` still replaces the recorded grant in every companion. That's pre-existing companion
-behavior; a fix belongs in the shared conformance fixture across all six, so it's tracked
-separately. Until then the check reads a blank grant as unrecorded ("may not cover").
+§5.1), so the check can tell a current grant from a stale one. For the same reason every
+companion's REFRESH keeps the recorded grant when the response's `scope` is omitted, null,
+empty, or whitespace-only (the six had drifted: three let a blank replace it). That's pinned
+for all six by the shared conformance table `refresh_scope_cases`.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

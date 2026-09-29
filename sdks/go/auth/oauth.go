@@ -89,7 +89,11 @@ func refreshTokens(
 	if refreshed.RefreshToken == "" {
 		refreshed.RefreshToken = current.RefreshToken
 	}
-	if refreshed.Scope == "" {
+	// An omitted, null, empty, or whitespace-only scope means "unchanged" (RFC 6749 §5.1
+	// lets the server omit it): keep the prior grant rather than persisting a blank that
+	// would erase it (#116's re-consent check reads it). Pinned by the shared
+	// refresh_scope_cases conformance table.
+	if strings.TrimSpace(refreshed.Scope) == "" {
 		refreshed.Scope = current.Scope
 	}
 	if refreshed.TokenType == "" {

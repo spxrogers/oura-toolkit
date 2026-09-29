@@ -116,6 +116,60 @@ async fn hostile_2xx_token_responses_fail_typed_and_leave_the_store_untouched() 
     }
 }
 
+/// A successful refresh keeps the recorded grant when the response's `scope` is omitted, null,
+/// empty, or whitespace-only, and adopts a real one (conformance `refresh_scope_cases`).
+#[tokio::test]
+async fn refresh_keeps_the_recorded_scope_unless_a_real_one_is_returned() {
+    let table = fixture()["refresh_scope_cases"].clone();
+    let prior = table["prior_scope"]
+        .as_str()
+        .expect("prior_scope")
+        .to_string();
+    let cases = table["cases"].as_array().expect("cases").clone();
+    assert!(cases.len() >= 5, "fixture shrank? {} cases", cases.len());
+
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let expected = case["expected_scope"].as_str().unwrap();
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(case["body"].clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let before = Tokens {
+            scope: Some(prior.clone()),
+            ..original_tokens()
+        };
+        store.save_credentials(&credentials()).unwrap();
+        store.save_tokens(&before).unwrap();
+        let mut manager =
+            TokenManager::from_parts(store.clone(), Some(credentials()), Some(before));
+        manager.override_token_url(server.uri());
+
+        manager
+            .force_refresh()
+            .await
+            .unwrap_or_else(|e| panic!("case {name}: a valid refresh must succeed: {e:?}"));
+        let saved = store
+            .load_tokens()
+            .unwrap()
+            .expect("refreshed tokens persisted");
+        assert_eq!(
+            saved.access_token, "at-refreshed",
+            "case {name}: the refresh landed"
+        );
+        assert_eq!(
+            saved.scope.as_deref(),
+            Some(expected),
+            "case {name}: the persisted scope"
+        );
+    }
+}
+
 /// Every hostile store file must load as a TYPED store-format error — never a
 /// default-filled record, never a panic.
 #[test]

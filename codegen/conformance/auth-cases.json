@@ -17,6 +17,12 @@
     " - hostile_store_files: loading a store record with this exact file content must",
     "   fail with the language's TYPED store-format error — never a zero/null-filled",
     "   record that makes is-authenticated lie, and never an untyped crash.",
+    " - refresh_scope_cases: a SUCCESSFUL refresh (valid 2xx, this JSON body) starting",
+    "   from a stored grant of `prior_scope` must persist exactly `expected_scope`. An",
+    "   omitted, null, empty, or whitespace-only `scope` keeps the prior grant (RFC 6749",
+    "   §5.1 lets the server omit an unchanged scope; persisting a blank would erase the",
+    "   grant the CLI's re-consent check (#116) reads, making a current login look stale).",
+    "   A real scope string replaces it.",
     " - valid_records: the canonical on-disk shapes (field names are the wire format",
     "   shared by ALL languages — source of truth: oura-toolkit-auth's store.rs). Every",
     "   language must load these exact contents, observe these exact field values, and",
@@ -46,6 +52,16 @@
     { "name": "credentials_partial_record", "file": "credentials.json", "content": "{\"client_id\": \"cid-only\"}" },
     { "name": "credentials_wrong_type_client_id", "file": "credentials.json", "content": "{\"client_id\": 7, \"client_secret\": \"cs\"}" }
   ],
+  "refresh_scope_cases": {
+    "prior_scope": "personal daily",
+    "cases": [
+      { "name": "scope_omitted", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600 }, "expected_scope": "personal daily" },
+      { "name": "scope_null", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": null }, "expected_scope": "personal daily" },
+      { "name": "scope_empty", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": "" }, "expected_scope": "personal daily" },
+      { "name": "scope_whitespace", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": " \t " }, "expected_scope": "personal daily" },
+      { "name": "scope_returned", "body": { "access_token": "at-refreshed", "refresh_token": "rt-refreshed", "expires_in": 3600, "scope": "personal" }, "expected_scope": "personal" }
+    ]
+  },
   "valid_records": {
     "credentials.json": { "client_id": "cid-conformance", "client_secret": "cs-conformance" },
     "tokens.json": {

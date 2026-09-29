@@ -10,6 +10,9 @@ companion suite must exercise; new cases are added THERE, never here):
   (the rotated refresh token is never burned by persisting a blank/expired Bearer);
 - hostile store files -> the typed :class:`StoreFormatError`, never a default-filled
   record that makes ``is_authenticated`` lie, and never an untyped exception;
+- successful refreshes with omitted/null/empty/whitespace/real ``scope`` -> the
+  persisted record carries exactly the fixture's ``expected_scope`` (a blank scope
+  keeps the prior grant; a real one replaces it);
 - canonical valid records -> load with exactly the fixture's field values and
   round-trip through this companion's own persist path (the cross-language store
   compatibility check — field names are the shared wire format, #54).
@@ -57,6 +60,8 @@ FIXTURE = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 HOSTILE_TOKEN_RESPONSES = FIXTURE["hostile_token_responses"]
 HOSTILE_STORE_FILES = FIXTURE["hostile_store_files"]
 VALID_RECORDS = FIXTURE["valid_records"]
+REFRESH_SCOPE = FIXTURE["refresh_scope_cases"]
+REFRESH_SCOPE_CASES = REFRESH_SCOPE["cases"]
 
 CREDENTIALS = ClientCredentials(client_id="cid", client_secret="cs")
 
@@ -130,6 +135,44 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     assert store.tokens_path.read_bytes() == bytes_before, (
         f"case {case['name']}: tokens.json must be byte-identical "
         "(store UNTOUCHED, rotation not burned)"
+    )
+
+
+@pytest.mark.parametrize(
+    "case", REFRESH_SCOPE_CASES, ids=[c["name"] for c in REFRESH_SCOPE_CASES]
+)
+def test_refresh_persists_the_fixture_expected_scope(
+    token_endpoint, tmp_path: Path, case: dict
+) -> None:
+    body = case["body"]
+    token_endpoint.handler = lambda form: (200, body)
+
+    prior = Tokens(
+        access_token="at-original",
+        refresh_token="rt-original",
+        expires_at=0,  # expired, so the refresh genuinely calls the endpoint
+        scope=REFRESH_SCOPE["prior_scope"],
+    )
+    store = TokenStore(tmp_path)
+    store.save_credentials(CREDENTIALS)
+    store.save_tokens(prior)
+
+    manager = TokenManager(store, CREDENTIALS, prior, token_url=token_endpoint.url)
+    manager.force_refresh()
+
+    assert len(token_endpoint.requests) == 1, (
+        f"case {case['name']}: the refresh must call the token endpoint exactly once"
+    )
+    persisted = store.load_tokens()
+    assert persisted is not None, f"case {case['name']}: tokens must be persisted"
+    assert persisted.access_token == "at-refreshed", (
+        f"case {case['name']}: the refreshed access token must be persisted, "
+        f"got {persisted.access_token!r}"
+    )
+    assert persisted.scope == case["expected_scope"], (
+        f"case {case['name']}: refresh_scope_cases contract — a blank/omitted scope "
+        f"keeps the prior grant {REFRESH_SCOPE['prior_scope']!r}, a real one replaces "
+        f"it; expected {case['expected_scope']!r}, persisted {persisted.scope!r}"
     )
 
 

@@ -10,7 +10,9 @@
 //     would make IsAuthenticated lie, and never a panic;
 //   - canonical valid records → load with exactly the fixture's field values and
 //     round-trip through this package's own persist path (the cross-language store
-//     compatibility check — field names are the shared wire format, #54).
+//     compatibility check — field names are the shared wire format, #54);
+//   - successful refreshes whose scope is omitted/null/empty/whitespace → the prior
+//     grant is persisted unchanged; a real scope string replaces it.
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs).
 package auth
@@ -42,6 +44,16 @@ type conformanceFixture struct {
 		File    string `json:"file"`
 		Content string `json:"content"`
 	} `json:"hostile_store_files"`
+	RefreshScopeCases struct {
+		PriorScope string `json:"prior_scope"`
+		Cases      []struct {
+			Name string `json:"name"`
+			// Raw, replayed verbatim: an omitted vs null vs blank scope must reach the
+			// companion exactly as authored.
+			Body          json.RawMessage `json:"body"`
+			ExpectedScope string          `json:"expected_scope"`
+		} `json:"cases"`
+	} `json:"refresh_scope_cases"`
 	ValidRecords map[string]json.RawMessage `json:"valid_records"`
 }
 
@@ -287,5 +299,68 @@ func TestConformanceCanonicalValidRecordsLoadAndRoundTrip(t *testing.T) {
 	}
 	if tokensAgain == nil || *tokensAgain != *tokens {
 		t.Fatalf("tokens must round-trip through the persist path unchanged, got %v", tokensAgain)
+	}
+}
+
+// A SUCCESSFUL refresh starting from a stored grant of prior_scope must persist exactly
+// expected_scope: an omitted, null, empty, or whitespace-only scope keeps the prior grant
+// (persisting a blank would erase what the re-consent check reads, #116); a real scope
+// string replaces it.
+func TestConformanceRefreshScopeKeepsPriorGrantOnBlank(t *testing.T) {
+	fixture := loadConformanceFixture(t)
+	table := fixture.RefreshScopeCases
+	if table.PriorScope == "" {
+		t.Fatal("fixture is missing refresh_scope_cases.prior_scope")
+	}
+	if n := len(table.Cases); n < 5 {
+		t.Fatalf("fixture shrank? refresh_scope_cases has %d cases, want >= 5", n)
+	}
+
+	for _, tc := range table.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(tc.Body)
+			}))
+			defer srv.Close()
+
+			store := NewStoreAt(t.TempDir())
+			if err := store.SaveCredentials(sampleCredentials()); err != nil {
+				t.Fatal(err)
+			}
+			// Expired on purpose, so the refresh genuinely calls the endpoint.
+			prior := expiredTokens("r1")
+			prior.Scope = table.PriorScope
+			if err := store.SaveTokens(prior); err != nil {
+				t.Fatal(err)
+			}
+			seed := *prior
+
+			m := testManager(t, srv.URL, store, &seed)
+			if err := m.ForceRefresh(context.Background()); err != nil {
+				t.Fatalf("a valid 2xx refresh must succeed: %v", err)
+			}
+			if n := calls.Load(); n != 1 {
+				t.Fatalf("want exactly 1 token-endpoint call, got %d", n)
+			}
+
+			persisted, err := store.LoadTokens()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted == nil {
+				t.Fatal("the refreshed record must be persisted")
+			}
+			if persisted.AccessToken != "at-refreshed" {
+				t.Fatalf("persisted access_token = %q, want at-refreshed (the refresh was not persisted)", persisted.AccessToken)
+			}
+			if persisted.Scope != tc.ExpectedScope {
+				t.Fatalf("persisted scope = %q, want %q (a blank/whitespace scope must keep the prior grant %q; a real one replaces it)",
+					persisted.Scope, tc.ExpectedScope, table.PriorScope)
+			}
+		})
 	}
 }

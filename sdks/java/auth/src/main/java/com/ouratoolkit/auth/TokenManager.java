@@ -268,7 +268,14 @@ public final class TokenManager {
         String rotatedRefresh = node.hasNonNull("refresh_token")
                 ? node.get("refresh_token").asText()
                 : current.getRefreshToken(); // server omitted rotation; keep the old one
-        String scope = node.hasNonNull("scope") ? node.get("scope").asText() : current.getScope();
+        // An omitted, null, empty, or whitespace-only scope keeps the prior grant (RFC 6749
+        // §5.1 lets the server omit an unchanged scope); persisting a blank would erase the
+        // grant the CLI's re-consent check reads. Pinned by the shared conformance fixture's
+        // refresh_scope_cases table.
+        JsonNode scopeNode = node.get("scope");
+        String scope = scopeNode != null && scopeNode.isTextual() && !scopeNode.asText().isBlank()
+                ? scopeNode.asText()
+                : current.getScope();
         String tokenType = node.hasNonNull("token_type")
                 ? node.get("token_type").asText()
                 : current.getTokenType();

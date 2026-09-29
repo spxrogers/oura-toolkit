@@ -269,7 +269,11 @@ export class TokenManager {
       refreshToken:
         typeof resp.refresh_token === "string" ? resp.refresh_token : current.refreshToken(),
       expiresAt: Math.floor(Date.now() / 1000) + resp.expires_in,
-      scope: typeof resp.scope === "string" ? resp.scope : current.scope,
+      // An omitted/null/blank scope keeps the prior grant (RFC 6749 §5.1 lets the server
+      // omit an unchanged scope; persisting a blank would erase the grant the CLI's
+      // re-consent check reads). Conformance: auth-cases.json refresh_scope_cases.
+      scope:
+        typeof resp.scope === "string" && resp.scope.trim() !== "" ? resp.scope : current.scope,
       tokenType: typeof resp.token_type === "string" ? resp.token_type : current.tokenType,
     });
   }

@@ -328,7 +328,11 @@ public sealed class TokenManager : IDisposable
                 // good one and 400 every future refresh.
                 RefreshToken = string.IsNullOrEmpty(parsed.RefreshToken) ? current.RefreshToken : parsed.RefreshToken!,
                 ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + parsed.ExpiresIn,
-                Scope = string.IsNullOrEmpty(parsed.Scope) ? current.Scope : parsed.Scope,
+                // An omitted, null, empty, or whitespace-only scope keeps the prior grant
+                // (RFC 6749 §5.1 lets the server omit an unchanged scope); persisting a blank
+                // would erase the grant the CLI's re-consent check reads. Pinned by the shared
+                // fixture's refresh_scope_cases (ConformanceTests).
+                Scope = string.IsNullOrWhiteSpace(parsed.Scope) ? current.Scope : parsed.Scope,
                 TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
             };
         }

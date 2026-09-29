@@ -270,13 +270,21 @@ class TokenManager:
                 resp.status, "token-endpoint response 'expires_in' was not positive"
             )
         rotated = payload.get("refresh_token")
+        # Scope (conformance `refresh_scope_cases`): an omitted, null, non-string,
+        # empty, or whitespace-only scope keeps the prior grant (RFC 6749 §5.1 lets
+        # the server omit an unchanged scope; persisting a blank would erase the grant
+        # the CLI's re-consent check reads). Only a real scope string replaces it.
+        returned_scope = payload.get("scope")
+        scope = (
+            returned_scope
+            if isinstance(returned_scope, str) and returned_scope.strip()
+            else current.scope
+        )
         return Tokens(
             access_token=access_token,
             # Persist the rotated token; keep the old one only if the server omits it.
             refresh_token=rotated if rotated is not None else current.refresh_token,
             expires_at=int(time.time()) + expires_in,
-            # Explicit null is treated like omission (Rust: `resp.scope.or_else(...)`) —
-            # `.get(k, default)` would hand back None for a present-but-null key.
-            scope=payload.get("scope") or current.scope,
+            scope=scope,
             token_type=payload.get("token_type") or current.token_type,
         )

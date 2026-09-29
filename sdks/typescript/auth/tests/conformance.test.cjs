@@ -7,6 +7,8 @@
 //  - hostile-but-2xx token responses -> typed AuthError subclass (never a bare
 //    SyntaxError/TypeError escaping), tokens.json byte-identical afterwards (the rotated
 //    refresh token is never burned by persisting a blank/expired Bearer);
+//  - successful refreshes whose scope is omitted/null/blank -> the persisted record keeps
+//    the prior grant; a real scope string replaces it (refresh_scope_cases);
 //  - hostile store files -> the typed StoreFormatError, never a default/null-filled
 //    record and never an untyped throw;
 //  - canonical valid records -> load with exactly the fixture's field values and
@@ -106,6 +108,63 @@ test("conformance: hostile 2xx token responses fail typed and leave the store un
     assert.ok(
       bytesBefore.equals(bytesAfter),
       `case ${name}: tokens.json must be byte-identical (store UNTOUCHED, rotation not burned)`
+    );
+  }
+});
+
+test("conformance: a successful refresh with a blank scope keeps the prior grant", async (t) => {
+  const table = fixture.refresh_scope_cases;
+  assert.ok(table && typeof table === "object", "refresh_scope_cases table");
+  const prior = table.prior_scope;
+  assert.equal(typeof prior, "string", "refresh_scope_cases.prior_scope");
+  assert.notEqual(prior.trim(), "", "refresh_scope_cases.prior_scope must be a real grant");
+  const cases = table.cases;
+  assert.ok(Array.isArray(cases), "refresh_scope_cases.cases");
+  assert.ok(cases.length >= 5, `fixture shrank? ${cases.length} cases`);
+
+  for (const c of cases) {
+    const name = c.name;
+    const endpoint = await startTokenEndpoint((_params, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(c.body));
+    });
+    t.after(endpoint.close);
+
+    // Expired, so the refresh genuinely calls the endpoint; stored grant = prior_scope.
+    const startTokens = () =>
+      new auth.Tokens({
+        accessToken: "stale-access-rt-original",
+        refreshToken: "rt-original",
+        expiresAt: 0,
+        scope: prior,
+      });
+    const store = withTempStore(t);
+    store.saveCredentials(credentials());
+    store.saveTokens(startTokens());
+
+    const manager = new auth.TokenManager({
+      store,
+      credentials: credentials(),
+      tokens: startTokens(),
+      tokenUrl: endpoint.url,
+    });
+
+    await manager.forceRefresh();
+    assert.equal(endpoint.requests.length, 1, `case ${name}: the refresh must call the endpoint once`);
+
+    // Assert against the PERSISTED record (a fresh load from disk), not in-memory state.
+    const persisted = store.loadTokens();
+    assert.notEqual(persisted, null, `case ${name}: tokens must be persisted`);
+    assert.equal(
+      persisted.accessToken(),
+      "at-refreshed",
+      `case ${name}: the refresh must land (persisted access token)`
+    );
+    assert.equal(
+      persisted.scope,
+      c.expected_scope,
+      `case ${name}: persisted scope must be ${JSON.stringify(c.expected_scope)} ` +
+        `(prior ${JSON.stringify(prior)}; a blank/omitted scope keeps the prior grant)`
     );
   }
 });
