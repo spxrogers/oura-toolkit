@@ -158,7 +158,7 @@ async fn post_token(
         let body = resp.text().await.unwrap_or_default();
         return Err(AuthError::TokenEndpoint {
             status: status.as_u16(),
-            body,
+            body: redacted_error_body(&body, params),
         });
     }
     let bytes = resp.bytes().await?;
@@ -183,6 +183,27 @@ async fn post_token(
         return Err(AuthError::InvalidTokenResponse("expires_in out of range"));
     }
     Ok(resp)
+}
+
+/// The most of a rejected response's body an error carries (characters): enough for an OAuth
+/// error (`{"error":"invalid_grant",…}`), not a whole HTML error page in stderr or an MCP result.
+pub(crate) const MAX_ERROR_BODY_CHARS: usize = 1024;
+
+/// A non-2xx body, kept for diagnosis but with every secret this request SUBMITTED (the refresh
+/// token, the client secret, an authorization code) replaced by `[REDACTED]` — some OAuth
+/// servers echo the value they reject — and capped at [`MAX_ERROR_BODY_CHARS`] (redacted first,
+/// so a cut can't expose a partial secret). Conformance: `rejected_token_responses`.
+fn redacted_error_body(body: &str, params: &[(&str, &str)]) -> String {
+    let mut body = body.to_owned();
+    for (key, value) in params {
+        if matches!(*key, "refresh_token" | "client_secret" | "code") && !value.is_empty() {
+            body = body.replace(value, "[REDACTED]");
+        }
+    }
+    match body.char_indices().nth(MAX_ERROR_BODY_CHARS) {
+        Some((cut, _)) => format!("{}…", &body[..cut]),
+        None => body,
+    }
 }
 
 /// The largest `expires_in` (seconds, ~68 years) any companion accepts. Capping it keeps

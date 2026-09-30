@@ -229,8 +229,16 @@ export class TokenManager {
     }
     const status = response.status;
     if (!response.ok) {
+      // The non-2xx body is kept for diagnosis (e.g. `invalid_grant`), but it is
+      // server-chosen text: a server that echoes back what we submitted would put the
+      // refresh token / client_secret into an error callers log. So EVERY occurrence of
+      // each submitted secret is redacted first, then the body is capped so a huge body
+      // can't balloon the error. Conformance: auth-cases.json rejected_token_responses.
       const text = await response.text().catch(() => "");
-      throw new TokenEndpointError(status, text);
+      throw new TokenEndpointError(
+        status,
+        sanitizeErrorBody(text, [current.refreshToken(), credentials.clientSecret()])
+      );
     }
     // A hostile or broken 2xx body must fail as the typed TokenEndpointError, never a raw
     // decode error detonating downstream and never a half-populated token persisted to the
@@ -357,6 +365,40 @@ const MAX_EXPIRES_IN_SECS = 2_147_483_647;
 /** `value` if it is a non-empty string, else `undefined` (omitted/null/"" all fall back). */
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** Cap (in UTF-16 code units, after redaction) on a non-2xx body kept in TokenEndpointError. */
+const MAX_ERROR_BODY_CHARS = 1024;
+
+/** What a submitted secret is replaced with in a non-2xx body. */
+const REDACTED = "[REDACTED]";
+
+/**
+ * Prepare a NON-2xx token-endpoint body for {@link TokenEndpointError}: (a) replace EVERY
+ * occurrence of each secret the request submitted — as sent verbatim and in its
+ * form-urlencoded spelling, longest first so an overlapping shorter secret can't leave a
+ * fragment — with `[REDACTED]`, then (b) cap the result at {@link MAX_ERROR_BODY_CHARS}
+ * characters, appending "…" when cut (never splitting a surrogate pair). Everything else
+ * in the body is kept for diagnosis. Empty secrets are skipped (replacing "" would
+ * interleave the marker between every character).
+ */
+function sanitizeErrorBody(body: string, secrets: readonly string[]): string {
+  const needles = new Set<string>();
+  for (const secret of secrets) {
+    if (secret === "") continue;
+    needles.add(secret);
+    const encoded = new URLSearchParams({ s: secret }).toString().slice(2);
+    if (encoded !== "") needles.add(encoded);
+  }
+  let redacted = body;
+  for (const needle of [...needles].sort((a, b) => b.length - a.length)) {
+    redacted = redacted.split(needle).join(REDACTED);
+  }
+  if (redacted.length <= MAX_ERROR_BODY_CHARS) return redacted;
+  let end = MAX_ERROR_BODY_CHARS;
+  const last = redacted.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1; // don't split a surrogate pair
+  return `${redacted.slice(0, end)}…`;
 }
 
 /** The token-response fields this companion reads — the only ones it validates. */

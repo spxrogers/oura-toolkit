@@ -60,10 +60,15 @@ pub enum AuthError {
     #[error("token store i/o error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// A store record that isn't a well-formed record. Loading reports only the category and
-    /// line/column, never the file's text (it holds secrets). Not chained as a `source()`: the
-    /// message already carries it, and a chained copy would print twice under `{:#}`.
-    #[error("token store format error: {0}")]
+    /// A store record (`file`) that can't be loaded: not valid UTF-8, malformed JSON, or a
+    /// missing or wrong-typed field. `detail` says what and where (line/column, and a missing
+    /// field's name) but NEVER quotes the file's values — the store holds secrets
+    /// (conformance: hostile_store_files `must_not_echo`).
+    #[error("token store format error in {file}: {detail}")]
+    StoreFormat { file: &'static str, detail: String },
+
+    /// Serializing a record to save it failed (never expected for these plain structs).
+    #[error("token store serialization error: {0}")]
     Serde(serde_json::Error),
 
     /// Transport error talking to the token endpoint (connection, TLS, timeout, reading the
@@ -71,10 +76,4 @@ pub enum AuthError {
     /// [`AuthError::InvalidTokenResponse`] instead.
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
-}
-
-impl From<serde_json::Error> for AuthError {
-    fn from(e: serde_json::Error) -> Self {
-        AuthError::Serde(e)
-    }
 }

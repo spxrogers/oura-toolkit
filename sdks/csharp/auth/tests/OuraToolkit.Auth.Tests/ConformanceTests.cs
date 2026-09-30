@@ -32,6 +32,11 @@ namespace OuraToolkit.Auth.Tests;
 /// e.g. invalid UTF-8 — a store file must be valid UTF-8) → the typed
 /// <see cref="StoreFormatException"/>, never a default-filled record that makes
 /// is-authenticated lie, never a U+FFFD-substituted load, and never an untyped crash;</item>
+/// <item>rejected (non-2xx) token responses, with the store and credentials seeded with the
+/// table's <c>submitted</c> secrets → the typed <see cref="TokenEndpointException"/> carrying
+/// the case's status, the store byte-identical, <c>must_echo</c> kept in the error for
+/// diagnosis, <c>must_not_echo</c> (a submitted secret the server echoed back) appearing nowhere
+/// in the chain, and no text in the chain longer than <c>max_error_chars</c>;</item>
 /// <item>implementation-defined store files (nesting past a parser's depth limit in an
 /// unknown field) → EITHER exactly the fixture's <c>expected</c> record OR the typed
 /// <see cref="StoreFormatException"/> — never an untyped crash;</item>
@@ -109,8 +114,8 @@ public class ConformanceTests
     /// The fixture-shrink guard: iterating theories would silently run fewer cases if the
     /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
     /// >= 30 hostile_token_responses, >= 5 implementation_defined_token_responses,
-    /// >= 17 hostile_store_files, >= 1 implementation_defined_store_files,
-    /// >= 18 refresh_success_cases.
+    /// >= 21 hostile_store_files, >= 1 implementation_defined_store_files,
+    /// >= 4 rejected_token_responses, >= 18 refresh_success_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -130,8 +135,13 @@ public class ConformanceTests
             $"fixture shrank? implementation_defined_store_files has {implStore.GetArrayLength()} cases, want >= 1");
         Assert.True(implDefined.GetArrayLength() >= 5,
             $"fixture shrank? implementation_defined_token_responses has {implDefined.GetArrayLength()} cases, want >= 5");
-        Assert.True(storeFiles.GetArrayLength() >= 17,
-            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 17");
+        Assert.True(storeFiles.GetArrayLength() >= 21,
+            $"fixture shrank? hostile_store_files has {storeFiles.GetArrayLength()} cases, want >= 21");
+        Assert.True(fixture.TryGetProperty("rejected_token_responses", out var rejectedTable),
+            "fixture lost its rejected_token_responses table");
+        var rejectedCases = rejectedTable.GetProperty("cases").GetArrayLength();
+        Assert.True(rejectedCases >= 4,
+            $"fixture shrank? rejected_token_responses has {rejectedCases} cases, want >= 4");
         Assert.True(fixture.TryGetProperty("refresh_success_cases", out var successTable),
             "fixture lost its refresh_success_cases table");
         var successCases = successTable.GetProperty("cases").GetArrayLength();
@@ -144,7 +154,7 @@ public class ConformanceTests
     /// top-level key failing here beats ten silently-unexercised cases (mirrors the Java leg).
     /// Every mapped table must also be PRESENT: a renamed table (e.g. the old
     /// refresh_scope_cases) fails here rather than leaving its theory iterating nothing.
-    /// Together the two checks pin the set to EXACTLY the six tables (plus <c>$comment</c>).
+    /// Together the two checks pin the set to EXACTLY the seven tables (plus <c>$comment</c>).
     /// </summary>
     [Fact]
     public void EveryFixtureTableIsMappedByThisSuite()
@@ -152,8 +162,8 @@ public class ConformanceTests
         string[] known =
         [
             "$comment", "hostile_token_responses", "implementation_defined_token_responses",
-            "hostile_store_files", "implementation_defined_store_files", "refresh_success_cases",
-            "valid_records",
+            "hostile_store_files", "rejected_token_responses", "implementation_defined_store_files",
+            "refresh_success_cases", "valid_records",
         ];
         var present = Fixture().EnumerateObject().Select(p => p.Name).ToList();
         var unknown = present.Where(name => !known.Contains(name)).ToList();
@@ -430,6 +440,147 @@ public class ConformanceTests
         Assert.True(
             credsBefore.SequenceEqual(File.ReadAllBytes(temp.Store.CredentialsPath)),
             $"case {name}: credentials.json must be byte-identical after a failed refresh");
+    }
+
+    // --- 1a. rejected (non-2xx) token responses -----------------------------------------------
+
+    /// <summary>The rejected_token_responses table (its <c>submitted</c> secrets, cap and cases).</summary>
+    private static JsonElement RejectedTable() => Fixture().GetProperty("rejected_token_responses");
+
+    /// <summary>One (name, status, raw body, must_echo, optional must_not_echo) row per fixture case.</summary>
+    public static TheoryData<string, int, string, string, string?> RejectedTokenResponses()
+    {
+        var data = new TheoryData<string, int, string, string, string?>();
+        foreach (var c in RejectedTable().GetProperty("cases").EnumerateArray())
+        {
+            data.Add(
+                c.GetProperty("name").GetString()!,
+                c.GetProperty("status").GetInt32(),
+                c.GetProperty("raw_body").GetString()!,
+                c.GetProperty("must_echo").GetString()!,
+                MustNotEcho(c));
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// The table's guards: its secrets are non-empty, every case's status is a non-2xx, and
+    /// every <c>must_echo</c> / <c>must_not_echo</c> needle actually occurs in the case's
+    /// raw_body — a needle the body doesn't carry makes its check vacuous (it could never be
+    /// echoed, or never be missing).
+    /// </summary>
+    [Fact]
+    public void RejectedTokenResponseNeedlesAreSound()
+    {
+        var table = RejectedTable();
+        var submitted = table.GetProperty("submitted");
+        Assert.False(string.IsNullOrEmpty(submitted.GetProperty("refresh_token").GetString()),
+            "rejected_token_responses.submitted.refresh_token must be non-empty");
+        Assert.False(string.IsNullOrEmpty(submitted.GetProperty("client_secret").GetString()),
+            "rejected_token_responses.submitted.client_secret must be non-empty");
+        Assert.True(table.GetProperty("max_error_chars").GetInt32() > 0,
+            "rejected_token_responses.max_error_chars must be positive");
+        foreach (var c in table.GetProperty("cases").EnumerateArray())
+        {
+            var name = c.GetProperty("name").GetString()!;
+            var status = c.GetProperty("status").GetInt32();
+            Assert.False(status is >= 200 and < 300, $"fixture case {name}: status {status} is not a non-2xx");
+            var body = Encoding.UTF8.GetBytes(c.GetProperty("raw_body").GetString()!);
+            var mustEcho = c.GetProperty("must_echo").GetString();
+            Assert.False(string.IsNullOrEmpty(mustEcho), $"fixture case {name}: must_echo must be non-empty");
+            Assert.True(NeedleProblem(name, body, mustEcho) is null,
+                $"fixture case {name}: must_echo \"{mustEcho}\" does not occur in its raw_body");
+            AssertNeedleInPayload(name, body, MustNotEcho(c));
+        }
+    }
+
+    /// <summary>
+    /// A NON-2xx token response, with the stored refresh_token and the credentials'
+    /// client_secret seeded from the table's <c>submitted</c> (so those exact values are what
+    /// the refresh sends — asserted on the captured request). The mock answers
+    /// <paramref name="status"/> with <paramref name="rawBody"/> on EVERY request (a 400 may
+    /// trigger the one reload-retry). The refresh must fail with the typed
+    /// <see cref="TokenEndpointException"/> carrying <paramref name="status"/>, leave both
+    /// records byte-identical, keep <paramref name="mustEcho"/> in the error for diagnosis,
+    /// never carry <paramref name="mustNotEcho"/> anywhere in the chain (ToString, Message,
+    /// Body, inner exceptions), and hold no text in the chain longer than
+    /// <c>max_error_chars</c> however large the body.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RejectedTokenResponses))]
+    public async Task RejectedTokenResponseFailsTypedRedactedAndCapped(
+        string name, int status, string rawBody, string mustEcho, string? mustNotEcho)
+    {
+        var table = RejectedTable();
+        var submitted = table.GetProperty("submitted");
+        var refreshToken = submitted.GetProperty("refresh_token").GetString()!;
+        var clientSecret = submitted.GetProperty("client_secret").GetString()!;
+        var maxErrorChars = table.GetProperty("max_error_chars").GetInt32();
+        AssertNeedleInPayload(name, Encoding.UTF8.GetBytes(rawBody), mustNotEcho);
+
+        var credentials = new ClientCredentials { ClientId = "cid", ClientSecret = clientSecret };
+        var tokens = new Tokens { AccessToken = "at-original", RefreshToken = refreshToken, ExpiresAt = 0 };
+        using var temp = new TempStore();
+        temp.Store.SaveCredentials(credentials);
+        temp.Store.SaveTokens(tokens);
+        var tokensBefore = File.ReadAllBytes(temp.Store.TokensPath);
+        var credsBefore = File.ReadAllBytes(temp.Store.CredentialsPath);
+
+        var endpoint = new MockTokenEndpoint(_ =>
+        {
+            var content = new ByteArrayContent(Encoding.UTF8.GetBytes(rawBody));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            return new HttpResponseMessage((HttpStatusCode)status) { Content = content };
+        });
+        using var manager = new TokenManager(temp.Store, credentials, tokens,
+            handler: endpoint, tokenUrl: "http://token.invalid/oauth/token");
+
+        var thrown = await Record.ExceptionAsync(() => manager.ForceRefreshAsync());
+        Assert.True(thrown is TokenEndpointException,
+            $"case {name}: a rejected ({status}) token response must fail with the typed "
+            + "TokenEndpointException, got "
+            + (thrown is null ? "a SUCCESSFUL refresh" : $"untyped {thrown.GetType().Name}"));
+        var e = (TokenEndpointException)thrown!;
+        Assert.True(e.StatusCode == status,
+            $"case {name}: the typed error must carry the endpoint's status {status}, got {e.StatusCode}");
+
+        // The harness is not vacuous: the refresh really SENT the submitted secrets.
+        Assert.True(endpoint.Calls >= 1, $"case {name}: the token endpoint was never called");
+        var sent = endpoint.Bodies[0];
+        Assert.Contains("refresh_token=" + Uri.EscapeDataString(refreshToken), sent);
+        Assert.Contains("client_secret=" + Uri.EscapeDataString(clientSecret), sent);
+
+        Assert.True(e.Message.Contains(mustEcho),
+            $"case {name}: the typed error must keep the server's diagnostic \"{mustEcho}\" "
+            + $"(must_echo), got Message: {e.Message}");
+        Assert.True(e.Body.Contains(mustEcho),
+            $"case {name}: TokenEndpointException.Body must keep \"{mustEcho}\" (must_echo), got: {e.Body}");
+        AssertDoesNotEcho(name, e, mustNotEcho);
+        foreach (var link in ExceptionChain(e))
+        {
+            var texts = new List<(string What, string Text)>
+            {
+                ("ToString()", link.ToString()),
+                ("Message", link.Message),
+            };
+            if (link is TokenEndpointException endpointError)
+            {
+                texts.Add(("Body", endpointError.Body));
+            }
+            foreach (var (what, text) in texts)
+            {
+                Assert.True(text.Length <= maxErrorChars,
+                    $"case {name}: {link.GetType().Name}.{what} is {text.Length} chars, over the "
+                    + $"fixture's max_error_chars {maxErrorChars} (the body must be capped)");
+            }
+        }
+
+        Assert.True(
+            tokensBefore.SequenceEqual(File.ReadAllBytes(temp.Store.TokensPath)),
+            $"case {name}: tokens.json must be byte-identical after a rejected refresh");
+        Assert.True(
+            credsBefore.SequenceEqual(File.ReadAllBytes(temp.Store.CredentialsPath)),
+            $"case {name}: credentials.json must be byte-identical after a rejected refresh");
     }
 
     // --- 1b. implementation-defined token responses ------------------------------------------

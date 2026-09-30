@@ -36,9 +36,11 @@ class TokenEndpointError(AuthError):
     """The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh
     token), or a 2xx body that did not parse as the expected token shape.
 
-    ``body`` is the server's response text for genuine non-2xx errors; for a malformed
-    2xx body it is a fixed, secret-free description of the defect (the raw body is NOT
-    echoed, since it may carry token material)."""
+    ``body`` is the server's response text for genuine non-2xx errors — with every
+    secret the request submitted (refresh token, client secret) replaced by
+    ``[REDACTED]``, then capped at 1024 characters ("…" appended when cut); for a
+    malformed 2xx body it is a fixed, secret-free description of the defect (the raw
+    body is NOT echoed, since it may carry token material)."""
 
     def __init__(self, status: int, body: str) -> None:
         super().__init__(f"token endpoint returned HTTP {status}: {body}")

@@ -271,6 +271,16 @@ public final class TokenStore {
         } catch (CharacterCodingException e) {
             throw new StoreException(path.getFileName() + " is not valid UTF-8", null);
         }
+        // ...and carry NO byte-order mark (fixture: tokens_utf8_bom). Both Jackson's byte
+        // reader (it skips a leading EF BB BF) and the strict decoder above (a BOM is valid
+        // UTF-8) would let one through, while every other companion's store rejects it.
+        if (bytes.length >= 3
+                && (bytes[0] & 0xFF) == 0xEF
+                && (bytes[1] & 0xFF) == 0xBB
+                && (bytes[2] & 0xFF) == 0xBF) {
+            throw new StoreException(
+                    path.getFileName() + " starts with a UTF-8 byte-order mark", null);
+        }
         final T value;
         try {
             value = MAPPER.readValue(bytes, type);

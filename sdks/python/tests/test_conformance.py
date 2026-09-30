@@ -11,9 +11,9 @@ THERE, never here — its ``$comment`` is the contract):
   ``KeyError``/``TypeError``/``OverflowError``/``json.JSONDecodeError`` escaping), and
   ``tokens.json`` byte-identical afterwards (the rotated refresh token is never burned
   by persisting a blank/expired Bearer); a case's ``must_not_echo`` string appears
-  nowhere in the error's text or any error it chains (``__cause__``/``__context__``,
-  ``str()`` and ``repr()``) — and must actually occur in the case's decoded body bytes
-  (a needle absent from its payload would pass vacuously);
+  nowhere in the error's ``str()``/``repr()``, ``args`` or attributes, nor in any
+  error it chains (``__cause__``/``__context__``) — and must actually occur in the
+  case's decoded body bytes (a needle absent from its payload would pass vacuously);
 - implementation-defined 2xx token responses (a UTF-8 BOM, duplicate keys, deep
   nesting, an integral float ``expires_in``, an upper-case key) -> EITHER a successful
   refresh that persists ``access_token == "at-refreshed"``, a refresh_token of
@@ -26,6 +26,13 @@ THERE, never here — its ``$comment`` is the contract):
   record that makes ``is_authenticated`` lie, and never an untyped exception (plus the
   same ``must_not_echo`` rule, needle-in-payload check included — the store holds
   secrets);
+- rejected (non-2xx) token responses, with the stored refresh token and the
+  credentials' client secret seeded from the table's ``submitted`` values -> the typed
+  :class:`TokenEndpointError` carrying the case's ``status``, ``tokens.json``
+  byte-identical, ``must_echo`` present in the error text (the body is kept for
+  diagnosis), ``must_not_echo`` (a submitted secret the server echoed) absent from
+  every text in the error chain (``str``/``repr``/``args``/attributes such as
+  ``.body``), and no such text longer than ``max_error_chars``;
 - implementation-defined store files (nesting past a parser's depth limit) -> EITHER
   exactly the case's ``expected`` record OR the typed :class:`StoreFormatError` —
   never an untyped exception (e.g. ``RecursionError``);
@@ -40,8 +47,9 @@ THERE, never here — its ``$comment`` is the contract):
 
 Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
 same fixture-shrink guards (>= 30 hostile token responses, >= 5 implementation-defined
-token responses, >= 17 hostile store files, >= 1 implementation-defined store file,
->= 18 refresh-success cases; >= 4 hostile token and >= 5 hostile store cases carrying
+token responses, >= 21 hostile store files, >= 4 rejected token responses, >= 1
+implementation-defined store file, >= 18 refresh-success cases; >= 4 hostile token
+and >= 5 hostile store cases carrying
 ``must_not_echo``) plus an exact top-level table-set guard, so a renamed or added table
 can't be silently skipped.
 Monorepo-only: the fixture is resolved by walking up from ``__file__`` to the repo
@@ -87,6 +95,10 @@ FIXTURE = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 HOSTILE_TOKEN_RESPONSES = FIXTURE["hostile_token_responses"]
 IMPLEMENTATION_DEFINED_TOKEN_RESPONSES = FIXTURE["implementation_defined_token_responses"]
 HOSTILE_STORE_FILES = FIXTURE["hostile_store_files"]
+REJECTED = FIXTURE["rejected_token_responses"]
+REJECTED_SUBMITTED = REJECTED["submitted"]
+REJECTED_MAX_ERROR_CHARS = REJECTED["max_error_chars"]
+REJECTED_CASES = REJECTED["cases"]
 IMPLEMENTATION_DEFINED_STORE_FILES = FIXTURE["implementation_defined_store_files"]
 VALID_RECORDS = FIXTURE["valid_records"]
 REFRESH_SUCCESS = FIXTURE["refresh_success_cases"]
@@ -99,6 +111,7 @@ EXPECTED_TABLES = {
     "hostile_token_responses",
     "implementation_defined_token_responses",
     "hostile_store_files",
+    "rejected_token_responses",
     "implementation_defined_store_files",
     "refresh_success_cases",
     "valid_records",
@@ -180,6 +193,25 @@ def assert_needle_in_payload(case: dict, payload: bytes) -> None:
     )
 
 
+def error_texts(err: BaseException) -> list:
+    """Every text a leak could surface through, for each error in ``err``'s chain:
+    ``str()``/``repr()`` of the error, of each of its ``args``, and of each instance
+    attribute (e.g. ``TokenEndpointError.body``) — a traceback, log line, or caller
+    formatting ``err.body`` can render any of them. Returns (label, text) pairs."""
+    texts: list = []
+    for link in error_chain(err):
+        name = type(link).__name__
+        texts.append((f"str() of the chained {name}", str(link)))
+        texts.append((f"repr() of the chained {name}", repr(link)))
+        for i, arg in enumerate(link.args):
+            texts.append((f"{name}.args[{i}]", str(arg)))
+            texts.append((f"repr({name}.args[{i}])", repr(arg)))
+        for attr, value in vars(link).items():
+            texts.append((f"{name}.{attr}", str(value)))
+            texts.append((f"repr({name}.{attr})", repr(value)))
+    return texts
+
+
 def error_chain(err: BaseException) -> list:
     """``err`` plus every error it chains — ``__cause__`` (``raise ... from``) and
     ``__context__`` (implicit), recursively; a visited set guards against cycles."""
@@ -199,19 +231,18 @@ def error_chain(err: BaseException) -> list:
 def assert_does_not_echo(case: dict, err: BaseException) -> None:
     """The fixture's ``must_not_echo`` rule: the secret appears NOWHERE in the error's
     text or in any error it chains (a parser message can quote the input, and the
-    input carries token material). Both ``str()`` and ``repr()`` are checked — a
-    traceback or log line can render either."""
+    input carries token material). Every text :func:`error_texts` yields is checked
+    — ``str()``/``repr()``, ``args`` and attributes — since any of them can be
+    rendered."""
     secret = case.get("must_not_echo")
     if secret is None:
         return
     assert secret, f"case {case['name']}: must_not_echo must be a non-empty string"
-    for link in error_chain(err):
-        for rendering, text in (("str", str(link)), ("repr", repr(link))):
-            assert secret not in text, (
-                f"case {case['name']}: must_not_echo contract — the secret "
-                f"{secret!r} leaked into {rendering}() of the chained "
-                f"{type(link).__name__}"
-            )
+    for label, text in error_texts(err):
+        assert secret not in text, (
+            f"case {case['name']}: must_not_echo contract — the secret "
+            f"{secret!r} leaked into {label}"
+        )
 
 
 def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
@@ -229,8 +260,9 @@ def test_fixture_tables_are_exactly_the_ones_this_suite_iterates() -> None:
 def test_fixture_has_not_shrunk() -> None:
     """Shrink guard: a fixture edit that drops hostile cases weakens EVERY language's
     suite at once — fail loudly here (>= 30 hostile token responses, >= 5
-    implementation-defined token responses, >= 17 hostile store files, >= 1
-    implementation-defined store file, >= 18 refresh-success cases, like the other
+    implementation-defined token responses, >= 21 hostile store files, >= 4 rejected
+    token responses, >= 1 implementation-defined store file, >= 18 refresh-success
+    cases, like the other
     legs). pytest SKIPS a parametrize over an
     empty list, so an emptied table would otherwise pass silently."""
     assert len(HOSTILE_TOKEN_RESPONSES) >= 30, (
@@ -241,8 +273,11 @@ def test_fixture_has_not_shrunk() -> None:
         f"{len(IMPLEMENTATION_DEFINED_TOKEN_RESPONSES)} "
         "implementation_defined_token_responses cases"
     )
-    assert len(HOSTILE_STORE_FILES) >= 17, (
+    assert len(HOSTILE_STORE_FILES) >= 21, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
+    )
+    assert len(REJECTED_CASES) >= 4, (
+        f"fixture shrank? {len(REJECTED_CASES)} rejected_token_responses cases"
     )
     assert len(IMPLEMENTATION_DEFINED_STORE_FILES) >= 1, (
         "fixture shrank? "
@@ -324,6 +359,90 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
     assert store.tokens_path.read_bytes() == bytes_before, (
         f"case {case['name']}: tokens.json must be byte-identical "
         "(store UNTOUCHED, rotation not burned)"
+    )
+
+
+@pytest.mark.parametrize(
+    "case", REJECTED_CASES, ids=[c["name"] for c in REJECTED_CASES]
+)
+def test_rejected_token_response_fails_typed_redacted_and_bounded(
+    token_endpoint, tmp_path: Path, case: dict
+) -> None:
+    """A non-2xx token-endpoint response: the refresh sends the table's ``submitted``
+    secrets, the server answers ``status`` + ``raw_body`` to EVERY request (so a 400's
+    one reload-retry sees the same answer), and the error must be the typed
+    TokenEndpointError carrying ``status`` whose text keeps ``must_echo`` (diagnosis),
+    never contains ``must_not_echo`` anywhere in its chain (a submitted secret the
+    server echoed), and never exceeds ``max_error_chars`` — with tokens.json
+    byte-identical."""
+    contract = (
+        "rejected_token_responses contract: typed TokenEndpointError carrying the "
+        "status, store untouched, must_echo kept, submitted secrets redacted, no "
+        f"error text over max_error_chars ({REJECTED_MAX_ERROR_CHARS})"
+    )
+    raw_body = case["raw_body"]
+    assert isinstance(raw_body, str), f"case {case['name']}: raw_body must be a string"
+    assert_needle_in_payload(case, raw_body.encode("utf-8"))
+    status = case["status"]
+    assert not 200 <= status < 300, (
+        f"case {case['name']}: a rejected response must carry a non-2xx status"
+    )
+    token_endpoint.handler = lambda form: (status, raw_body)
+
+    submitted_refresh = REJECTED_SUBMITTED["refresh_token"]
+    submitted_secret = REJECTED_SUBMITTED["client_secret"]
+    credentials = ClientCredentials(client_id="cid", client_secret=submitted_secret)
+    seeded = Tokens(
+        access_token="at-original",
+        refresh_token=submitted_refresh,
+        expires_at=0,  # expired, so the refresh genuinely calls the endpoint
+    )
+    store = TokenStore(tmp_path)
+    store.save_credentials(credentials)
+    store.save_tokens(seeded)
+    bytes_before = store.tokens_path.read_bytes()
+
+    manager = TokenManager(store, credentials, seeded, token_url=token_endpoint.url)
+
+    with pytest.raises(Exception) as excinfo:
+        manager.force_refresh()
+    err = excinfo.value
+    assert isinstance(err, TokenEndpointError), (
+        f"case {case['name']}: expected the typed TokenEndpointError, "
+        f"got {type(err).__name__} ({contract})"
+    )
+    assert err.status == status, (
+        f"case {case['name']}: the error must carry HTTP {status}, got {err.status} "
+        f"({contract})"
+    )
+    # Harness sanity: the refresh really submitted the seeded secrets, so a
+    # must_not_echo needle equal to one of them is a genuine echo-back.
+    assert token_endpoint.requests, f"case {case['name']}: the endpoint was never called"
+    for form in token_endpoint.requests:
+        assert form.get("refresh_token") == submitted_refresh, (
+            f"case {case['name']}: the refresh must submit the seeded refresh token"
+        )
+        assert form.get("client_secret") == submitted_secret, (
+            f"case {case['name']}: the refresh must submit the seeded client secret"
+        )
+    assert case["must_echo"] in str(err), (
+        f"case {case['name']}: must_echo {case['must_echo']!r} must appear in the "
+        f"error text — the body is kept for diagnosis ({contract})"
+    )
+    texts = error_texts(err)
+    secret = case.get("must_not_echo")
+    for label, text in texts:
+        if secret is not None:
+            assert secret not in text, (
+                f"case {case['name']}: must_not_echo contract — the submitted secret "
+                f"{secret!r} leaked into {label} ({contract})"
+            )
+        assert len(text) <= REJECTED_MAX_ERROR_CHARS, (
+            f"case {case['name']}: max_error_chars contract — {label} is "
+            f"{len(text)} chars, over {REJECTED_MAX_ERROR_CHARS} ({contract})"
+        )
+    assert store.tokens_path.read_bytes() == bytes_before, (
+        f"case {case['name']}: tokens.json must be byte-identical ({contract})"
     )
 
 

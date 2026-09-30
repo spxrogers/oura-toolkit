@@ -12,6 +12,8 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -259,8 +261,12 @@ public final class TokenManager {
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             // A non-2xx error body is only carried for diagnostics: a lenient decode is fine.
-            throw new TokenEndpointException(
-                    response.statusCode(), new String(response.body(), StandardCharsets.UTF_8));
+            // But a server may echo what it was sent, so every secret this request submitted
+            // is REDACTED first, then the body is capped so a huge one can't flood logs
+            // (fixture: rejected_token_responses).
+            String body = new String(response.body(), StandardCharsets.UTF_8);
+            body = redactSecrets(body, current.getRefreshToken(), credentials.getClientSecret());
+            throw new TokenEndpointException(response.statusCode(), capErrorBody(body));
         }
 
         // A 2xx body that isn't valid UTF-8 ANYWHERE (unknown fields included) isn't JSON
@@ -364,6 +370,42 @@ public final class TokenManager {
                 expiresAt,
                 scope,
                 tokenType);
+    }
+
+    /** The longest non-2xx body (in chars) a {@link TokenEndpointException} carries. */
+    static final int MAX_ERROR_BODY_CHARS = 1024;
+
+    /**
+     * Replace EVERY occurrence of each non-empty {@code secret} in {@code body} with
+     * {@code [REDACTED]} — longest first, so a secret that contains another is never left
+     * half-visible.
+     */
+    static String redactSecrets(String body, String... secrets) {
+        String[] ordered = secrets.clone();
+        Arrays.sort(ordered, Comparator.comparingInt(
+                (String x) -> x == null ? 0 : x.length()).reversed());
+        for (String secret : ordered) {
+            if (secret != null && !secret.isEmpty()) {
+                body = body.replace(secret, "[REDACTED]");
+            }
+        }
+        return body;
+    }
+
+    /**
+     * Cap {@code body} at {@link #MAX_ERROR_BODY_CHARS}, appending "…" when cut, never
+     * splitting a surrogate pair (the cut backs off one char instead).
+     */
+    static String capErrorBody(String body) {
+        if (body.length() <= MAX_ERROR_BODY_CHARS) {
+            return body;
+        }
+        int end = MAX_ERROR_BODY_CHARS;
+        if (Character.isHighSurrogate(body.charAt(end - 1))
+                && Character.isLowSurrogate(body.charAt(end))) {
+            end--;
+        }
+        return body.substring(0, end) + "…";
     }
 
     /** The token-response fields this companion reads (and so validates as Unicode). */

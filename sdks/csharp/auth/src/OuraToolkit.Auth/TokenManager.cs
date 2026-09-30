@@ -295,13 +295,16 @@ public sealed class TokenManager : IDisposable
             // cannot slip past as a silent no-op.
             if (status is >= 300 and < 400)
             {
-                throw new TokenEndpointException(status, LenientUtf8.GetString(bytes));
+                throw new TokenEndpointException(
+                    status, DiagnosticBody(bytes, current.RefreshToken, credentials.ClientSecret));
             }
             if (!response.IsSuccessStatusCode)
             {
-                // A non-2xx body is diagnostics only (never parsed or persisted), so it is decoded
-                // leniently: a stray invalid byte there must not mask the real HTTP error.
-                throw new TokenEndpointException(status, LenientUtf8.GetString(bytes));
+                // A non-2xx body is diagnostics only (never parsed or persisted): it is kept for
+                // diagnosis, but a submitted secret the server echoes back is redacted and the
+                // text is capped (DiagnosticBody; shared fixture table rejected_token_responses).
+                throw new TokenEndpointException(
+                    status, DiagnosticBody(bytes, current.RefreshToken, credentials.ClientSecret));
             }
 
             // A hostile or broken 2xx body must fail as the typed TokenEndpointException, never a
@@ -395,6 +398,44 @@ public sealed class TokenManager : IDisposable
                 TokenType = string.IsNullOrEmpty(parsed.TokenType) ? current.TokenType : parsed.TokenType,
             };
         }
+    }
+
+    /// <summary>
+    /// The most characters of a non-2xx token-endpoint body kept in a
+    /// <see cref="TokenEndpointException"/>: enough for any OAuth error JSON, while a huge
+    /// (or hostile) body can never bloat the error text or a log line.
+    /// </summary>
+    internal const int MaxDiagnosticBodyChars = 1024;
+
+    /// <summary>
+    /// A non-2xx token-endpoint body made safe to carry in a <see cref="TokenEndpointException"/>:
+    /// decoded leniently (a stray invalid byte must not mask the real HTTP error), then EVERY
+    /// occurrence of each secret the request submitted (the refresh_token and client_secret)
+    /// replaced with <c>[REDACTED]</c> — a server echoing the rejected grant back must not
+    /// leak it into logs — and only THEN capped at <see cref="MaxDiagnosticBodyChars"/>
+    /// characters (<c>…</c> appended when cut, never splitting a surrogate pair). Redacting
+    /// before the cap means a secret straddling the cut can't survive as a partial prefix.
+    /// </summary>
+    internal static string DiagnosticBody(byte[] bytes, params string?[] submittedSecrets)
+    {
+        var body = LenientUtf8.GetString(bytes);
+        foreach (var secret in submittedSecrets)
+        {
+            if (!string.IsNullOrEmpty(secret))
+            {
+                body = body.Replace(secret, "[REDACTED]");
+            }
+        }
+        if (body.Length <= MaxDiagnosticBodyChars)
+        {
+            return body;
+        }
+        var cut = MaxDiagnosticBodyChars;
+        if (char.IsHighSurrogate(body[cut - 1]))
+        {
+            cut--; // keep the pair whole: drop its high half rather than orphan it
+        }
+        return body.Substring(0, cut) + "\u2026";
     }
 
     /// <summary>Releases the token-endpoint HTTP client and the internal mutex.</summary>

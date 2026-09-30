@@ -323,9 +323,13 @@ fn a_corrupt_store_record_never_prints_the_secret_it_holds() {
             "the store format error is reported — {context}"
         );
         assert_eq!(
-            all.matches("a missing or wrong-typed field").count(),
+            all.matches("a wrong-typed value").count(),
             1,
             "the store format error's detail is reported exactly once — {context}"
+        );
+        assert!(
+            all.contains(&format!("token store format error in {file}")),
+            "the error names the corrupt file — {context}"
         );
     }
 }

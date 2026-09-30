@@ -433,7 +433,22 @@ Java chaining Jackson's exception, Python chaining a `UnicodeDecodeError` (whose
 whole input), and the Rust store quoting a wrong-typed value — which reached the CLI's stderr and
 MCP tool results. Store files, like token bodies, must be valid UTF-8 over the whole file:
 TypeScript and Go loaded invalid bytes as U+FFFD, and Rust, C# and Java's Jackson let some through
-in fields they skip (overlong forms and encoded surrogates, in Jackson's case).
+in fields they skip (overlong forms and encoded surrogates, in Jackson's case). A leading
+byte-order mark is rejected too (RFC 8259 §8.1: a generator must not write one, and none of the
+six does); Java alone used to skip it.
+
+A REJECTED (non-2xx) token response keeps its body in the error — `invalid_grant` is what tells
+the user to log in again — but some OAuth servers echo the value they reject, so each companion
+replaces every secret the request submitted (refresh token, client secret, authorization code)
+with `[REDACTED]` and then caps the body at 1024 characters (redacting first, so a cut can't
+expose part of a secret). Pinned by `rejected_token_responses`.
+
+In the Rust crate this split `AuthError`: a store record that fails to LOAD is now
+`AuthError::StoreFormat { file, detail }` (the file name and what/where, incl. a missing
+field's name, never a value), and `AuthError::Serde` covers only serialization on save, with no
+blanket `From<serde_json::Error>` (a future `?` on a parse can't bypass the redaction). That is a
+breaking change to `oura-toolkit-auth`'s public error type: it ships in the next minor (0.x)
+release.
 
 Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
 untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even

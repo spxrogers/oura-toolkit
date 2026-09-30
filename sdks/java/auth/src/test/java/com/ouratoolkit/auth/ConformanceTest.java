@@ -16,6 +16,8 @@ import java.util.ArrayDeque;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -55,6 +57,10 @@ import org.junit.jupiter.api.io.TempDir;
  *       {@link Tokens} that would make {@code isAuthenticated} lie, never an unchecked
  *       crash; a case's {@code must_not_echo} string appears nowhere in the exception's
  *       chain;</li>
+ *   <li>rejected (non-2xx) token responses → the typed {@link TokenEndpointException}
+ *       carrying the case's status, the store byte-identical, the case's {@code must_echo}
+ *       diagnosis kept, a {@code must_not_echo} submitted secret redacted everywhere in the
+ *       chain, and no text in the chain longer than {@code max_error_chars};</li>
  *   <li>implementation-defined store files → EITHER exactly the case's {@code expected}
  *       record OR the typed {@link StoreException} — never an unchecked throw/Error;</li>
  *   <li>refresh success cases → a successful refresh from the stored {@code prior} record
@@ -223,17 +229,38 @@ class ConformanceTest {
      * Walks by identity so a cyclic chain terminates.
      */
     private static void assertChainDoesNotEcho(String name, Throwable top, String needle) {
+        for (Map.Entry<String, String> text : chainTexts(top).entrySet()) {
+            assertTrue(!text.getValue().contains(needle),
+                    name + ": must_not_echo — " + text.getKey()
+                            + " in the exception chain echoes the case's secret text");
+        }
+    }
+
+    /**
+     * Every text the exception chain exposes, keyed by where it came from: each
+     * throwable's {@code toString()} and {@code getMessage()} (and a
+     * {@link TokenEndpointException}'s {@code getBody()}), for {@code top}, every
+     * {@code getCause()} recursively and every suppressed exception (a logged stack trace
+     * prints them all). Walks by identity so a cyclic chain terminates.
+     */
+    private static Map<String, String> chainTexts(Throwable top) {
+        Map<String, String> texts = new LinkedHashMap<>();
         Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         ArrayDeque<Throwable> todo = new ArrayDeque<>();
         todo.push(top);
+        int i = 0;
         while (!todo.isEmpty()) {
             Throwable t = todo.pop();
             if (!seen.add(t)) {
                 continue;
             }
-            assertTrue(!String.valueOf(t).contains(needle),
-                    name + ": must_not_echo — " + t.getClass().getName()
-                            + " in the exception chain echoes the case's secret text");
+            String where = "#" + i++ + " " + t.getClass().getName();
+            texts.put(where + ".toString()", String.valueOf(t));
+            texts.put(where + ".getMessage()", String.valueOf(t.getMessage()));
+            if (t instanceof TokenEndpointException) {
+                texts.put(where + ".getBody()",
+                        String.valueOf(((TokenEndpointException) t).getBody()));
+            }
             if (t.getCause() != null) {
                 todo.push(t.getCause());
             }
@@ -241,6 +268,7 @@ class ConformanceTest {
                 todo.push(s);
             }
         }
+        return texts;
     }
 
     // --- 1. hostile-but-2xx token responses ----------------------------------------------
@@ -404,9 +432,9 @@ class ConformanceTest {
     Stream<DynamicTest> hostileStoreFilesFailTyped() throws IOException {
         JsonNode cases = fixture().get("hostile_store_files");
         assertNotNull(cases, "fixture lost its hostile_store_files table");
-        assertTrue(cases.size() >= 17,
+        assertTrue(cases.size() >= 21,
                 "fixture shrank? hostile_store_files has " + cases.size()
-                        + " cases, want >= 17");
+                        + " cases, want >= 21");
         assertNoEchoFloor("hostile_store_files", cases, 5);
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
@@ -443,6 +471,114 @@ class ConformanceTest {
         Optional<String> needle = mustNotEcho(testCase, bytes);
         if (needle.isPresent()) {
             assertChainDoesNotEcho(name, thrown, needle.get());
+        }
+    }
+
+    // --- 2c. rejected (non-2xx) token responses ---------------------------------------------
+
+    /**
+     * A NON-2xx token response, seeded so the refresh sends exactly the fixture's
+     * {@code submitted} refresh_token + client_secret: the refresh must fail with the typed
+     * {@link TokenEndpointException} carrying the case's status and leave both records
+     * byte-identical; the body is kept for diagnosis ({@code must_echo} appears in the
+     * exception text) but a submitted secret the server echoed is REDACTED
+     * ({@code must_not_echo} appears nowhere in the chain), and no text in the chain
+     * exceeds {@code max_error_chars} however large the body.
+     */
+    @TestFactory
+    Stream<DynamicTest> rejectedTokenResponsesFailTypedRedactedAndCapped() throws IOException {
+        JsonNode table = fixture().get("rejected_token_responses");
+        assertNotNull(table, "fixture lost its rejected_token_responses table");
+        JsonNode submitted = table.get("submitted");
+        assertNotNull(submitted, "fixture's rejected_token_responses lost its submitted record");
+        String refreshToken = requiredText(submitted, "refresh_token", "submitted");
+        String clientSecret = requiredText(submitted, "client_secret", "submitted");
+        assertTrue(!refreshToken.isEmpty() && !clientSecret.isEmpty(),
+                "rejected_token_responses.submitted secrets must be non-empty");
+        JsonNode maxNode = table.get("max_error_chars");
+        assertTrue(maxNode != null && maxNode.isIntegralNumber() && maxNode.asInt() > 0,
+                "rejected_token_responses.max_error_chars must be a positive integer");
+        int maxErrorChars = maxNode.asInt();
+        JsonNode cases = table.get("cases");
+        assertNotNull(cases, "fixture's rejected_token_responses lost its cases");
+        assertTrue(cases.size() >= 4,
+                "fixture shrank? rejected_token_responses has " + cases.size()
+                        + " cases, want >= 4");
+        assertNoEchoFloor("rejected_token_responses", cases, 3);
+        return StreamSupport.stream(cases.spliterator(), false)
+                .map(c -> DynamicTest.dynamicTest(
+                        c.get("name").asText(),
+                        () -> assertRejectedTokenResponseHandled(
+                                refreshToken, clientSecret, maxErrorChars, c)));
+    }
+
+    private void assertRejectedTokenResponseHandled(
+            String refreshToken, String clientSecret, int maxErrorChars, JsonNode testCase)
+            throws Exception {
+        String name = testCase.get("name").asText();
+        JsonNode statusNode = testCase.get("status");
+        assertTrue(statusNode != null && statusNode.isIntegralNumber()
+                        && (statusNode.asInt() < 200 || statusNode.asInt() >= 300),
+                name + ": status must be a non-2xx integer");
+        int status = statusNode.asInt();
+        String rawBody = requiredText(testCase, "raw_body", name);
+        byte[] body = rawBody.getBytes(StandardCharsets.UTF_8);
+        String mustEcho = requiredText(testCase, "must_echo", name);
+        assertTrue(!mustEcho.isEmpty() && rawBody.contains(mustEcho),
+                name + ": must_echo must be a non-empty string that occurs in raw_body, or the "
+                        + "echo check is vacuous");
+        Optional<String> needle = mustNotEcho(testCase, body);
+
+        Path dir = caseDir("rejected-" + name);
+        TokenStore store = new TokenStore(dir);
+        store.saveCredentials(new ClientCredentials("cid", clientSecret));
+        // Expired on purpose, so the refresh genuinely calls the endpoint.
+        store.saveTokens(expiredTokens(refreshToken));
+        byte[] tokensBefore = Files.readAllBytes(store.tokensPath());
+        byte[] credsBefore = Files.readAllBytes(store.credentialsPath());
+
+        AtomicReference<String> sentRefresh = new AtomicReference<>();
+        AtomicReference<String> sentSecret = new AtomicReference<>();
+        try (TokenEndpointStub stub = new TokenEndpointStub(form -> {
+            sentRefresh.set(form.get("refresh_token"));
+            sentSecret.set(form.get("client_secret"));
+            return new TokenEndpointStub.Response(status, body);
+        })) {
+            TokenManager m = new TokenManager(store, store.loadCredentials().orElseThrow(),
+                    store.loadTokens().orElseThrow());
+            m.overrideTokenUrl(stub.url());
+
+            TokenEndpointException thrown = assertThrows(TokenEndpointException.class,
+                    m::forceRefresh,
+                    name + ": a non-2xx must surface the typed TokenEndpointException");
+            assertEquals(status, thrown.getStatus(),
+                    name + ": the TokenEndpointException must carry the response status");
+            int calls = stub.requests.get();
+            assertTrue(calls == 1 || (status == 400 && calls == 2),
+                    name + ": the endpoint must be hit once (a 400 may add ONE reload-retry), "
+                            + "got " + calls);
+            assertEquals(refreshToken, sentRefresh.get(),
+                    name + ": the refresh must SEND the submitted refresh_token");
+            assertEquals(clientSecret, sentSecret.get(),
+                    name + ": the refresh must SEND the submitted client_secret");
+
+            assertTrue(String.valueOf(thrown).contains(mustEcho),
+                    name + ": must_echo — the error body is kept for diagnosis, so the "
+                            + "exception text must contain \"" + mustEcho + "\"");
+            if (needle.isPresent()) {
+                assertChainDoesNotEcho(name, thrown, needle.get());
+            }
+            for (Map.Entry<String, String> text : chainTexts(thrown).entrySet()) {
+                assertTrue(text.getValue().length() <= maxErrorChars,
+                        name + ": max_error_chars — " + text.getKey() + " is "
+                                + text.getValue().length() + " chars, want <= " + maxErrorChars
+                                + " (the error body must be capped)");
+            }
+            assertArrayEquals(tokensBefore, Files.readAllBytes(store.tokensPath()),
+                    name + ": tokens.json must be byte-identical after a rejected refresh");
+            assertArrayEquals(credsBefore, Files.readAllBytes(store.credentialsPath()),
+                    name + ": credentials.json must be byte-identical after a rejected "
+                            + "refresh");
         }
     }
 
@@ -699,7 +835,7 @@ class ConformanceTest {
     // --- sanity: the fixture's tables are the ones this suite knows how to map ------------
 
     /**
-     * The fixture's tables must be EXACTLY the six this suite maps (plus {@code $comment}):
+     * The fixture's tables must be EXACTLY the seven this suite maps (plus {@code $comment}):
      * a NEW table fails here (this leg must be extended deliberately — beats ten
      * silently-unexercised cases), and so does a renamed/removed one.
      */
@@ -710,6 +846,7 @@ class ConformanceTest {
                 "hostile_token_responses",
                 "implementation_defined_token_responses",
                 "hostile_store_files",
+                "rejected_token_responses",
                 "implementation_defined_store_files",
                 "refresh_success_cases",
                 "valid_records"));

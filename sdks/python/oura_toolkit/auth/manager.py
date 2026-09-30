@@ -68,6 +68,33 @@ def _is_valid_unicode(value: str) -> bool:
     return True
 
 
+#: Longest token-endpoint error body (in characters) kept in a
+#: :class:`TokenEndpointError` for a non-2xx response; longer bodies are cut and
+#: marked with a trailing "…" (conformance `rejected_token_responses`: no error text
+#: may exceed the fixture's `max_error_chars`, however large the server's body).
+MAX_ERROR_BODY_CHARS = 1024
+
+#: What a submitted secret echoed back in a non-2xx body is replaced with.
+REDACTED = "[REDACTED]"
+
+
+def _rejected_body(body: str, secrets: tuple[str, ...]) -> str:
+    """A non-2xx token-endpoint body made safe to carry in an error (conformance
+    `rejected_token_responses`): (a) EVERY occurrence of each secret the request
+    submitted (refresh token, client secret) is replaced with ``[REDACTED]`` — a
+    server may echo them back, and the error ends up in logs/tracebacks; then (b) the
+    result is capped at :data:`MAX_ERROR_BODY_CHARS` characters ("…" appended when
+    cut). Redaction runs BEFORE the cap so a cut can't leave a secret's prefix that
+    no longer matches. Longer secrets are replaced first, so a secret that contains
+    another is still scrubbed whole; empty secrets are skipped (replacing "" would
+    splice the marker between every character)."""
+    for secret in sorted({s for s in secrets if s}, key=len, reverse=True):
+        body = body.replace(secret, REDACTED)
+    if len(body) > MAX_ERROR_BODY_CHARS:
+        body = body[:MAX_ERROR_BODY_CHARS] + "\u2026"
+    return body
+
+
 class TokenManager:
     """Owns the current tokens and the machinery to keep them fresh. Thread-safe
     (an internal mutex serializes token access within the process; the store lock
@@ -236,8 +263,15 @@ class TokenManager:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if not 200 <= resp.status < 300:
+            # Non-2xx: the server's body is kept for diagnosis, but scrubbed of every
+            # secret THIS request submitted (a server may echo the refresh token or
+            # client secret back) and capped — see _rejected_body.
             raise TokenEndpointError(
-                resp.status, resp.data.decode("utf-8", errors="replace")
+                resp.status,
+                _rejected_body(
+                    resp.data.decode("utf-8", errors="replace"),
+                    (current.refresh_token, self._credentials.client_secret),
+                ),
             )
         # A hostile/broken 2xx body must surface as the typed TokenEndpointError, never
         # a raw JSONDecodeError/KeyError/ValueError/RecursionError detonating downstream

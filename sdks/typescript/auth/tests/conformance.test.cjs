@@ -5,7 +5,7 @@
 // canonical store records that every companion suite must exercise; new cases are added
 // THERE, never here — and its `$comment` is the contract):
 //
-//  - the fixture's top-level tables are EXACTLY the six below, so a table added to the
+//  - the fixture's top-level tables are EXACTLY the seven below, so a table added to the
 //    fixture can't be silently ignored by this leg;
 //  - hostile_token_responses: a hostile-but-2xx token response (`body` JSON, `raw_body`
 //    verbatim, or `raw_body_base64` decoded bytes — e.g. invalid UTF-8) -> typed
@@ -26,6 +26,12 @@
 //    persists EXACTLY `expected` (access_token, refresh_token, scope, token_type) and
 //    expires_at = refresh time + expected.expires_in — incl. the omitted/null/blank
 //    scope and omitted/null/empty refresh_token/token_type fallbacks to `prior`;
+//  - rejected_token_responses: a NON-2xx token response, with the stored refresh token
+//    and the credentials' client_secret seeded from the table's `submitted` -> the typed
+//    TokenEndpointError carrying the case's `status`, tokens.json byte-identical, the
+//    body kept for diagnosis (`must_echo` in the error text), a submitted secret the
+//    server echoed redacted (`must_not_echo` nowhere in the error or its chain), and no
+//    string in the chain longer than `max_error_chars`;
 //  - hostile_store_files (the file as `content` text or `content_base64` bytes — e.g.
 //    invalid UTF-8, which must fail typed, never load with U+FFFD) -> the typed
 //    StoreFormatError, never a default/null-filled record and never an untyped throw;
@@ -41,8 +47,8 @@
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs):
 // same test structure, same fixture-shrink guards (>= 30 hostile token responses, >= 5
-// implementation-defined token responses, >= 18 refresh success cases, >= 17 hostile
-// store files, >= 1 implementation-defined store file).
+// implementation-defined token responses, >= 18 refresh success cases, >= 21 hostile
+// store files, >= 4 rejected token responses, >= 1 implementation-defined store file).
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -214,6 +220,7 @@ test("conformance: the fixture's top-level tables are exactly the ones this leg 
       "implementation_defined_store_files",
       "implementation_defined_token_responses",
       "refresh_success_cases",
+      "rejected_token_responses",
       "valid_records",
     ],
     "auth-cases.json top-level tables changed: iterate the new table in this suite"
@@ -455,10 +462,131 @@ test("conformance: refresh_success_cases persist exactly `expected`", async (t) 
   }
 });
 
+/**
+ * Every string surface of an error and the errors it chains (`cause`, recursively, plus an
+ * AggregateError's `errors`): String(e), message, stack, and every own string property.
+ * The same surfaces {@link assertNoEcho} walks.
+ */
+function chainStrings(err) {
+  const out = [];
+  const seen = new Set();
+  const walk = (e, where) => {
+    if (e === null || e === undefined) return;
+    if (typeof e !== "object" && typeof e !== "function") {
+      out.push({ where, text: String(e) });
+      return;
+    }
+    if (seen.has(e)) return;
+    seen.add(e);
+    const surfaces = { "String()": String(e), message: e.message, stack: e.stack };
+    for (const key of Object.getOwnPropertyNames(e)) {
+      if (typeof e[key] === "string") surfaces[key] = e[key];
+    }
+    for (const [surface, text] of Object.entries(surfaces)) {
+      if (typeof text === "string") out.push({ where: `${where}.${surface}`, text });
+    }
+    walk(e.cause, `${where}.cause`);
+    if (Array.isArray(e.errors)) e.errors.forEach((inner, i) => walk(inner, `${where}.errors[${i}]`));
+  };
+  walk(err, "error");
+  return out;
+}
+
+test("conformance: rejected (non-2xx) token responses fail typed, keep the body, redact secrets, cap size", async (t) => {
+  const table = fixture.rejected_token_responses;
+  assert.ok(table && typeof table === "object", "rejected_token_responses table");
+  const submitted = table.submitted;
+  assert.ok(submitted && typeof submitted === "object", "rejected_token_responses.submitted");
+  for (const field of ["refresh_token", "client_secret"]) {
+    assert.equal(typeof submitted[field], "string", `rejected_token_responses.submitted.${field}`);
+    assert.notEqual(submitted[field], "", `rejected_token_responses.submitted.${field} must be non-empty`);
+  }
+  const maxChars = table.max_error_chars;
+  assert.ok(Number.isInteger(maxChars) && maxChars > 0, "rejected_token_responses.max_error_chars");
+  const cases = table.cases;
+  assert.ok(Array.isArray(cases), "rejected_token_responses.cases");
+  assert.ok(cases.length >= 4, `fixture shrank? ${cases.length} cases`);
+  // Vacuity guard for the size cap: some case's body must exceed it.
+  assert.ok(
+    cases.some((c) => typeof c.raw_body === "string" && c.raw_body.length > maxChars),
+    `rejected_token_responses: no case body exceeds max_error_chars ${maxChars} — the cap check would pass vacuously`
+  );
+
+  // One subtest per case, so a broken implementation reports EVERY failing case by name.
+  for (const c of cases) {
+    await t.test(`rejected_token_responses: ${c.name}`, async (st) => {
+      const { name, status } = c;
+      assert.equal(typeof c.raw_body, "string", `case ${name}: raw_body`);
+      assert.ok(Number.isInteger(status) && (status < 200 || status > 299), `case ${name}: status must be non-2xx`);
+      assert.equal(typeof c.must_echo, "string", `case ${name}: must_echo`);
+      assert.ok(c.raw_body.includes(c.must_echo), `case ${name}: must_echo must occur in raw_body (vacuous otherwise)`);
+      const payload = Buffer.from(c.raw_body, "utf8");
+      assertNeedleInPayload(c, payload);
+
+      // Answer EVERY request the same way: a 400 may trigger the one reload-retry.
+      const endpoint = await startTokenEndpoint((_params, res) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(payload);
+      });
+      st.after(endpoint.close);
+
+      const creds = () => new auth.ClientCredentials({ clientId: "cid", clientSecret: submitted.client_secret });
+      const store = withTempStore(st);
+      store.saveCredentials(creds());
+      store.saveTokens(expiredTokens(submitted.refresh_token));
+      const bytesBefore = fs.readFileSync(store.tokensPath());
+
+      const manager = new auth.TokenManager({
+        store,
+        credentials: creds(),
+        tokens: expiredTokens(submitted.refresh_token),
+        tokenUrl: endpoint.url,
+      });
+
+      let thrown;
+      await assert.rejects(
+        () => manager.forceRefresh(),
+        (e) => {
+          thrown = e;
+          return true;
+        },
+        `case ${name}: a non-2xx must not succeed`
+      );
+      assert.ok(
+        thrown instanceof auth.TokenEndpointError,
+        `case ${name}: expected the typed TokenEndpointError, got ${thrown && thrown.constructor.name}: ${thrown}`
+      );
+      assert.equal(thrown.status, status, `case ${name}: TokenEndpointError.status`);
+      // The refresh really sent the seeded secrets (else redacting them proves nothing).
+      assert.ok(endpoint.requests.length >= 1, `case ${name}: the refresh must call the endpoint`);
+      for (const req of endpoint.requests) {
+        assert.equal(req.params.get("refresh_token"), submitted.refresh_token, `case ${name}: submitted refresh_token`);
+        assert.equal(req.params.get("client_secret"), submitted.client_secret, `case ${name}: submitted client_secret`);
+      }
+      // The body is kept for diagnosis.
+      assert.ok(
+        thrown.message.includes(c.must_echo),
+        `case ${name}: the error must keep the body for diagnosis (${JSON.stringify(c.must_echo)} missing): ${thrown.message.slice(0, 200)}`
+      );
+      // A submitted secret the server echoed back is redacted everywhere in the chain.
+      assertNoEcho(thrown, c.must_not_echo, name);
+      // Bounded: no string in the chain exceeds max_error_chars, however large the body.
+      for (const { where, text } of chainStrings(thrown)) {
+        assert.ok(
+          text.length <= maxChars,
+          `case ${name}: ${where} is ${text.length} chars, exceeds max_error_chars ${maxChars}`
+        );
+      }
+      const bytesAfter = fs.readFileSync(store.tokensPath());
+      assert.ok(bytesBefore.equals(bytesAfter), `case ${name}: tokens.json must be byte-identical (store UNTOUCHED)`);
+    });
+  }
+});
+
 test("conformance: hostile store files fail with the typed StoreFormatError", (t) => {
   const cases = fixture.hostile_store_files;
   assert.ok(Array.isArray(cases), "hostile_store_files table");
-  assert.ok(cases.length >= 17, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 21, `fixture shrank? ${cases.length} cases`);
   assertNoEchoFloor(cases, 5, "hostile_store_files");
 
   for (const c of cases) {

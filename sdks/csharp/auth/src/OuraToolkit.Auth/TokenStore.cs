@@ -217,12 +217,12 @@ public sealed class TokenStore
         {
             // A FIXED message, and the decoder's exception is deliberately NOT chained: the
             // store holds secrets, so the typed error never quotes any of the file's bytes.
-            throw new StoreFormatException(path, new JsonException("record is not valid UTF-8"));
+            throw new StoreFormatException(path, "record is not valid UTF-8");
         }
         try
         {
             return JsonSerializer.Deserialize<T>(bytes)
-                ?? throw new StoreFormatException(path, new JsonException("record is JSON null"));
+                ?? throw new StoreFormatException(path, "record is JSON null");
         }
         catch (JsonException e)
         {

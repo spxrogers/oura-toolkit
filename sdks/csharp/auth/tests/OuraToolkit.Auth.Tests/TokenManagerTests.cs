@@ -483,4 +483,42 @@ public class TokenManagerTests
         // The store is untouched — a timed-out refresh persists nothing.
         Assert.Equal("r1", temp.Store.LoadTokens()!.RefreshToken);
     }
+
+    // -- Non-2xx diagnostics: redacted, then capped ---------------------------------------------
+
+    /// <summary>
+    /// <see cref="TokenManager.DiagnosticBody"/> replaces EVERY occurrence of each submitted
+    /// secret (not just the first), skips an empty secret (which would otherwise throw or match
+    /// everywhere), and leaves a body at exactly the cap untouched.
+    /// </summary>
+    [Fact]
+    public void DiagnosticBodyRedactsEveryOccurrenceOfEachSubmittedSecret()
+    {
+        var body = Encoding.UTF8.GetBytes("rtX1 then csY2, again rtX1 and csY2");
+        Assert.Equal(
+            "[REDACTED] then [REDACTED], again [REDACTED] and [REDACTED]",
+            TokenManager.DiagnosticBody(body, "rtX1", "csY2", "", null));
+
+        var atCap = new string('a', TokenManager.MaxDiagnosticBodyChars);
+        Assert.Equal(atCap, TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes(atCap)));
+    }
+
+    /// <summary>
+    /// An over-cap body is cut to <see cref="TokenManager.MaxDiagnosticBodyChars"/> characters
+    /// plus "…", and a cut landing inside a surrogate pair drops the pair's high half rather
+    /// than orphan it (a lone surrogate is not valid Unicode and breaks strict encoders/loggers).
+    /// </summary>
+    [Fact]
+    public void DiagnosticBodyCapsWithoutSplittingASurrogatePair()
+    {
+        var cap = TokenManager.MaxDiagnosticBodyChars;
+        var plain = TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes(new string('b', cap + 50)));
+        Assert.Equal(new string('b', cap) + "\u2026", plain);
+
+        // U+1F600 is a surrogate pair occupying chars [cap-1, cap]: a naive cut keeps its high half.
+        var straddling = new string('a', cap - 1) + "\U0001F600" + new string('z', 10);
+        var cut = TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes(straddling));
+        Assert.Equal(new string('a', cap - 1) + "\u2026", cut);
+        Assert.DoesNotContain(cut, char.IsSurrogate);
+    }
 }

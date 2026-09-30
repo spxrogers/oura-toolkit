@@ -318,6 +318,59 @@ class TestCrossProcessProtocol:
         )
 
 
+class TestRejectedBodyScrubbing:
+    """The non-2xx body carried by TokenEndpointError is scrubbed of every submitted
+    secret and then capped at exactly 1024 characters (conformance
+    `rejected_token_responses` pins the cross-language contract; these pin the exact
+    boundary and ordering Python promises)."""
+
+    def _rejected(
+        self, token_endpoint, tmp_path: Path, body: str
+    ) -> TokenEndpointError:
+        token_endpoint.handler = lambda form: (400, body)
+        store = TokenStore(tmp_path)
+        store.save_tokens(expired_tokens("r-dead"))
+        manager = manager_for(token_endpoint, store, expired_tokens("r-dead"))
+        with pytest.raises(TokenEndpointError) as excinfo:
+            manager.access_token()
+        return excinfo.value
+
+    def test_body_of_exactly_1024_chars_is_kept_whole(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        body = "e" * 1024
+        err = self._rejected(token_endpoint, tmp_path, body)
+        assert err.body == body, (
+            "a 1024-char body is within the cap and must not be cut"
+        )
+
+    def test_body_over_1024_chars_is_cut_to_1024_plus_ellipsis(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        err = self._rejected(token_endpoint, tmp_path, "a" * 1024 + "TAIL")
+        assert err.body == "a" * 1024 + "…", (
+            "a body over 1024 chars must be cut to its first 1024 chars + '…'"
+        )
+
+    def test_redaction_runs_before_the_cap(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        # The secret straddles the cut: capping first would keep its prefix "r-de".
+        err = self._rejected(token_endpoint, tmp_path, "x" * 1020 + "r-dead" + "y" * 50)
+        assert err.body == "x" * 1020 + "[RED" + "…", (
+            "redaction must run before the cap, so no prefix of a secret survives a cut"
+        )
+
+    def test_every_occurrence_of_each_submitted_secret_is_redacted(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        err = self._rejected(
+            token_endpoint, tmp_path, "r-dead secret r-dead|secret|cid"
+        )
+        # client_id is not a secret and is kept; both secrets are gone everywhere.
+        assert err.body == "[REDACTED] [REDACTED] [REDACTED]|[REDACTED]|cid"
+
+
 class TestConfigurationSeam:
     def test_configuration_reads_a_fresh_token_through_the_manager(
         self, token_endpoint, tmp_path: Path

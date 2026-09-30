@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -68,6 +69,45 @@ func (tr *tokenResponse) grantedScope() string {
 	return s
 }
 
+// maxErrorBodyChars caps a non-2xx token-endpoint body carried in a TokenEndpointError,
+// in characters (runes): enough to diagnose, never an unbounded blob in logs/UI.
+const maxErrorBodyChars = 1024
+
+// redactedMarker replaces every occurrence of a submitted secret in an error body.
+const redactedMarker = "[REDACTED]"
+
+// redactSecrets replaces EVERY occurrence of each non-empty secret in body with
+// redactedMarker. Longer secrets go first, so a secret that contains another is never
+// left half-replaced. An empty secret is skipped (strings.ReplaceAll with an empty old
+// string would splice the marker between every rune).
+func redactSecrets(body string, secrets ...string) string {
+	sorted := make([]string, 0, len(secrets))
+	for _, s := range secrets {
+		if s != "" {
+			sorted = append(sorted, s)
+		}
+	}
+	sort.Slice(sorted, func(i, j int) bool { return len(sorted[i]) > len(sorted[j]) })
+	for _, s := range sorted {
+		body = strings.ReplaceAll(body, s, redactedMarker)
+	}
+	return body
+}
+
+// capErrorBody bounds body to maxErrorBodyChars characters, cutting on a rune boundary
+// and appending "…" when it cut. (A byte that isn't valid UTF-8 counts as one character,
+// as `range` decodes it.)
+func capErrorBody(body string) string {
+	n := 0
+	for i := range body {
+		if n == maxErrorBodyChars {
+			return body[:i] + "…"
+		}
+		n++
+	}
+	return body
+}
+
 // refreshTokens refreshes at the token endpoint using the stored refresh token.
 // Oura is a CONFIDENTIAL client: the call carries client_id AND client_secret (no PKCE,
 // no public-client path). The response carries a ROTATED refresh token which the caller
@@ -99,7 +139,11 @@ func refreshTokens(
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: string(body)}
+		// The body is kept for diagnosis, but a server may echo what we sent: redact every
+		// secret this request submitted BEFORE capping (so a cut can never leave a partial
+		// secret behind), then bound it (shared conformance rejected_token_responses).
+		diag := redactSecrets(string(body), current.RefreshToken, creds.ClientSecret)
+		return nil, &TokenEndpointError{Status: resp.StatusCode, Body: capErrorBody(diag)}
 	}
 
 	// Bound the success-path read too (a hostile 2xx could stream unboundedly).

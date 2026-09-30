@@ -2,8 +2,9 @@ package com.ouratoolkit.auth;
 
 /**
  * The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh token).
- * Carries the HTTP status and the response body (OAuth error bodies describe the failure;
- * they never echo tokens or the client secret).
+ * Carries the HTTP status and the response body for diagnosis — with every secret the
+ * request submitted (refresh token, client secret) replaced by {@code [REDACTED]} in case
+ * the server echoed it, and capped at 1024 characters ("…" appended when cut).
  */
 public class TokenEndpointException extends AuthException {
     private static final long serialVersionUID = 1L;

@@ -51,9 +51,12 @@ export class StoreFormatError extends AuthError {
 
 /**
  * The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh token)
- * or a malformed/hostile 2xx success body. For a broken 2xx the {@link status} is the
- * (2xx) response status and {@link body} is a FIXED, secret-free description — the raw
- * response is never echoed, since a partial 2xx payload may carry token material.
+ * or a malformed/hostile 2xx success body. For a non-2xx, {@link body} is the response
+ * body kept for diagnosis, with every submitted secret (refresh token, client_secret)
+ * replaced by `[REDACTED]` and capped at 1024 characters (`…` appended when cut). For a
+ * broken 2xx the {@link status} is the (2xx) response status and {@link body} is a FIXED,
+ * secret-free description — the raw response is never echoed, since a partial 2xx
+ * payload may carry token material.
  */
 export class TokenEndpointError extends AuthError {
   readonly status: number;

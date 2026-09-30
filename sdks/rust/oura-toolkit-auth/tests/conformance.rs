@@ -411,6 +411,79 @@ async fn implementation_defined_token_responses_succeed_or_fail_typed() {
     }
 }
 
+/// A NON-2xx token-endpoint response fails the refresh with the typed endpoint error carrying
+/// its status and leaves the store untouched. The body is kept for diagnosis, but any secret
+/// the refresh submitted that the server echoes back is redacted, and a huge body is capped
+/// (conformance `rejected_token_responses`).
+#[tokio::test]
+async fn rejected_token_responses_keep_the_body_but_redact_submitted_secrets() {
+    let table = fixture()["rejected_token_responses"].clone();
+    let submitted = &table["submitted"];
+    let max_chars = table["max_error_chars"].as_u64().expect("max_error_chars") as usize;
+    let cases = table["cases"].as_array().expect("cases").clone();
+    assert!(cases.len() >= 4, "fixture shrank? {} cases", cases.len());
+
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let status = case["status"].as_u64().expect("status") as u16;
+        let body = case["raw_body"].as_str().expect("raw_body");
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status).set_body_string(body))
+            .named(name)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        let credentials = ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: submitted["client_secret"].as_str().unwrap().into(),
+        };
+        let tokens = Tokens {
+            refresh_token: submitted["refresh_token"].as_str().unwrap().into(),
+            ..original_tokens()
+        };
+        store.save_credentials(&credentials).unwrap();
+        store.save_tokens(&tokens).unwrap();
+        let bytes_before = std::fs::read(store.tokens_path()).unwrap();
+        let mut manager = TokenManager::from_parts(store.clone(), Some(credentials), Some(tokens));
+        manager.override_token_url(server.uri());
+
+        let err = manager
+            .force_refresh()
+            .await
+            .expect_err(&format!("case {name}: a rejected refresh must fail"));
+        assert!(
+            matches!(&err, AuthError::TokenEndpoint { status: s, .. } if *s == status),
+            "case {name}: expected TokenEndpoint {{ status: {status} }}, got {err:?}"
+        );
+        let text = err.to_string();
+        let must_echo = case["must_echo"].as_str().expect("must_echo");
+        assert!(
+            text.contains(must_echo),
+            "case {name}: the body is kept for diagnosis: {text}"
+        );
+        assert_no_echo(&case, body.as_bytes(), &err);
+        let mut current: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+        while let Some(e) = current {
+            for rendered in [e.to_string(), format!("{e:?}")] {
+                assert!(
+                    rendered.chars().count() <= max_chars,
+                    "case {name}: an error text of {} chars exceeds {max_chars}",
+                    rendered.chars().count()
+                );
+            }
+            current = e.source();
+        }
+        assert_eq!(
+            std::fs::read(store.tokens_path()).unwrap(),
+            bytes_before,
+            "case {name}: a rejected refresh must leave the store UNTOUCHED"
+        );
+    }
+}
+
 /// Every fixture table is exercised by this suite: a table added to the fixture must be
 /// mapped here (and in the other five suites), never silently ignored.
 #[test]
@@ -431,6 +504,7 @@ fn every_fixture_table_is_mapped_by_this_suite() {
             "implementation_defined_store_files",
             "implementation_defined_token_responses",
             "refresh_success_cases",
+            "rejected_token_responses",
             "valid_records"
         ]
         .into_iter()
@@ -447,7 +521,7 @@ fn hostile_store_files_fail_typed() {
         .as_array()
         .expect("hostile_store_files table")
         .clone();
-    assert!(cases.len() >= 17, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 21, "fixture shrank? {} cases", cases.len());
     assert_no_echo_floor(&cases, "hostile_store_files", 5);
 
     for case in cases {
@@ -465,7 +539,7 @@ fn hostile_store_files_fail_typed() {
                     .load_tokens()
                     .expect_err(&format!("case {name}: hostile tokens.json must not load"));
                 assert!(
-                    matches!(err, AuthError::Serde(_)),
+                    matches!(err, AuthError::StoreFormat { .. }),
                     "case {name}: expected the typed store-format error, got {err:?}"
                 );
                 assert_no_echo(&case, &content, &err);
@@ -475,7 +549,7 @@ fn hostile_store_files_fail_typed() {
                     "case {name}: hostile credentials.json must not load"
                 ));
                 assert!(
-                    matches!(err, AuthError::Serde(_)),
+                    matches!(err, AuthError::StoreFormat { .. }),
                     "case {name}: expected the typed store-format error, got {err:?}"
                 );
                 assert_no_echo(&case, &content, &err);
@@ -528,7 +602,7 @@ fn implementation_defined_store_files_load_exactly_or_fail_typed() {
                 );
             }
             Err(err) => assert!(
-                matches!(err, AuthError::Serde(_)),
+                matches!(err, AuthError::StoreFormat { .. }),
                 "case {name}: a failure must be the typed store-format error, got {err:?}"
             ),
         }
