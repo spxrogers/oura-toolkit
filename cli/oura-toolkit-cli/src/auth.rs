@@ -516,10 +516,8 @@ async fn run_authorization(
         )
     })??;
 
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .context("building the HTTP client")?;
+    // Refuses redirects: a followed 307/308 would re-send the code and client secret.
+    let http = oura_toolkit_auth::token_endpoint_client();
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
         .context("token exchange with the Oura token endpoint failed")
@@ -558,10 +556,8 @@ async fn authorize_no_browser(port: u16, credentials: &ClientCredentials) -> Res
     let pasted = prompt_required("Paste the full redirect URL: ")?;
     let code = extract_code_from_paste(&pasted, &state)?;
 
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .context("building the HTTP client")?;
+    // Refuses redirects: a followed 307/308 would re-send the code and client secret.
+    let http = oura_toolkit_auth::token_endpoint_client();
     exchange_code(&http, credentials, &code, &redirect_uri)
         .await
         .context("token exchange with the Oura token endpoint failed")

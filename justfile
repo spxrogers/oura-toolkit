@@ -484,7 +484,10 @@ sdk-check-go:
 # branches at least compile on the Linux leg.
 [group('codegen')]
 sdk-test-go:
-    cd sdks/go && go vet ./... && go test -race ./auth/...
+    # -count=1: never serve a cached result. Go's test cache only watches files inside the
+    # module, and the shared conformance fixture lives outside it (codegen/conformance/), so a
+    # fixture edit could otherwise report a stale pass.
+    cd sdks/go && go vet ./... && go test -count=1 -race ./auth/...
     cd sdks/go && GOOS=windows go vet ./auth/...
 
 [group('codegen')]

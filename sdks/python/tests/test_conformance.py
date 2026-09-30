@@ -373,8 +373,8 @@ def test_rejected_token_response_fails_typed_redacted_and_bounded(
     token_endpoint, tmp_path: Path, case: dict
 ) -> None:
     """A non-2xx token-endpoint response: the refresh sends the case's ``submitted``
-    secrets (else the table's), the server answers ``status`` + ``raw_body`` to EVERY request (so a 400's
-    one reload-retry sees the same answer), and the error must be the typed
+    secrets (else the table's), the server answers ``status`` + ``raw_body`` to EVERY
+    request (so a 400's one reload-retry sees the same answer), and the error must be the typed
     TokenEndpointError carrying ``status`` whose text keeps ``must_echo`` (diagnosis),
     never contains ``must_not_echo`` anywhere in its chain (a submitted secret the
     server echoed), and never exceeds ``max_error_chars`` — with tokens.json

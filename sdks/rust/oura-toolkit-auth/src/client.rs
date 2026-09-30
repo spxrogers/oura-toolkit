@@ -42,7 +42,7 @@ pub const REFRESH_SKEW_SECS: i64 = 60;
 /// lock can be held (the refresh runs under it) — without it, one process's stalled refresh
 /// would wedge every other process waiting on the lock. Worst case is ~2× this value: the
 /// 400-retry arm can chain a second endpoint call under the same lock.
-const TOKEN_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const TOKEN_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Owns the current tokens and the machinery to keep them fresh. Shared (behind `Arc`) by the
 /// CLI's SDK calls and the MCP server's tool calls — one auth layer, two consumers.
@@ -97,10 +97,7 @@ impl TokenManager {
             // A plain client (no auth middleware) for token-endpoint calls, to avoid
             // recursion. The timeout is load-bearing: the call runs under the store's
             // exclusive lock, so an unbounded hang would block other processes too.
-            http: reqwest::Client::builder()
-                .timeout(TOKEN_ENDPOINT_TIMEOUT)
-                .build()
-                .expect("default reqwest client"),
+            http: crate::oauth::token_endpoint_client(),
             skew_secs: REFRESH_SKEW_SECS,
             token_url: TOKEN_URL.to_string(),
             env_token: false,

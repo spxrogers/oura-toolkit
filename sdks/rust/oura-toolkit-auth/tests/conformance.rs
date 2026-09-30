@@ -420,7 +420,13 @@ async fn rejected_token_responses_keep_the_body_but_redact_submitted_secrets() {
     let table = fixture()["rejected_token_responses"].clone();
     let max_chars = table["max_error_chars"].as_u64().expect("max_error_chars") as usize;
     let cases = table["cases"].as_array().expect("cases").clone();
-    assert!(cases.len() >= 12, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 13, "fixture shrank? {} cases", cases.len());
+    for feature in ["submitted", "expected_body", "cut_well_formed"] {
+        assert!(
+            cases.iter().any(|c| c.get(feature).is_some()),
+            "fixture shrank? no rejected case exercises `{feature}`"
+        );
+    }
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -469,7 +475,10 @@ async fn rejected_token_responses_keep_the_body_but_redact_submitted_secrets() {
         let AuthError::TokenEndpoint { body: kept, .. } = &err else {
             unreachable!("matched above")
         };
-        if let Some(expected) = case.get("expected_body").and_then(|v| v.as_str()) {
+        if let Some(expected) = case.get("expected_body") {
+            let expected = expected
+                .as_str()
+                .unwrap_or_else(|| panic!("case {name}: expected_body must be a string"));
             assert_eq!(kept, expected, "case {name}: the kept body, exactly");
         }
         if case.get("cut_well_formed").and_then(|v| v.as_bool()) == Some(true) {

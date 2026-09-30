@@ -444,8 +444,14 @@ with `[REDACTED]` — every occurrence, longest secret first — and then caps t
 characters (redacting first, so a cut can't expose part of a secret). Pinned by
 `rejected_token_responses`, whose cases pin each half: a secret echoed twice or back-to-back,
 one secret nested in another (longest first), a secret straddling the cut, the exact 1024-char
-body plus `…`, and a cut landing inside an emoji (the body stays well-formed — the cap counts
-code points in Rust/Go/Python and UTF-16 units in TS/Java/C#, identical for ASCII). The Rust
+body plus `…`, a 2-byte `é` body (the cap counts characters, never bytes), and a cut landing
+inside an emoji (the body stays well-formed — the cap counts code points in Rust/Go/Python and
+UTF-16 units in TS/Java/C#, identical on the Basic Multilingual Plane).
+
+Every token-endpoint HTTP client refuses redirects: the form body carries the client secret
+plus a refresh token or an authorization code, and a followed 307/308 re-sends it to whatever
+host `Location` names. The breadth companions already did; the Rust crate (behind `oura` and
+`oura mcp`) followed them until `token_endpoint_client()` (now also the CLI's login client). The Rust
 code exchange (`oura auth login`) also redacts the echoed authorization code.
 
 In the Rust crate this split `AuthError`: a store record that fails to LOAD is now

@@ -57,7 +57,22 @@ impl std::fmt::Debug for TokenResponse {
     }
 }
 
-/// Exchange an authorization `code` for tokens (confidential client: sends id + secret).
+/// The HTTP client every token-endpoint call should use: the hard 30s timeout, and NO
+/// redirects. A token request carries the client secret plus a refresh token or an
+/// authorization code in its form body, and reqwest re-sends a reusable body on a 307/308 —
+/// so a followed redirect would hand those secrets to whatever host the `Location` names.
+/// A 3xx instead fails as [`AuthError::TokenEndpoint`] with its status (the other five
+/// companions refuse redirects the same way).
+pub fn token_endpoint_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(crate::client::TOKEN_ENDPOINT_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("token-endpoint reqwest client")
+}
+
+/// Exchange an authorization `code` for tokens (confidential client: sends id + secret). Pass
+/// [`token_endpoint_client`] as `http` (it refuses redirects that would re-send the secret).
 pub async fn exchange_code(
     http: &reqwest::Client,
     credentials: &ClientCredentials,
@@ -155,9 +170,11 @@ async fn post_token(
     let resp = http.post(token_url).form(params).send().await?;
     let status = resp.status();
     if !status.is_success() {
-        // UTF-8 regardless of any declared charset (as the success path and the other five
-        // companions read it): a mislabelled charset would garble an echoed secret so the
-        // redaction below missed it.
+        // UTF-8 regardless of any declared charset, as the success path and the other five
+        // companions read it. (This workspace builds reqwest without its `charset` feature,
+        // so `text()` would be lossy UTF-8 too; reading bytes keeps that true for a
+        // downstream crate that enables the feature, where a mislabelled charset could
+        // garble an echoed secret past the redaction below.)
         let body = resp
             .bytes()
             .await
@@ -391,6 +408,52 @@ mod tests {
             &[("refresh_token", "rtABC"), ("client_secret", "rtABCXYZ")],
         );
         assert_eq!(body, "echo [REDACTED]");
+    }
+
+    /// A 307/308 from the token endpoint must NOT be followed: reqwest would re-send the form
+    /// (client secret + refresh token or code) to the `Location` host. It fails typed with the
+    /// 3xx status and the other host receives nothing — for the code exchange and the refresh.
+    #[tokio::test]
+    async fn the_token_endpoint_client_never_follows_a_redirect_with_the_secret() {
+        let elsewhere = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0) // checked on drop: the secrets never reach it
+            .mount(&elsewhere)
+            .await;
+        for status in [307u16, 308] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .insert_header("location", format!("{}/steal", elsewhere.uri())),
+                )
+                .mount(&server)
+                .await;
+            let http = token_endpoint_client();
+
+            let err = exchange_code_at(
+                &server.uri(),
+                &http,
+                &credentials(),
+                "code1",
+                "http://localhost:8788/callback",
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(err, AuthError::TokenEndpoint { status: s, .. } if s == status),
+                "exchange: a {status} fails typed, got {err:?}"
+            );
+
+            let err = refresh_at(&server.uri(), &http, &credentials(), &current())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, AuthError::TokenEndpoint { status: s, .. } if s == status),
+                "refresh: a {status} fails typed, got {err:?}"
+            );
+        }
     }
 
     #[tokio::test]

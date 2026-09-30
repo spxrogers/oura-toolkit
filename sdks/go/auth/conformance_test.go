@@ -166,7 +166,6 @@ func requireNoEchoFloor(t *testing.T, table string, needles []*string, floor int
 	}
 }
 
-// conformanceFixture is the decoded shape of codegen/conformance/auth-cases.json.
 // conformanceSubmitted is the secret pair a rejected_token_responses refresh submits
 // (the table's default, or a case's own override).
 type conformanceSubmitted struct {
@@ -174,6 +173,7 @@ type conformanceSubmitted struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+// conformanceFixture is the decoded shape of codegen/conformance/auth-cases.json.
 type conformanceFixture struct {
 	HostileTokenResponses []struct {
 		Name string `json:"name"`
