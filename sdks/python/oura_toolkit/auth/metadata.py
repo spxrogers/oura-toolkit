@@ -21,7 +21,7 @@ AUTHORIZE_URL = "https://cloud.ouraring.com/oauth/authorize"
 #: ``flows.authorizationCode.tokenUrl`` from the spec's OAuth2 security scheme.
 TOKEN_URL = "https://api.ouraring.com/oauth/token"
 
-#: Every scope the spec's OAuth2 security scheme advertises (all 8).
+#: Every scope the spec's OAuth2 security scheme advertises (all 9).
 ALL_SCOPES: Tuple[str, ...] = (
     "email",
     "personal",
@@ -30,7 +30,8 @@ ALL_SCOPES: Tuple[str, ...] = (
     "workout",
     "tag",
     "session",
-    "spo2Daily",
+    "spo2",
+    "heart_health",
 )
 
 # Scopes the toolkit requests by default: everything except `email`. This is the
@@ -42,7 +43,8 @@ _DEFAULT_SCOPE_NAMES: Tuple[str, ...] = (
     "workout",
     "tag",
     "session",
-    "spo2Daily",
+    "spo2",
+    "heart_health",
 )
 
 

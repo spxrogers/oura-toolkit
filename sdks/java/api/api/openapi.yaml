@@ -6588,6 +6588,7 @@ components:
       - start_time
       title: EnhancedTagModel
     ExtApiV2DataType:
+      description: Data types that partners can subscribe to via ExtApiV2 webhooks.
       enum:
       - tag
       - enhanced_tag
@@ -8603,6 +8604,8 @@ components:
       - autodetected
       - confirmed
       - workout_heart_rate
+      - live_third_party_heart_rate
+      - live_oura_heart_rate
       title: PublicWorkoutSource
       type: string
     ResilienceContributors:
@@ -8859,11 +8862,12 @@ components:
             email: Email address of the user
             personal: "Personal information (gender, age, height, weight)"
             daily: "Daily summaries of sleep, activity and readiness"
-            heartrate: Time series heart rate for Gen 3 users
+            heartrate: Time series heart rate for users
             workout: Summaries for auto-detected and user entered workouts
             tag: User entered tags
             session: Guided and unguided sessions in the Oura app
-            spo2Daily: SpO2 Average recorded during sleep
+            spo2: SpO2 Average recorded during sleep
+            heart_health: Heart health data
           tokenUrl: https://api.ouraring.com/oauth/token
       type: oauth2
     ClientIdAuth:

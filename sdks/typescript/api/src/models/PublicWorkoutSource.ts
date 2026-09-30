@@ -21,7 +21,9 @@ export const PublicWorkoutSource = {
     Manual: 'manual',
     Autodetected: 'autodetected',
     Confirmed: 'confirmed',
-    WorkoutHeartRate: 'workout_heart_rate'
+    WorkoutHeartRate: 'workout_heart_rate',
+    LiveThirdPartyHeartRate: 'live_third_party_heart_rate',
+    LiveOuraHeartRate: 'live_oura_heart_rate'
 } as const;
 export type PublicWorkoutSource = typeof PublicWorkoutSource[keyof typeof PublicWorkoutSource];
 

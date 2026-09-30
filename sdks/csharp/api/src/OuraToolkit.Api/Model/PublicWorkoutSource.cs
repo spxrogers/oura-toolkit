@@ -55,7 +55,19 @@ namespace OuraToolkit.Api.Model
         /// Enum WorkoutHeartRate for value: workout_heart_rate
         /// </summary>
         [EnumMember(Value = "workout_heart_rate")]
-        WorkoutHeartRate = 4
+        WorkoutHeartRate = 4,
+
+        /// <summary>
+        /// Enum LiveThirdPartyHeartRate for value: live_third_party_heart_rate
+        /// </summary>
+        [EnumMember(Value = "live_third_party_heart_rate")]
+        LiveThirdPartyHeartRate = 5,
+
+        /// <summary>
+        /// Enum LiveOuraHeartRate for value: live_oura_heart_rate
+        /// </summary>
+        [EnumMember(Value = "live_oura_heart_rate")]
+        LiveOuraHeartRate = 6
     }
 
 }

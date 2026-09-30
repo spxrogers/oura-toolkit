@@ -112,20 +112,30 @@ impl RequestPlan {
     }
 }
 
-/// Run an `oura api` invocation and return the JSON to print (raw response body, or — for
-/// `--paginate` — the aggregated `{"data":[…]}` object, pretty-printed).
+/// A fully validated `oura api` invocation, ready to [`execute`]. Building one performs every
+/// usage check (method, `-f` fields, body conflicts, `--paginate` on non-GET) with no auth
+/// and no network, so `main` can reject a bad invocation BEFORE anything interactive (the
+/// re-consent check, #116) runs.
+#[derive(Debug)]
+pub struct Prepared {
+    plan: RequestPlan,
+    path: String,
+    paginate: bool,
+}
+
+/// Validate an `oura api` invocation into a [`Prepared`] request. Usage errors are
+/// [`UsageError`]s (exit 2).
 ///
 /// `stdin_body` is `Some` only when stdin was a non-empty non-TTY stream (see
 /// `main::read_stdin_body`).
-pub async fn run(
-    manager: &TokenManager,
+pub fn prepare(
     base_url: &str,
     path: &str,
     method: &str,
     fields: &[String],
     stdin_body: Option<String>,
     paginate: bool,
-) -> Result<String> {
+) -> Result<Prepared> {
     let plan = RequestPlan::build(base_url, path, method, fields, stdin_body)?;
     // `--paginate` follows Oura's `next_token` cursor, which only the GET collection
     // endpoints return; appending it to a POST/PUT/… would be nonsense. Enforce the
@@ -137,6 +147,36 @@ pub async fn run(
         ))
         .into());
     }
+    Ok(Prepared {
+        plan,
+        path: path.to_string(),
+        paginate,
+    })
+}
+
+/// [`prepare`] then [`execute`] in one call (for callers with no step to run in between).
+pub async fn run(
+    manager: &TokenManager,
+    base_url: &str,
+    path: &str,
+    method: &str,
+    fields: &[String],
+    stdin_body: Option<String>,
+    paginate: bool,
+) -> Result<String> {
+    let prepared = prepare(base_url, path, method, fields, stdin_body, paginate)?;
+    execute(manager, prepared).await
+}
+
+/// Execute a [`Prepared`] invocation and return the JSON to print (raw response body, or — for
+/// `--paginate` — the aggregated `{"data":[…]}` object, pretty-printed).
+pub async fn execute(manager: &TokenManager, prepared: Prepared) -> Result<String> {
+    let Prepared {
+        plan,
+        path,
+        paginate,
+    } = prepared;
+    let path = path.as_str();
     // Same 30s per-request timeout as `api::authorized_client`; a fresh Bearer is injected
     // per attempt inside `send`, so this client carries no default auth header.
     let http = reqwest::Client::builder()

@@ -12,7 +12,7 @@
 # ---------------------------------------------------------------------------------------------
 
 # Pinned Oura OpenAPI export (v3.1.0, title "Oura API Documentation", version 2.0).
-spec_version  := "openapi-1.37"
+spec_version  := "openapi-1.41"
 spec_url      := "https://api.ouraring.com/v2/static/json/" + spec_version + ".json"
 
 # Pristine vendored spec (committed) and the derived overlay output (gitignored).
@@ -90,6 +90,9 @@ setup: install-nightly-rustfmt install-progenitor
     command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
     @command -v jq  >/dev/null || echo "!! install jq -- needed by 'just spec-overlay' / 'just gen-rust'"
     @command -v npx >/dev/null || echo "!! install node/npx -- needed by breadth-SDK codegen"
+    # The TS auth conformance harness keeps each fixture number's original text (so `3600.0` is
+    # sent as written), which needs JSON.parse's source-text access: Node 22+ (CI pins 22).
+    @node -e 'process.exit(+process.versions.node.split(".")[0] >= 22 ? 0 : 1)' 2>/dev/null || echo "!! install Node 22+ -- needed by 'just sdk-test-ts' (the conformance harness)"
     # (Runs java rather than `command -v`: a JDK-less macOS still has a /usr/bin/java stub.)
     @java -version >/dev/null 2>&1 || echo "!! install a Java runtime (e.g. brew install --cask temurin) -- openapi-generator is a jar: needed by breadth-SDK codegen ('just gen', and every release via set-version)"
     # The C# SDKs multi-target net10.0, so their build/test recipes need a .NET 10 SDK (an
@@ -141,6 +144,19 @@ spec-overlay:
     mkdir -p {{build_dir}}
     jq -f codegen/overlay.jq {{spec_file}} > {{overlaid_spec}}
     @echo "Overlaid spec -> {{overlaid_spec}}"
+
+# Hermetic self-test of the overlay's NON-NEGOTIABLE servers[0].url fix: the pinned export is
+# already correct upstream, so without this nothing would notice the fix being dropped. Feeds a
+# spec carrying the leaked `api.None.com` through the overlay and requires the real host back.
+# Runs in CI (the gen-drift job). Break-verify: delete the url line in codegen/overlay.jq.
+[group('spec')]
+spec-overlay-selftest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url="$(jq '.servers[0].url = "https://api.None.com"' {{spec_file}} | jq -f codegen/overlay.jq | jq -r '.servers[0].url')"
+    [[ "$url" == "https://api.ouraring.com" ]] \
+      || { echo "spec-overlay-selftest: servers[0].url came out as '$url', want https://api.ouraring.com"; exit 1; }
+    echo "spec-overlay-selftest: the servers[0].url regression guard holds"
 
 # Detect upstream Oura OpenAPI drift (#29): the pinned export re-published with changes, or a
 # newer openapi-<major>.<minor> exists. WATCH-ONLY — never edits the spec. Hits the network, so
@@ -468,7 +484,10 @@ sdk-check-go:
 # branches at least compile on the Linux leg.
 [group('codegen')]
 sdk-test-go:
-    cd sdks/go && go vet ./... && go test -race ./auth/...
+    # -count=1: never serve a cached result. Go's test cache only watches files inside the
+    # module, and the shared conformance fixture lives outside it (codegen/conformance/), so a
+    # fixture edit could otherwise report a stale pass.
+    cd sdks/go && go vet ./... && go test -count=1 -race ./auth/...
     cd sdks/go && GOOS=windows go vet ./auth/...
 
 [group('codegen')]

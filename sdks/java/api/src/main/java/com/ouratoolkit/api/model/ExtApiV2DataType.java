@@ -26,7 +26,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * Gets or Sets ExtApiV2DataType
+ * Data types that partners can subscribe to via ExtApiV2 webhooks.
  */
 public enum ExtApiV2DataType {
   

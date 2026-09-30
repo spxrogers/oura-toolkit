@@ -18,7 +18,7 @@ companion. Rust is not privileged; it just also happens to host the CLI app.
 ## The pipeline (spec → clients)
 
 ```
-spec/openapi.json  (vendored, pinned: openapi-1.37.json, OpenAPI 3.1)
+spec/openapi.json  (vendored, pinned: openapi-1.41.json, OpenAPI 3.1)
       │   just spec-fetch
       ▼
 codegen/overlay.jq  ── shared overlay (3.1, all languages) ──┐
@@ -31,9 +31,9 @@ sdks/rust/oura-toolkit-api  (the Rust SDK)   sdks/{typescript,python,go,java,csh
 ```
 
 - **Shared overlay** (`codegen/overlay.jq`) fixes the spec's known defects for *every*
-  language: the leaked `api.None.com` server URL, the `MultiDocumentResponseDict` union
-  branch, per-op security narrowed to Bearer, and the `start_date`/`end_date` param types
-  collapsed to plain `date`. See [CLAUDE.md → SPEC / Known spec issues](CLAUDE.md).
+  language: the server URL (the leaked `api.None.com` through 1.37, still pinned as a
+  guard and checked by `just spec-overlay-selftest`), the `MultiDocumentResponseDict` union branch, per-op security narrowed to Bearer,
+  and the `start_date`/`end_date` param types collapsed to plain `date`. See [CLAUDE.md → SPEC / Known spec issues](CLAUDE.md).
 - **Rust** goes one step further with a 3.1→3.0 down-convert, because progenitor only reads
   3.0. The breadth generators are 3.1-native and skip it. Details and rationale in
   [DECISIONS.md](DECISIONS.md).
@@ -70,6 +70,12 @@ their own Oura OAuth app.
     data plane, and refresh-token **rotation persisted**;
   - a **cross-process lock** so the CLI and the long-running MCP server can share one store
     without clobbering each other's rotations.
+- **Scope-change re-consent** (#116): a refresh can't add scopes, so the CLI (not the
+  companion) compares the recorded grant to the spec-derived default scopes before a
+  store-backed command. It prompts once per scope-set change (or leaves one stderr note when
+  non-interactive), and keeps its bookkeeping in a CLI-only `scope-notice.json` beside the
+  two records. `oura mcp` adds the same message as a note on each session's first
+  successful tool result, for the model to relay.
 - **Headless / CI**: `OURA_ACCESS_TOKEN` injects a raw Bearer token that bypasses the store
   entirely (`TokenManager::from_access_token`, never refreshes); `--no-browser` swaps the
   loopback catch for a paste-the-redirect-URL flow (still CSRF-checked via `state`).

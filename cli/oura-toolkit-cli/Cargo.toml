@@ -38,6 +38,8 @@ uuid = { version = "1", features = ["v4"] }
 # stdio transport and schemars-derived tool parameter schemas.
 rmcp = { version = "2.1", features = ["transport-io", "schemars"] }
 schemars = "1"
+# Atomic, randomly named 0600 temp file for scope-notice.json (the auth store's own pattern).
+tempfile = "3"
 
 # build.rs reads spec/openapi.json to emit the MCP tool descriptions (see build.rs).
 [build-dependencies]
@@ -52,7 +54,6 @@ wiremock = "0.6"
 # Real IANA tz data for the DST gap/fold tests on DateRange::utc_bounds_in.
 chrono-tz = "0.10"
 serde_json = { workspace = true }
-tempfile = "3"
 # binary-level contract tests (exit codes / stream discipline) — see docs/cli-contract.md
 assert_cmd = "2"
 predicates = "3"

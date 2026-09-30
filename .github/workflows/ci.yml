@@ -92,6 +92,9 @@ jobs:
       # Hermetic (injected upstream + versions, no network) — guards the spec-drift detector's
       # decision logic (#29); the networked `just spec-drift-check` itself runs on schedule.
       - run: just spec-drift-selftest
+      # Hermetic — pins the overlay's servers[0].url fix, which the (already-correct) pinned
+      # export can no longer exercise through gen-check.
+      - run: just spec-overlay-selftest
 
   # The generated breadth clients must actually COMPILE (release gate: a client that
   # doesn't build is drift CI didn't see). The five toolchains are PINNED via setup actions

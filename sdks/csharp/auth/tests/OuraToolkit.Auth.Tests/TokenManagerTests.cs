@@ -237,6 +237,71 @@ public class TokenManagerTests
         Assert.Equal(1, endpoint.Calls);
     }
 
+    /// <summary>A 400 whose body bytes are NOT valid UTF-8 (a stray 0xFF inside the JSON text).</summary>
+    private static HttpResponseMessage BadRequestWithInvalidUtf8()
+    {
+        var bytes = Encoding.ASCII.GetBytes("{\"error\":\"invalid_grant\",\"x\":\"?\"}");
+        bytes[Array.IndexOf(bytes, (byte)'?')] = 0xFF;
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = content };
+    }
+
+    /// <summary>
+    /// A non-2xx body is diagnostics only, so it is decoded LENIENTLY: a 400 whose body is not
+    /// valid UTF-8 must still surface as the typed <see cref="TokenEndpointException"/> with
+    /// status 400 — the status is what the re-login arm (and the reload-retry arm below)
+    /// keys on. A strict decode would turn it into an untyped DecoderFallbackException.
+    /// </summary>
+    [Fact]
+    public async Task Refresh400WithInvalidUtf8BodyStillSurfacesTheTyped400()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r-dead"));
+        var tokensBefore = File.ReadAllBytes(temp.Store.TokensPath);
+        var endpoint = new MockTokenEndpoint(_ => BadRequestWithInvalidUtf8());
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r-dead"));
+
+        var thrown = await Record.ExceptionAsync(() => manager.GetAccessTokenAsync());
+        Assert.True(thrown is TokenEndpointException,
+            "a 400 with an invalid-UTF-8 body must surface the typed TokenEndpointException, got "
+            + (thrown is null ? "success" : $"{thrown.GetType().Name}: {thrown.Message}"));
+        var e = (TokenEndpointException)thrown!;
+        Assert.Equal(400, e.StatusCode);
+        Assert.Contains("invalid_grant", e.Body); // the readable diagnostics survive the bad byte
+        Assert.Equal(1, endpoint.Calls); // disk has not moved: no blind retry
+        Assert.True(tokensBefore.SequenceEqual(File.ReadAllBytes(temp.Store.TokensPath)),
+            "a failed refresh must leave tokens.json byte-identical");
+    }
+
+    /// <summary>
+    /// The reload-retry arm must still fire on a 400 whose body is not valid UTF-8: an
+    /// uncoordinated writer rotates to r2 mid-flight, the endpoint 400s r1 with a malformed
+    /// body, and the manager retries once with r2.
+    /// </summary>
+    [Fact]
+    public async Task Refresh400WithInvalidUtf8BodyStillTakesTheReloadRetryArm()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+        var endpoint = new MockTokenEndpoint(body =>
+        {
+            if (body.Contains("refresh_token=r1"))
+            {
+                temp.Store.SaveTokens(Fixtures.Expired("r2"));
+                return BadRequestWithInvalidUtf8();
+            }
+            return body.Contains("refresh_token=r2")
+                ? MockTokenEndpoint.TokenGrant("r3-access", "r3")
+                : MockTokenEndpoint.Json(HttpStatusCode.BadRequest, "\"unexpected refresh token\"");
+        });
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r1"));
+
+        Assert.Equal("r3-access", await manager.GetAccessTokenAsync());
+        Assert.Equal(2, endpoint.Calls); // r1 (400, invalid UTF-8) + r2 (retry)
+        Assert.Equal("r3", temp.Store.LoadTokens()!.RefreshToken);
+    }
+
     /// <summary>
     /// Refresh must start from the freshest persisted rotation, not stale memory — even
     /// when disk is also expired (so the adopt short-circuit does not apply).
@@ -417,5 +482,57 @@ public class TokenManagerTests
         release.Release(); // let the hung handler unwind before teardown
         // The store is untouched — a timed-out refresh persists nothing.
         Assert.Equal("r1", temp.Store.LoadTokens()!.RefreshToken);
+    }
+
+    // -- Non-2xx diagnostics: redacted, then capped ---------------------------------------------
+
+    /// <summary>
+    /// <see cref="TokenManager.DiagnosticBody"/> redacts the longest submitted secret first, so
+    /// a secret nested inside another leaves no fragment of the longer one behind.
+    /// </summary>
+    [Fact]
+    public void DiagnosticBodyRedactsTheLongestSecretFirst()
+    {
+        // A client secret that CONTAINS the refresh token: redacting the shorter one first
+        // would leave "XYZ" behind.
+        Assert.Equal(
+            "echo [REDACTED]",
+            TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes("echo rtABCXYZ"), "rtABC", "rtABCXYZ"));
+    }
+
+    /// <summary>
+    /// <see cref="TokenManager.DiagnosticBody"/> replaces EVERY occurrence of each submitted
+    /// secret (not just the first), skips an empty secret (which would otherwise throw or match
+    /// everywhere), and leaves a body at exactly the cap untouched.
+    /// </summary>
+    [Fact]
+    public void DiagnosticBodyRedactsEveryOccurrenceOfEachSubmittedSecret()
+    {
+        var body = Encoding.UTF8.GetBytes("rtX1 then csY2, again rtX1 and csY2");
+        Assert.Equal(
+            "[REDACTED] then [REDACTED], again [REDACTED] and [REDACTED]",
+            TokenManager.DiagnosticBody(body, "rtX1", "csY2", "", null));
+
+        var atCap = new string('a', TokenManager.MaxDiagnosticBodyChars);
+        Assert.Equal(atCap, TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes(atCap)));
+    }
+
+    /// <summary>
+    /// An over-cap body is cut to <see cref="TokenManager.MaxDiagnosticBodyChars"/> characters
+    /// plus "…", and a cut landing inside a surrogate pair drops the pair's high half rather
+    /// than orphan it (a lone surrogate is not valid Unicode and breaks strict encoders/loggers).
+    /// </summary>
+    [Fact]
+    public void DiagnosticBodyCapsWithoutSplittingASurrogatePair()
+    {
+        var cap = TokenManager.MaxDiagnosticBodyChars;
+        var plain = TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes(new string('b', cap + 50)));
+        Assert.Equal(new string('b', cap) + "\u2026", plain);
+
+        // U+1F600 is a surrogate pair occupying chars [cap-1, cap]: a naive cut keeps its high half.
+        var straddling = new string('a', cap - 1) + "\U0001F600" + new string('z', 10);
+        var cut = TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes(straddling));
+        Assert.Equal(new string('a', cap - 1) + "\u2026", cut);
+        Assert.DoesNotContain(cut, char.IsSurrogate);
     }
 }

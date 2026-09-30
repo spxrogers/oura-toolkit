@@ -25,7 +25,8 @@ export const ALL_SCOPES: readonly string[] = [
   "workout",
   "tag",
   "session",
-  "spo2Daily",
+  "spo2",
+  "heart_health",
 ];
 
 /**
@@ -41,5 +42,6 @@ export const DEFAULT_SCOPES: readonly string[] = [
   "workout",
   "tag",
   "session",
-  "spo2Daily",
+  "spo2",
+  "heart_health",
 ];

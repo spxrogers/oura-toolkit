@@ -73,7 +73,7 @@ Vendor Oura's OpenAPI **v3.1** spec (title "Oura API Documentation", version **2
 it at `spec/openapi.json` from the versioned export:
 
 ```
-https://api.ouraring.com/v2/static/json/openapi-1.37.json
+https://api.ouraring.com/v2/static/json/openapi-1.41.json
 ```
 
 - Fetched via `just spec-fetch`. The spec drives **EVERYTHING** downstream — the Rust client,
@@ -91,8 +91,11 @@ https://api.ouraring.com/v2/static/json/openapi-1.37.json
 
 The shared overlay (`codegen/overlay.jq`, 3.1, all languages) is **non-negotiable**:
 
-1. `servers[0].url` is literally `"https://api.None.com"` (a leaked Python `None`) — rewrite
-   to `"https://api.ouraring.com"`. Nothing resolves until this is fixed. **NON-NEGOTIABLE.**
+1. `servers[0].url` was literally `"https://api.None.com"` (a leaked Python `None`) through
+   `openapi-1.37`; Oura fixed it upstream in `openapi-1.41`, but the overlay KEEPS pinning it
+   to `"https://api.ouraring.com"` as a regression guard — a wrong server URL breaks every
+   call. **NON-NEGOTIABLE.** The pinned export no longer exercises the fix, so
+   `just spec-overlay-selftest` (CI) pins it against a synthetic `api.None.com` spec.
 2. Strip the `MultiDocumentResponseDict` branch from every `anyOf` multi-doc response so
    generated models stay clean.
 3. For the generated **CLIENT only**, narrow per-op security to **BearerAuth**.
@@ -132,7 +135,7 @@ The spec generates the data plane; it does **NOT** generate the interactive OAut
 the spec's `components.securitySchemes`: **BearerAuth** (`http`/`bearer`) is how data requests
 authenticate; **OAuth2** is `authorizationCode` with `authorizationUrl`
 `https://cloud.ouraring.com/oauth/authorize`, `tokenUrl` `https://api.ouraring.com/oauth/token`
-and 8 scopes (`email personal daily heartrate workout tag session spo2Daily`);
+and 9 scopes (`email personal daily heartrate workout tag session spo2 heart_health`);
 **ClientIdAuth/ClientSecretAuth** apiKey headers are used only by webhook endpoints.
 
 ### Invariants (get these exactly right)
@@ -159,8 +162,15 @@ and 8 scopes (`email personal daily heartrate workout tag session spo2Daily`);
   8788** (`redirect_uri http://localhost:8788/callback`, `--port` override; Oura requires an
   EXACT pre-registered match). `--no-browser` swaps the loopback catch for a
   paste-the-redirect-URL flow (still `state` CSRF-checked).
-- **Default scope request**: `personal daily heartrate workout tag session spo2Daily` (omit
+- **Default scope request**: `personal daily heartrate workout tag session spo2 heart_health` (omit
   `email` unless needed).
+- **Scope-change re-consent** (#116): a refresh can't add scopes, so before a store-backed
+  command the CLI compares the recorded grant to `default_scopes()` (data-driven via
+  `reconsent::missing_default_scopes` in the CLI, with no per-version code). It prompts once
+  per scope-set change on a TTY (Y → `auth login`, then continue; a failed login never costs
+  the command) and gives one stderr note otherwise. `oura mcp` can't prompt, so it adds a note
+  to the first successful tool result of each session for the model to relay (see MCP). Bookkeeping lives in `scope-notice.json`, which is CLI-only and
+  holds no secrets. Contract: `docs/cli-contract.md` → Scope changes.
 - **Headless**: `OURA_ACCESS_TOKEN` injects a raw Bearer that bypasses the store (no login, no
   refresh); `OURA_API_BASE_URL` points the client at an alternate host/proxy/mock.
 
@@ -229,8 +239,11 @@ Every change MUST satisfy all of the following:
    anything. Never add an assertion-free test to move the number.
 
 **Cross-language auth conformance (#58):** `codegen/conformance/auth-cases.json` is the SINGLE
-SOURCE for the hostile token-endpoint responses, hostile store files, and canonical store
-records every auth companion must survive. ALL SIX companion suites — the Rust reference
+SOURCE for the hostile token-endpoint responses, the token responses and store files where
+companions may differ but must never fail untyped (`implementation_defined_*`), hostile store
+files (incl. `must_not_echo`: an error never quotes the secret-bearing input), rejected
+(non-2xx) token responses (body kept for diagnosis, submitted secrets redacted, size capped),
+successful-refresh fallbacks (`refresh_success_cases`), and canonical store records every auth companion must survive. ALL SIX companion suites — the Rust reference
 included — iterate the fixture FROM THE FILE. A new hostile case goes into the fixture, never
 into just one language's suite; a companion that fails a case gets fixed — the fixture is never
 weakened to accommodate an implementation.
@@ -288,6 +301,10 @@ that orphaned it.
   persist rotated tokens, retry. If tokens are **ABSENT**: do **NOT** prompt, open a browser,
   or write to stdout (stdout is the JSON-RPC transport). Let `initialize` succeed; on the
   **first tool call** return a structured error telling the user to run `oura auth login`.
+  If the saved grant predates a scope change (#116), the **first successful tool result of the
+  session** gets a trailing text note for the model to relay (run `oura auth login` in a
+  terminal).
+  Data and `structured_content` are untouched, and it never prompts, blocks, or runs OAuth.
 - stdio MCP auth is **out-of-band** per the MCP spec — do **NOT** implement OAuth-over-the-wire
   for the server, and do **NOT** make it remote/HTTP or a hosted OAuth broker. STDIO only for
   v1.

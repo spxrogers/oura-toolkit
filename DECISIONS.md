@@ -307,7 +307,8 @@ as tidying.
 ### Cross-language auth conformance is one fixture (#58)
 Four independent companion review loops found the **same two bug families**.
 `codegen/conformance/auth-cases.json` is now the SINGLE SOURCE for hostile token-endpoint
-responses, hostile store files, and canonical store records — all six companion suites
+responses, hostile store files, successful-refresh fallbacks (`refresh_success_cases`, #116), and
+canonical store records — all six companion suites
 (Rust reference included) iterate it from the file. A new hostile case goes in the fixture,
 never one language's suite; a failing companion gets fixed, the fixture is never weakened.
 
@@ -338,6 +339,138 @@ every older URL). The detector originally treated a pinned-URL 404 as a hard err
 weekly run crashed instead of reporting — and never reached the probe that would have named
 the replacement. A 404/410 on the pinned export is now reported as drift ("withdrawn") and the
 probe still runs; only network/5xx failures exit 2. Selftest case 6 guards it.
+
+### Scope changes re-consent once, data-driven (#116)
+Oura renamed `spo2Daily` → `spo2` and added `heart_health` in openapi-1.41. A refresh
+can't widen a grant, so logins from before a scope change silently lack the new scopes.
+We chose a **data-driven** check over a per-version migration: the grant recorded in
+`tokens.json` vs the spec-derived `default_scopes()` (`reconsent::missing_default_scopes`).
+The next scope change is caught with no new code. The helper lives in the CLI, not the Rust
+companion: it's CLI policy built on `default_scopes()`, which all six companions already
+expose, so adding public API to one companion would break the same-shape rule. It fires **once per scope-set change**
+(the bookkeeping is keyed by the default set), because a user may deliberately decline a
+scope, so nagging on every run would be wrong. **Blocking** was rejected because no current
+command needs the new scopes. Interactive runs get a `[Y/n]` prompt that chains into `auth
+login`. Scripts get one stderr note, tracked separately so a script can't use up the human's
+prompt.
+
+**The inline login is optional and never costs the command.** Yes runs `auth login` on the
+default port (paste-back over SSH), because answering "yes" and then being told to run a second
+command is worse UX. But a login can fail for reasons the prompt can't foresee: a busy port, a
+custom `--port` registration (a 300s callback wait), or missing credentials. So any failure is
+reported, remembered for the scope set, and the command carries on with the existing login
+(still valid for everything it covered). Without remembering it, a default-yes prompt would
+trap the user in that wait on every run. "Headless" is detected from the SSH variables only;
+in a container the loopback flow may never receive its callback, which then degrades the same
+way (reported, remembered, command continues). `scope-notice.json` is read-modify-written
+without the store lock: two racing `oura` runs can cost one extra notice, which isn't worth
+serializing every data command on.
+
+**MCP gets a note, once per session.** MCP can't prompt, and stdio MCP auth stays out of band
+(no OAuth in the server). So the same decision becomes a note on the first *successful* tool
+result of each MCP session, for the model to relay. Error results never carry it: they have no
+data to vouch for, and the skills stop on errors. It's once per SESSION, not once ever: a
+note the model may not relay can't be treated as the user having seen it, unlike the CLI's
+prompt or stderr line. A CLI decline silences it, so an MCP-only user can decline by answering
+`n` once in a terminal. MCP elicitation was considered: it could ask, but a "yes" would still
+need the out-of-band login, so it adds a round-trip without closing the loop. Accepted risk:
+the note is a `content` block, not part of `structured_content` (which stays pure data), so a
+client that feeds the model only `structured_content` won't relay it; `oura auth status`
+still shows the gap.
+The bookkeeping is a CLI-only `scope-notice.json`, not a
+`tokens.json` field, so the six-language store record format is untouched. Logins record the requested scopes when the token response omits `scope` (RFC 6749
+§5.1), so the check can tell a current grant from a stale one. For the same reason every
+companion's REFRESH keeps the recorded grant when the response's `scope` is omitted, null,
+empty, whitespace-only (ASCII space/tab and U+00A0 are pinned; rarer code points like U+0085
+are implementation-defined), or not a string, and the refresh still succeeds: `scope` is
+informational, and failing would burn the rotated refresh token. The six had drifted. All six
+let a whitespace-only scope replace the grant, and three also let `""` do it. On a non-string
+scope, Rust/Go/C# failed the whole refresh, Java persisted it as text (`"42"`), Python
+persisted the raw number, and only TypeScript kept the prior grant. The same fallback now
+covers an omitted, null or EMPTY `refresh_token` or `token_type` (the server didn't rotate it;
+persisting `""` would make the next refresh 400). Go and C# already did that while Rust, TS,
+Python and Java stored `""`. The code exchange has no prior token, so there an
+absent/null/empty `refresh_token` fails typed. All of it is pinned for all six by the shared
+table `refresh_success_cases`, which asserts the WHOLE persisted record (access and refresh
+token, scope, token type, and `expires_at`), not just the scope.
+
+**Malformed vs wrong-typed.** Some responses are malformed rather than merely wrong-typed, and
+fail typed with the store untouched (`hostile_token_responses`), even though that loses the
+refresh token the server just rotated: there is no trustworthy value to persist, and
+persisting a mangled refresh token would lose it anyway.
+- A body that isn't valid UTF-8 anywhere, unknown fields included (RFC 8259 §8.1: it isn't
+  JSON text). Every companion checks the raw bytes before parsing, because Rust's decoder
+  skips unread fields and TS/Java/C# otherwise decode bad bytes to U+FFFD.
+- Anything but whitespace after the one top-level JSON value (Java's Jackson silently ignored
+  trailing data and persisted the first object; its store reader did the same, so
+  `hostile_store_files` pins trailing data too).
+- A lone-surrogate escape like `"\ud800"` in any of the four fields a companion reads
+  (`access_token`, `refresh_token`, `token_type`, `scope`; RFC 8259 §8.2). Unknown fields are
+  not validated for this, and a case pins that too.
+- A non-string `access_token`, `refresh_token` or `token_type`. Only `scope` is informational
+  enough to stay lenient when wrong-typed.
+- An `expires_in` that isn't an integer in 1..=2147483647 (~68 years; Oura's are about a
+  day). The cap keeps `now + expires_in` exact in every store: before it, Rust panicked on
+  overflow in debug builds, Go/Java/C# wrapped to a negative expiry, Python threw an untyped
+  error on `1e400`, and TS/Python could write an `expires_at` Rust can't read back.
+  `3600.0` is implementation-defined (TS can't tell it from `3600`).
+
+Some bodies are legitimately implementation-defined: a leading UTF-8 BOM (RFC 8259 §8.1 lets a
+parser ignore it; TS and C# do), duplicate keys (§4), nesting past a parser's depth limit, an
+integral float, a key in another case (Go matches keys case-insensitively). Rather than force
+one behavior, `implementation_defined_token_responses` pins the property that matters: each
+either succeeds with a whole usable record (the returned access token, the returned or prior
+refresh token, the response's lifetime) or fails typed with the store untouched — it caught
+Python leaking an untyped `RecursionError` on deep nesting. `implementation_defined_store_files`
+does the same for the store (Python's store reader had the same `RecursionError`).
+
+**Errors never quote the input.** Parser messages can echo what they choke on (V8's
+`JSON.parse` quotes the text; Jackson's "Unrecognized token 'rt…'"), and token bodies and store
+files carry secrets. Cases with `must_not_echo` require that string to appear nowhere in the
+typed error or anything it chains, including type errors that name a wrong-typed value (serde's
+`invalid type: string "…"`). It caught TypeScript's store error embedding `JSON.parse`'s message,
+Java chaining Jackson's exception, Python chaining a `UnicodeDecodeError` (whose repr holds the
+whole input), and the Rust store quoting a wrong-typed value — which reached the CLI's stderr and
+MCP tool results. Store files, like token bodies, must be valid UTF-8 over the whole file:
+TypeScript and Go loaded invalid bytes as U+FFFD, and Rust, C# and Java's Jackson let some through
+in fields they skip (overlong forms and encoded surrogates, in Jackson's case). A leading
+byte-order mark is rejected too (RFC 8259 §8.1: a generator must not write one, and none of the
+six does); Java alone used to skip it.
+
+A REJECTED (non-2xx) token response keeps its body in the error — `invalid_grant` is what tells
+the user to log in again — but some OAuth servers echo the value they reject, so each companion
+replaces every secret the request submitted (refresh token, client secret, authorization code)
+with `[REDACTED]` — every occurrence, longest secret first — and then caps the body at 1024
+characters (redacting first, so a cut can't expose part of a secret). Pinned by
+`rejected_token_responses`, whose cases pin each half: a secret echoed twice or back-to-back,
+one secret nested in another (longest first), a secret straddling the cut, the exact 1024-char
+body plus `…`, a 2-byte `é` body (the cap counts characters, never bytes), and a cut landing
+inside an emoji (the body stays well-formed — the cap counts code points in Rust/Go/Python and
+UTF-16 units in TS/Java/C#, identical on the Basic Multilingual Plane). The Rust code
+exchange (`oura auth login`) also redacts the echoed authorization code.
+
+In the Rust crate this split `AuthError`: a store record that fails to LOAD is now
+`AuthError::StoreFormat { file, detail }` (the file name and what/where, incl. a missing or
+duplicate field's name, never a value), and `AuthError::Serde` covers only serialization on save, with no
+blanket `From<serde_json::Error>` (a future `?` on a parse can't bypass the redaction).
+`AuthError` is now `#[non_exhaustive]`, so later variants aren't breaking. Together that is a
+breaking change to `oura-toolkit-auth`'s public error type: it ships in the next minor (0.x)
+release.
+
+Every token-endpoint HTTP client refuses redirects: the form body carries the client secret
+plus a refresh token or an authorization code, and a followed 307/308 re-sends it to whatever
+host `Location` names. The breadth companions already refused them; the Rust crate (behind
+`oura` and `oura mcp`) followed redirects until this change. Its `exchange_code` and `refresh`
+now build the redirect-refusing client themselves instead of taking a caller's
+`reqwest::Client` (a breaking signature change riding the same minor bump), so neither the CLI
+nor a downstream caller can pass one that follows redirects; `TokenManager` uses the same
+client. Every companion pins this with a 307 attack test (the status that re-sends the
+form; Rust, Python and Go also test 308) on each token-request path it has (in Rust: the code
+exchange and `TokenManager`'s refresh): the redirect target must receive nothing.
+
+Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
+untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even
+made Rust reject the shared `tokens.json`), and C# threw untyped.
 
 ### cargo-dist 0.32 Homebrew limit (#75, still open)
 cargo-dist 0.32's `include` ships the man page + completions into every archive (verified

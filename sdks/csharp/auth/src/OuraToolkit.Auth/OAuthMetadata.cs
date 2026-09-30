@@ -16,7 +16,7 @@ public static class OAuthMetadata
     /// <summary>The spec's <c>tokenUrl</c> (code exchange and refresh).</summary>
     public const string TokenUrl = "https://api.ouraring.com/oauth/token";
 
-    /// <summary>Every scope the spec advertises (8).</summary>
+    /// <summary>Every scope the spec advertises (9).</summary>
     public static readonly IReadOnlyList<string> AllScopes = new[]
     {
         "email",
@@ -26,7 +26,8 @@ public static class OAuthMetadata
         "workout",
         "tag",
         "session",
-        "spo2Daily",
+        "spo2",
+        "heart_health",
     };
 
     /// <summary>
@@ -43,6 +44,7 @@ public static class OAuthMetadata
         "workout",
         "tag",
         "session",
-        "spo2Daily",
+        "spo2",
+        "heart_health",
     };
 }

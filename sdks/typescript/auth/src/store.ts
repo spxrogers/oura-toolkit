@@ -278,9 +278,9 @@ export class TokenStore {
 }
 
 function readRecord(filePath: string): Record<string, unknown> | null {
-  let raw: string;
+  let bytes: Buffer;
   try {
-    raw = fs.readFileSync(filePath, "utf8");
+    bytes = fs.readFileSync(filePath);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return null;
@@ -291,11 +291,29 @@ function readRecord(filePath: string): Record<string, unknown> | null {
     }
     throw e;
   }
+  // A store file must be valid UTF-8. Decode STRICTLY: `readFileSync(path, "utf8")`
+  // silently substitutes U+FFFD for invalid bytes, so a corrupted secret would load as a
+  // different (wrong) token instead of failing typed. `ignoreBOM: true` keeps a leading
+  // BOM in the text (as the "utf8" read did), so JSON.parse still rejects it. The
+  // decoder's error is dropped and never chained: the message names only the path, never
+  // the content (the store holds secrets).
+  // Conformance: auth-cases.json hostile_store_files `tokens_invalid_utf8_secret`.
+  let raw: string;
+  try {
+    raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new StoreFormatError(`${filePath} is not valid UTF-8`);
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (e) {
-    throw new StoreFormatError(`${filePath} is not valid JSON: ${(e as Error).message}`);
+  } catch {
+    // The parser's own message is deliberately DROPPED (and the parse error is not
+    // chained as `cause`): V8's JSON.parse messages quote the input — e.g.
+    // `Unexpected token 'r', ..."en": rtSECRET, "... is not valid JSON` — and the store
+    // holds secrets. The file path alone locates the problem.
+    // Conformance: auth-cases.json hostile_store_files `must_not_echo` cases.
+    throw new StoreFormatError(`${filePath} is not valid JSON`);
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new StoreFormatError(`${filePath} must contain a JSON object`);

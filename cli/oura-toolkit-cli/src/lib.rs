@@ -13,3 +13,4 @@ pub mod loopback;
 pub mod mcp;
 pub mod output;
 pub mod passthrough;
+pub mod reconsent;

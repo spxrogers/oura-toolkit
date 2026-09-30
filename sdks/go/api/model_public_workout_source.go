@@ -24,6 +24,8 @@ const (
 	PUBLICWORKOUTSOURCE_AUTODETECTED PublicWorkoutSource = "autodetected"
 	PUBLICWORKOUTSOURCE_CONFIRMED PublicWorkoutSource = "confirmed"
 	PUBLICWORKOUTSOURCE_WORKOUT_HEART_RATE PublicWorkoutSource = "workout_heart_rate"
+	PUBLICWORKOUTSOURCE_LIVE_THIRD_PARTY_HEART_RATE PublicWorkoutSource = "live_third_party_heart_rate"
+	PUBLICWORKOUTSOURCE_LIVE_OURA_HEART_RATE PublicWorkoutSource = "live_oura_heart_rate"
 )
 
 // All allowed values of PublicWorkoutSource enum
@@ -32,6 +34,8 @@ var AllowedPublicWorkoutSourceEnumValues = []PublicWorkoutSource{
 	"autodetected",
 	"confirmed",
 	"workout_heart_rate",
+	"live_third_party_heart_rate",
+	"live_oura_heart_rate",
 }
 
 func (v *PublicWorkoutSource) UnmarshalJSON(src []byte) error {

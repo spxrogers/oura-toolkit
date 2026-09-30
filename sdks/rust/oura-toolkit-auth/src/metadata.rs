@@ -19,7 +19,8 @@ const DEFAULT_SCOPE_NAMES: &[&str] = &[
     "workout",
     "tag",
     "session",
-    "spo2Daily",
+    "spo2",
+    "heart_health",
 ];
 
 /// The default scopes, verified to all exist in the spec-advertised [`ALL_SCOPES`].
@@ -67,15 +68,23 @@ mod tests {
         assert_eq!(AUTHORIZE_URL, "https://cloud.ouraring.com/oauth/authorize");
         assert_eq!(TOKEN_URL, "https://api.ouraring.com/oauth/token");
         assert!(ALL_SCOPES.contains(&"personal"));
-        assert_eq!(ALL_SCOPES.len(), 8);
+        assert_eq!(ALL_SCOPES.len(), 9);
     }
 
     #[test]
-    fn default_scopes_are_all_valid_and_exclude_email() {
-        let scopes = default_scopes();
-        assert_eq!(scopes.len(), DEFAULT_SCOPE_NAMES.len());
-        assert!(!scopes.contains(&"email"));
-        assert!(scopes.iter().all(|s| ALL_SCOPES.contains(s)));
+    fn default_scopes_are_exactly_the_spec_scopes_minus_email() {
+        // The policy, pinned against the SPEC (ALL_SCOPES is build-time spec-derived): a spec
+        // refresh that adds or renames a scope fails here until DEFAULT_SCOPE_NAMES follows,
+        // the same set check the other five companions run.
+        use std::collections::BTreeSet;
+        let expected: BTreeSet<&str> = ALL_SCOPES
+            .iter()
+            .copied()
+            .filter(|s| *s != "email")
+            .collect();
+        let defaults = default_scopes();
+        assert_eq!(defaults.iter().copied().collect::<BTreeSet<_>>(), expected);
+        assert_eq!(defaults.len(), expected.len(), "no duplicate default scope");
     }
 
     #[test]

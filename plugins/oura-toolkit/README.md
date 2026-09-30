@@ -33,6 +33,10 @@ and refresh automatically.
 If a tool call reports "not authenticated", run `npx -y oura-toolkit auth login` (or
 `auth setup` first if you've never registered an app).
 
+When Oura changes its OAuth scopes (as in API 1.41), your existing login lacks the new ones.
+The first successful tool result in each Claude session then carries a note, and Claude passes it on:
+re-run `npx -y oura-toolkit auth login` to grant them. The data still comes through meanwhile.
+
 ## Skills
 
 - **/morning-checkin** — last night's sleep + today's readiness + one actionable

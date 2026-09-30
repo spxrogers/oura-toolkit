@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -96,7 +99,11 @@ public final class TokenStore {
                 // A JSON `null` for a primitive field (e.g. "expires_at": null) must be a typed
                 // store-format error, NOT silently coerced to 0L (which would masquerade as an
                 // already-expired token). serde rejects this; match it.
-                .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
+                .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true)
+                // A record is ONE JSON value: `{...} junk` or `{..}{..}` is a typed
+                // store-format error, as serde_json (and every other companion's parser)
+                // rejects it — Jackson's readValue otherwise silently ignores the rest.
+                .configure(DeserializationFeature.FAIL_ON_TRAILING_TOKENS, true);
         // A JSON number/boolean where a string field is expected (e.g. "client_id": 7)
         // must be a typed store-format error, NOT silently coerced to "7" — serde rejects
         // wrong-typed fields, and the shared store's wire format is serde's (conformance
@@ -250,6 +257,30 @@ public final class TokenStore {
         } catch (NoSuchFileException e) {
             return Optional.empty();
         }
+        // A store file must be valid UTF-8 ANYWHERE (unknown fields included) — conformance
+        // fixture #58, hostile_store_files. Jackson's byte parser is NOT a strict validator:
+        // it decodes overlong forms (C0 80 → NUL), CESU-encoded surrogates (ED A0 80) and
+        // code points past U+10FFFF instead of rejecting them, so check with the JDK's
+        // strict decoder (REPORT on malformed input) first. Typed, and the decoder's
+        // exception is NOT chained (it carries nothing useful, and the file holds secrets).
+        try {
+            StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes));
+        } catch (CharacterCodingException e) {
+            throw new StoreException(path.getFileName() + " is not valid UTF-8", null);
+        }
+        // ...and carry NO byte-order mark (fixture: tokens_utf8_bom). Both Jackson's byte
+        // reader (it skips a leading EF BB BF) and the strict decoder above (a BOM is valid
+        // UTF-8) would let one through, while every other companion's store rejects it.
+        if (bytes.length >= 3
+                && (bytes[0] & 0xFF) == 0xEF
+                && (bytes[1] & 0xFF) == 0xBB
+                && (bytes[2] & 0xFF) == 0xBF) {
+            throw new StoreException(
+                    path.getFileName() + " starts with a UTF-8 byte-order mark", null);
+        }
         final T value;
         try {
             value = MAPPER.readValue(bytes, type);
@@ -257,8 +288,10 @@ public final class TokenStore {
             // Malformed JSON, a wrong-typed or missing required field, or a JSON null for a
             // primitive (FAIL_ON_NULL_FOR_PRIMITIVES): surface ONE typed store-format error,
             // mirroring the Rust store's typed Serde error. The message names the file but
-            // NEVER echoes its bytes (the record holds secrets).
-            throw new StoreException(path.getFileName() + " is not a valid store record", e);
+            // NEVER echoes its bytes (the record holds secrets) — and Jackson's exception is
+            // NOT chained as the cause, because its message quotes the offending text
+            // ("Unrecognized token 'rt…'"), which a logged stack trace would print.
+            throw new StoreException(path.getFileName() + " is not a valid store record", null);
         }
         if (value == null) {
             // A literal `null` JSON document deserializes to Java null. Left as

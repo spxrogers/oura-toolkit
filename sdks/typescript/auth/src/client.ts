@@ -229,8 +229,16 @@ export class TokenManager {
     }
     const status = response.status;
     if (!response.ok) {
+      // The non-2xx body is kept for diagnosis (e.g. `invalid_grant`), but it is
+      // server-chosen text: a server that echoes back what we submitted would put the
+      // refresh token / client_secret into an error callers log. So EVERY occurrence of
+      // each submitted secret is redacted first, then the body is capped so a huge body
+      // can't balloon the error. Conformance: auth-cases.json rejected_token_responses.
       const text = await response.text().catch(() => "");
-      throw new TokenEndpointError(status, text);
+      throw new TokenEndpointError(
+        status,
+        sanitizeErrorBody(text, [current.refreshToken(), credentials.clientSecret()])
+      );
     }
     // A hostile or broken 2xx body must fail as the typed TokenEndpointError, never a raw
     // decode error detonating downstream and never a half-populated token persisted to the
@@ -240,40 +248,161 @@ export class TokenManager {
     // response status so the caller's 400-retry arm never misfires, and the body is a
     // FIXED, secret-free description (a partial 2xx payload may carry token material).
     // Mirrors go/auth/oauth.go and python .../auth/manager.py.
+    //
+    // The body must be valid UTF-8 ANYWHERE — unknown fields included — before it is even
+    // considered JSON (RFC 8259 §8.1). `response.json()` / `response.text()` decode
+    // leniently, silently substituting U+FFFD for an invalid byte, which would turn a
+    // malformed response into a "valid" one carrying corrupted token material. So the raw
+    // bytes are read and decoded with a FATAL decoder first.
+    // Conformance: auth-cases.json body_invalid_utf8_* hostile cases.
+    let bytes: ArrayBuffer;
+    try {
+      bytes = await response.arrayBuffer();
+    } catch {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response body could not be read");
+    }
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new TokenEndpointError(status, "token-endpoint 2xx response was not valid UTF-8");
+    }
     let json: unknown;
     try {
-      json = await response.json();
+      json = JSON.parse(text);
     } catch {
       throw new TokenEndpointError(status, "token-endpoint 2xx response was not valid JSON");
     }
     if (typeof json !== "object" || json === null || Array.isArray(json)) {
       throw new TokenEndpointError(status, "token-endpoint 2xx response was not a JSON object");
     }
+    // Validate exactly the four fields this companion reads (access_token, refresh_token,
+    // token_type, scope) — unknown fields are NOT validated, and the error message only
+    // ever names one of these known fields (never a server-chosen key). A string that
+    // isn't valid Unicode (a lone-surrogate `\ud800`/`\udc00` escape, which JSON.parse
+    // accepts) makes the RESPONSE malformed: persisting it would write a grant no other
+    // language's companion can read back, so it fails typed before anything is
+    // persisted. A regex rather than String.prototype.isWellFormed because the engine
+    // floor is Node 18. A non-string scope stays lenient (keeps the prior grant, see
+    // refresh_success_cases); a non-string refresh_token/token_type fails typed below.
+    // Conformance: auth-cases.json *_lone_surrogate / wrong_type_* hostile cases.
+    const fields = json as Record<string, unknown>;
+    for (const field of READ_FIELDS) {
+      const value = fields[field];
+      if (typeof value === "string" && LONE_SURROGATE.test(value)) {
+        throw new TokenEndpointError(
+          status,
+          `token-endpoint 2xx response field ${field} is not valid Unicode`
+        );
+      }
+    }
     const resp = json as Partial<TokenResponse>;
     if (typeof resp.access_token !== "string" || resp.access_token === "") {
       throw new TokenEndpointError(status, "token-endpoint 2xx response missing access_token");
     }
+    // expires_in must be an INTEGER in 1..=MAX_EXPIRES_IN_SECS. A fractional value, a
+    // numeric string ("3600"), anything above the cap, and a literal that overflowed to
+    // Infinity (`1e400`) are all malformed: there is no trustworthy expiry to persist.
+    // (Number.isInteger rejects non-numbers, fractions, NaN and ±Infinity.)
+    // Conformance: auth-cases.json *_expires_in / expires_in_* hostile cases.
     if (
-      typeof resp.expires_in !== "number" ||
-      !Number.isFinite(resp.expires_in) ||
-      resp.expires_in <= 0
+      !Number.isInteger(resp.expires_in) ||
+      (resp.expires_in as number) < 1 ||
+      (resp.expires_in as number) > MAX_EXPIRES_IN_SECS
     ) {
       throw new TokenEndpointError(
         status,
         "token-endpoint 2xx response missing or invalid expires_in"
       );
     }
+    // An omitted/null/EMPTY refresh_token or token_type falls back to the stored value
+    // (the server didn't rotate it; persisting "" would make the next refresh 400), but
+    // a present non-string is a malformed response: silently keeping the old refresh
+    // token would persist one Oura has already invalidated.
+    // Conformance: wrong_type_refresh_token / wrong_type_token_type (hostile) and
+    // refresh_token_* / token_type_* (refresh_success_cases).
+    for (const field of ["refresh_token", "token_type"] as const) {
+      const value = resp[field] as unknown;
+      if (value !== undefined && value !== null && typeof value !== "string") {
+        throw new TokenEndpointError(
+          status,
+          `token-endpoint 2xx response field ${field} is not a string`
+        );
+      }
+    }
+    const expiresIn = resp.expires_in as number;
     return new Tokens({
       accessToken: resp.access_token,
-      // Persist the rotated token; fall back to the old one only if the server omits it.
-      refreshToken:
-        typeof resp.refresh_token === "string" ? resp.refresh_token : current.refreshToken(),
-      expiresAt: Math.floor(Date.now() / 1000) + resp.expires_in,
-      scope: typeof resp.scope === "string" ? resp.scope : current.scope,
-      tokenType: typeof resp.token_type === "string" ? resp.token_type : current.tokenType,
+      // Persist the rotated token; fall back to the old one only if the server omits it
+      // (or sends null / an empty string).
+      refreshToken: nonEmptyString(resp.refresh_token) ?? current.refreshToken(),
+      expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
+      // An omitted/null/blank/non-string scope keeps the prior grant (RFC 6749 §5.1 lets
+      // the server omit an unchanged scope, and scope is informational, so a non-string
+      // one is not worth burning the rotated refresh token over; persisting a blank would
+      // erase the grant the CLI's re-consent check reads). JS `trim()` covers ASCII
+      // space/tab and U+00A0. Conformance: auth-cases.json refresh_success_cases scope_*.
+      scope:
+        typeof resp.scope === "string" && resp.scope.trim() !== "" ? resp.scope : current.scope,
+      tokenType: nonEmptyString(resp.token_type) ?? current.tokenType,
     });
   }
 }
+
+/**
+ * Upper bound (inclusive) on a token response's `expires_in`, in seconds: i32::MAX
+ * (~68 years). Every companion enforces the same cap so `now + expires_in` stays an
+ * exact integer in every language (well inside JS's 2^53 safe range) and the persisted
+ * `expires_at` is readable by every companion's store — including Rust's `i64` field and
+ * the narrower integer types other languages decode into. Anything larger is not a real
+ * expiry, so the response is rejected rather than clamped.
+ * Module-internal (not exported), like the other five companions' caps: nothing
+ * consumes it, and exporting it would widen the public API for no caller.
+ * Conformance: auth-cases.json expires_in_at_cap / expires_in_above_cap.
+ */
+const MAX_EXPIRES_IN_SECS = 2_147_483_647;
+
+/** `value` if it is a non-empty string, else `undefined` (omitted/null/"" all fall back). */
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** Cap (in UTF-16 code units, after redaction) on a non-2xx body kept in TokenEndpointError. */
+const MAX_ERROR_BODY_CHARS = 1024;
+
+/** What a submitted secret is replaced with in a non-2xx body. */
+const REDACTED = "[REDACTED]";
+
+/**
+ * Prepare a NON-2xx token-endpoint body for {@link TokenEndpointError}: (a) replace EVERY
+ * occurrence of each secret the request submitted — longest first, so an overlapping
+ * shorter secret can't leave a fragment — with `[REDACTED]`, then (b) cap the result at
+ * {@link MAX_ERROR_BODY_CHARS} characters, appending "…" when cut (never splitting a
+ * surrogate pair). Everything else in the body is kept for diagnosis. Empty secrets are
+ * skipped (replacing "" would interleave the marker between every character).
+ */
+function sanitizeErrorBody(body: string, secrets: readonly string[]): string {
+  const needles = new Set<string>();
+  for (const secret of secrets) {
+    if (secret === "") continue;
+    needles.add(secret);
+  }
+  let redacted = body;
+  for (const needle of [...needles].sort((a, b) => b.length - a.length)) {
+    redacted = redacted.split(needle).join(REDACTED);
+  }
+  if (redacted.length <= MAX_ERROR_BODY_CHARS) return redacted;
+  let end = MAX_ERROR_BODY_CHARS;
+  const last = redacted.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1; // don't split a surrogate pair
+  return `${redacted.slice(0, end)}…`;
+}
+
+/** The token-response fields this companion reads — the only ones it validates. */
+const READ_FIELDS = ["access_token", "refresh_token", "token_type", "scope"] as const;
+
+/** Matches an unpaired UTF-16 surrogate (a string that is not well-formed Unicode). */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /**
  * A secret-free description of a `fetch` rejection for {@link TokenEndpointTransportError}.

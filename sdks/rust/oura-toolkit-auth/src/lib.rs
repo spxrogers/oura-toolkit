@@ -25,5 +25,10 @@ mod store;
 
 pub use client::{build_authenticated_client, AuthMiddleware, TokenManager, REFRESH_SKEW_SECS};
 pub use error::AuthError;
+/// The code exchange against an arbitrary token URL — the conformance suite's seam for
+/// running hostile bodies through the exchange (hermetic tests only).
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub use oauth::exchange_code_at;
 pub use oauth::{exchange_code, refresh};
 pub use store::{ClientCredentials, StoreLock, TokenStore, Tokens, APP_DIR_NAME};
