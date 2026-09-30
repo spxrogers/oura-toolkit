@@ -312,21 +312,29 @@ fn parse_record<T: serde::de::DeserializeOwned>(
             Category::Eof => "truncated JSON".to_owned(),
             // "missing field `x`" names our schema, not the file's data; every other data
             // error ("invalid type: string \"…\"") may quote a value, so it stays generic.
-            Category::Data => missing_field(&e.to_string())
-                .map(|field| format!("missing field `{field}`"))
-                .unwrap_or_else(|| "a wrong-typed value".to_owned()),
+            Category::Data => schema_field_error(&e.to_string())
+                .map(|(what, field)| format!("{what} `{field}`"))
+                .unwrap_or_else(|| "an invalid or wrong-typed value".to_owned()),
         };
         fail(format!("{what} at line {} column {}", e.line(), e.column()))
     })
 }
 
-/// The field name in serde's "missing field `name` at …" message, when it is one of ours (a
-/// plain identifier) — anything else returns `None` so nothing file-derived is echoed.
-fn missing_field(message: &str) -> Option<&str> {
-    let rest = message.strip_prefix("missing field `")?;
+/// serde's "missing field `name`" / "duplicate field `name`" message as (kind, name), when the
+/// name is one of ours (a plain identifier) — anything else returns `None`, so nothing
+/// file-derived is echoed (a wrong-typed value's message quotes the value itself).
+fn schema_field_error(message: &str) -> Option<(&'static str, &str)> {
+    let (what, rest) = if let Some(rest) = message.strip_prefix("missing field `") {
+        ("missing field", rest)
+    } else {
+        (
+            "duplicate field",
+            message.strip_prefix("duplicate field `")?,
+        )
+    };
     let field = &rest[..rest.find('`')?];
     (!field.is_empty() && field.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
-        .then_some(field)
+        .then_some((what, field))
 }
 
 /// Open (creating if needed) with owner-only perms where supported.
@@ -579,11 +587,15 @@ mod tests {
         assert!(!text.contains("atSEC777"), "never a value: {text}");
         // A field name is echoed only when it's a plain identifier (our schema's shape).
         assert_eq!(
-            missing_field("missing field `expires_at` at line 1 column 3"),
-            Some("expires_at")
+            schema_field_error("missing field `expires_at` at line 1 column 3"),
+            Some(("missing field", "expires_at"))
         );
-        assert_eq!(missing_field("missing field `a\"b` at line 1"), None);
-        assert_eq!(missing_field("invalid type: string \"x\""), None);
+        assert_eq!(
+            schema_field_error("duplicate field `refresh_token` at line 1 column 9"),
+            Some(("duplicate field", "refresh_token"))
+        );
+        assert_eq!(schema_field_error("missing field `a\"b` at line 1"), None);
+        assert_eq!(schema_field_error("invalid type: string \"x\""), None);
     }
 
     #[test]

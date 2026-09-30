@@ -1,7 +1,11 @@
 //! Error type for the auth companion.
 
 /// Errors from the token store, the token endpoint, and the auth middleware.
+///
+/// `#[non_exhaustive]`: new failure modes can be added without a breaking change, so match
+/// with a wildcard arm.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AuthError {
     /// No tokens available. The library deliberately does not embed remediation hints in
     /// `Display` — callers own the UX: the CLI maps this to "run `oura auth login`", the
@@ -24,6 +28,10 @@ pub enum AuthError {
     NoConfigDir,
 
     /// The token endpoint returned a non-2xx response (e.g. a rotated/expired refresh token).
+    /// `body` is the response body kept for diagnosis (`invalid_grant` means "log in again"),
+    /// with every secret the request submitted (refresh token, client secret, authorization
+    /// code) replaced by `[REDACTED]` and then capped at 1024 characters (`…` marks a cut) —
+    /// conformance `rejected_token_responses`.
     #[error("token endpoint returned HTTP {status}: {body}")]
     TokenEndpoint { status: u16, body: String },
 

@@ -194,11 +194,19 @@ pub(crate) const MAX_ERROR_BODY_CHARS: usize = 1024;
 /// servers echo the value they reject — and capped at [`MAX_ERROR_BODY_CHARS`] (redacted first,
 /// so a cut can't expose a partial secret). Conformance: `rejected_token_responses`.
 fn redacted_error_body(body: &str, params: &[(&str, &str)]) -> String {
+    // Longest first: if one secret contained another, redacting the shorter first would
+    // leave the rest of the longer one behind.
+    let mut secrets: Vec<&str> = params
+        .iter()
+        .filter(|(key, value)| {
+            matches!(*key, "refresh_token" | "client_secret" | "code") && !value.is_empty()
+        })
+        .map(|(_, value)| *value)
+        .collect();
+    secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
     let mut body = body.to_owned();
-    for (key, value) in params {
-        if matches!(*key, "refresh_token" | "client_secret" | "code") && !value.is_empty() {
-            body = body.replace(value, "[REDACTED]");
-        }
+    for secret in secrets {
+        body = body.replace(secret, "[REDACTED]");
     }
     match body.char_indices().nth(MAX_ERROR_BODY_CHARS) {
         Some((cut, _)) => format!("{}…", &body[..cut]),
@@ -323,6 +331,51 @@ mod tests {
                 "{name} refresh_token: expected MissingRefreshToken, got {err:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_rejected_code_exchange_redacts_the_echoed_code_and_secret() {
+        // `oura auth login`'s exchange submits the authorization code; a server that echoes
+        // it (or the client secret) back must not get either into the error.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(400).set_body_string(
+                "invalid_grant: code cdSEC147 is not valid for client secret; cdSEC147",
+            ))
+            .mount(&server)
+            .await;
+        let err = exchange_code_at(
+            &server.uri(),
+            &reqwest::Client::new(),
+            &credentials(),
+            "cdSEC147",
+            "http://localhost:8788/callback",
+        )
+        .await
+        .unwrap_err();
+        let AuthError::TokenEndpoint { status, body } = &err else {
+            panic!("expected TokenEndpoint, got {err:?}");
+        };
+        assert_eq!(*status, 400);
+        assert!(body.contains("invalid_grant"), "the body is kept: {body}");
+        assert!(
+            !body.contains("cdSEC147"),
+            "the submitted code is redacted: {body}"
+        );
+        assert!(
+            !format!("{err:?}").contains("cdSEC147"),
+            "nor in Debug: {err:?}"
+        );
+    }
+
+    #[test]
+    fn redaction_replaces_the_longest_secret_first() {
+        // A client secret that CONTAINS the refresh token: shorter-first would leave "XYZ".
+        let body = redacted_error_body(
+            "echo rtABCXYZ",
+            &[("refresh_token", "rtABC"), ("client_secret", "rtABCXYZ")],
+        );
+        assert_eq!(body, "echo [REDACTED]");
     }
 
     #[tokio::test]

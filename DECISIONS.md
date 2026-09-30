@@ -440,13 +440,17 @@ six does); Java alone used to skip it.
 A REJECTED (non-2xx) token response keeps its body in the error — `invalid_grant` is what tells
 the user to log in again — but some OAuth servers echo the value they reject, so each companion
 replaces every secret the request submitted (refresh token, client secret, authorization code)
-with `[REDACTED]` and then caps the body at 1024 characters (redacting first, so a cut can't
-expose part of a secret). Pinned by `rejected_token_responses`.
+with `[REDACTED]` — every occurrence, longest secret first — and then caps the body at 1024
+characters (redacting first, so a cut can't expose part of a secret). Pinned by
+`rejected_token_responses`, whose cases pin each half: a secret echoed twice or back-to-back, a
+secret straddling the cut, and markers just before and just after character 1024. The Rust
+code exchange (`oura auth login`) also redacts the echoed authorization code.
 
 In the Rust crate this split `AuthError`: a store record that fails to LOAD is now
 `AuthError::StoreFormat { file, detail }` (the file name and what/where, incl. a missing
 field's name, never a value), and `AuthError::Serde` covers only serialization on save, with no
-blanket `From<serde_json::Error>` (a future `?` on a parse can't bypass the redaction). That is a
+blanket `From<serde_json::Error>` (a future `?` on a parse can't bypass the redaction).
+`AuthError` is now `#[non_exhaustive]`, so later variants aren't breaking. Together that is a
 breaking change to `oura-toolkit-auth`'s public error type: it ships in the next minor (0.x)
 release.
 

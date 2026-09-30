@@ -375,9 +375,8 @@ const REDACTED = "[REDACTED]";
 
 /**
  * Prepare a NON-2xx token-endpoint body for {@link TokenEndpointError}: (a) replace EVERY
- * occurrence of each secret the request submitted — as sent verbatim and in its
- * form-urlencoded spelling, longest first so an overlapping shorter secret can't leave a
- * fragment — with `[REDACTED]`, then (b) cap the result at {@link MAX_ERROR_BODY_CHARS}
+ * occurrence of each secret the request submitted — longest first, so an overlapping
+ * shorter secret can't leave a fragment — with `[REDACTED]`, then (b) cap the result at {@link MAX_ERROR_BODY_CHARS}
  * characters, appending "…" when cut (never splitting a surrogate pair). Everything else
  * in the body is kept for diagnosis. Empty secrets are skipped (replacing "" would
  * interleave the marker between every character).
@@ -387,8 +386,6 @@ function sanitizeErrorBody(body: string, secrets: readonly string[]): string {
   for (const secret of secrets) {
     if (secret === "") continue;
     needles.add(secret);
-    const encoded = new URLSearchParams({ s: secret }).toString().slice(2);
-    if (encoded !== "") needles.add(encoded);
   }
   let redacted = body;
   for (const needle of [...needles].sort((a, b) => b.length - a.length)) {

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -230,15 +229,11 @@ const (
 // substitute U+FFFD for invalid bytes and LOAD a mangled secret (e.g. a refresh_token the
 // next refresh would present and burn), so invalid bytes are rejected up front — with a
 // fixed message that never quotes the content (hostile_store_files/
-// tokens_invalid_utf8_secret). Every companion writes store files without a byte-order
-// mark, so a leading UTF-8 BOM is rejected with a fixed message too (hostile_store_files/
-// tokens_utf8_bom) rather than left to the parser's syntax error.
+// tokens_invalid_utf8_secret). A leading UTF-8 byte-order mark is already a syntax error to
+// encoding/json, so it fails typed below (hostile_store_files/tokens_utf8_bom).
 func strictUnmarshal(data []byte, into any, file string) error {
 	if !utf8.Valid(data) {
 		return &StoreFormatError{msg: file + ": record is not valid UTF-8"}
-	}
-	if bytes.HasPrefix(data, []byte("\xef\xbb\xbf")) {
-		return &StoreFormatError{msg: file + ": record starts with a byte-order mark"}
 	}
 	if err := json.Unmarshal(data, into); err != nil {
 		return &StoreFormatError{msg: file + ": " + err.Error()}

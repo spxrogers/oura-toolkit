@@ -419,12 +419,20 @@ public sealed class TokenManager : IDisposable
     internal static string DiagnosticBody(byte[] bytes, params string?[] submittedSecrets)
     {
         var body = LenientUtf8.GetString(bytes);
+        // Longest first: if one secret contained another, redacting the shorter first would
+        // leave the rest of the longer one behind.
+        var secrets = new System.Collections.Generic.List<string>();
         foreach (var secret in submittedSecrets)
         {
             if (!string.IsNullOrEmpty(secret))
             {
-                body = body.Replace(secret, "[REDACTED]");
+                secrets.Add(secret!);
             }
+        }
+        secrets.Sort((a, b) => b.Length.CompareTo(a.Length));
+        foreach (var secret in secrets)
+        {
+            body = body.Replace(secret, "[REDACTED]");
         }
         if (body.Length <= MaxDiagnosticBodyChars)
         {

@@ -492,6 +492,16 @@ public class TokenManagerTests
     /// everywhere), and leaves a body at exactly the cap untouched.
     /// </summary>
     [Fact]
+    public void DiagnosticBodyRedactsTheLongestSecretFirst()
+    {
+        // A client secret that CONTAINS the refresh token: redacting the shorter one first
+        // would leave "XYZ" behind.
+        Assert.Equal(
+            "echo [REDACTED]",
+            TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes("echo rtABCXYZ"), "rtABC", "rtABCXYZ"));
+    }
+
+    [Fact]
     public void DiagnosticBodyRedactsEveryOccurrenceOfEachSubmittedSecret()
     {
         var body = Encoding.UTF8.GetBytes("rtX1 then csY2, again rtX1 and csY2");
