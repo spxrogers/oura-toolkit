@@ -464,8 +464,9 @@ host `Location` names. The breadth companions already refused them; the Rust cra
 now build the redirect-refusing client themselves instead of taking a caller's
 `reqwest::Client` (a breaking signature change riding the same minor bump), so neither the CLI
 nor a downstream caller can pass one that follows redirects; `TokenManager` uses the same
-client. Every companion pins this with a 307/308 attack test on each token-request path it
-has (in Rust: the code exchange and `TokenManager`'s refresh).
+client. Every companion pins this with a 307 attack test (the status that re-sends the
+form; Rust, Python and Go also test 308) on each token-request path it has (in Rust: the code
+exchange and `TokenManager`'s refresh): the redirect target must receive nothing.
 
 Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
 untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even
