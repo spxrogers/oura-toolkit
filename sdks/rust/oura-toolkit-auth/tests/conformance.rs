@@ -418,13 +418,14 @@ async fn implementation_defined_token_responses_succeed_or_fail_typed() {
 #[tokio::test]
 async fn rejected_token_responses_keep_the_body_but_redact_submitted_secrets() {
     let table = fixture()["rejected_token_responses"].clone();
-    let submitted = &table["submitted"];
     let max_chars = table["max_error_chars"].as_u64().expect("max_error_chars") as usize;
     let cases = table["cases"].as_array().expect("cases").clone();
-    assert!(cases.len() >= 4, "fixture shrank? {} cases", cases.len());
+    assert!(cases.len() >= 12, "fixture shrank? {} cases", cases.len());
 
     for case in cases {
         let name = case["name"].as_str().unwrap();
+        // A case may override the table's submitted secrets (e.g. one nested in the other).
+        let submitted = case.get("submitted").unwrap_or(&table["submitted"]);
         let status = case["status"].as_u64().expect("status") as u16;
         let body = case["raw_body"].as_str().expect("raw_body");
         let server = MockServer::start().await;
@@ -465,6 +466,21 @@ async fn rejected_token_responses_keep_the_body_but_redact_submitted_secrets() {
             "case {name}: the body is kept for diagnosis: {text}"
         );
         assert_no_echo(&case, body.as_bytes(), &err);
+        let AuthError::TokenEndpoint { body: kept, .. } = &err else {
+            unreachable!("matched above")
+        };
+        if let Some(expected) = case.get("expected_body").and_then(|v| v.as_str()) {
+            assert_eq!(kept, expected, "case {name}: the kept body, exactly");
+        }
+        if case.get("cut_well_formed").and_then(|v| v.as_bool()) == Some(true) {
+            // A Rust String is always well-formed UTF-8; the cut must still keep whole
+            // characters up to it and mark it.
+            let head: String = body.chars().take(1023).collect();
+            assert!(
+                kept.starts_with(&head) && kept.ends_with('…'),
+                "case {name}: a cut keeps the first 1023 characters and ends with `…`: {kept:?}"
+            );
+        }
         let mut current: Option<&(dyn std::error::Error + 'static)> = Some(&err);
         while let Some(e) = current {
             for rendered in [e.to_string(), format!("{e:?}")] {

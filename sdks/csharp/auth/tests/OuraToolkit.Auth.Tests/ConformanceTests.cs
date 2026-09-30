@@ -115,7 +115,7 @@ public class ConformanceTests
     /// fixture shrank, so the table sizes are pinned here at the fixture's current sizes:
     /// >= 30 hostile_token_responses, >= 5 implementation_defined_token_responses,
     /// >= 21 hostile_store_files, >= 1 implementation_defined_store_files,
-    /// >= 4 rejected_token_responses, >= 18 refresh_success_cases.
+    /// >= 12 rejected_token_responses, >= 18 refresh_success_cases.
     /// </summary>
     [Fact]
     public void FixtureTablesHaveNotShrunk()
@@ -140,8 +140,8 @@ public class ConformanceTests
         Assert.True(fixture.TryGetProperty("rejected_token_responses", out var rejectedTable),
             "fixture lost its rejected_token_responses table");
         var rejectedCases = rejectedTable.GetProperty("cases").GetArrayLength();
-        Assert.True(rejectedCases >= 4,
-            $"fixture shrank? rejected_token_responses has {rejectedCases} cases, want >= 4");
+        Assert.True(rejectedCases >= 12,
+            $"fixture shrank? rejected_token_responses has {rejectedCases} cases, want >= 12");
         Assert.True(fixture.TryGetProperty("refresh_success_cases", out var successTable),
             "fixture lost its refresh_success_cases table");
         var successCases = successTable.GetProperty("cases").GetArrayLength();
@@ -447,27 +447,58 @@ public class ConformanceTests
     /// <summary>The rejected_token_responses table (its <c>submitted</c> secrets, cap and cases).</summary>
     private static JsonElement RejectedTable() => Fixture().GetProperty("rejected_token_responses");
 
-    /// <summary>One (name, status, raw body, must_echo, optional must_not_echo) row per fixture case.</summary>
-    public static TheoryData<string, int, string, string, string?> RejectedTokenResponses()
+    /// <summary>
+    /// The secrets a rejected case submits: the case's own <c>submitted</c> when it carries one
+    /// (e.g. one secret nested in another), else the table's.
+    /// </summary>
+    private static (string RefreshToken, string ClientSecret) RejectedSubmitted(JsonElement table, JsonElement c)
     {
-        var data = new TheoryData<string, int, string, string, string?>();
-        foreach (var c in RejectedTable().GetProperty("cases").EnumerateArray())
+        var submitted = c.TryGetProperty("submitted", out var own) ? own : table.GetProperty("submitted");
+        return (submitted.GetProperty("refresh_token").GetString()!,
+            submitted.GetProperty("client_secret").GetString()!);
+    }
+
+    /// <summary>A case's optional <c>expected_body</c> (null when the case has none).</summary>
+    private static string? ExpectedBody(JsonElement c) =>
+        c.TryGetProperty("expected_body", out var v) ? v.GetString() : null;
+
+    /// <summary>A case's optional <c>cut_well_formed</c> flag (false when absent).</summary>
+    private static bool CutWellFormed(JsonElement c) =>
+        c.TryGetProperty("cut_well_formed", out var v) && v.GetBoolean();
+
+    /// <summary>
+    /// One row per fixture case: (name, status, raw body, must_echo, optional must_not_echo,
+    /// submitted refresh_token, submitted client_secret, optional expected_body, cut_well_formed).
+    /// </summary>
+    public static TheoryData<string, int, string, string, string?, string, string, string?, bool> RejectedTokenResponses()
+    {
+        var data = new TheoryData<string, int, string, string, string?, string, string, string?, bool>();
+        var table = RejectedTable();
+        foreach (var c in table.GetProperty("cases").EnumerateArray())
         {
+            var (refreshToken, clientSecret) = RejectedSubmitted(table, c);
             data.Add(
                 c.GetProperty("name").GetString()!,
                 c.GetProperty("status").GetInt32(),
                 c.GetProperty("raw_body").GetString()!,
                 c.GetProperty("must_echo").GetString()!,
-                MustNotEcho(c));
+                MustNotEcho(c),
+                refreshToken,
+                clientSecret,
+                ExpectedBody(c),
+                CutWellFormed(c));
         }
         return data;
     }
 
     /// <summary>
-    /// The table's guards: its secrets are non-empty, every case's status is a non-2xx, and
-    /// every <c>must_echo</c> / <c>must_not_echo</c> needle actually occurs in the case's
-    /// raw_body — a needle the body doesn't carry makes its check vacuous (it could never be
-    /// echoed, or never be missing).
+    /// The table's guards: its secrets (and any case's own <c>submitted</c>) are non-empty,
+    /// every case's status is a non-2xx, and every <c>must_echo</c> / <c>must_not_echo</c>
+    /// needle actually occurs in the case's raw_body — a needle the body doesn't carry makes
+    /// its check vacuous (it could never be echoed, or never be missing). An
+    /// <c>expected_body</c> must be an over-cap body's first 1024 chars plus "…", and a
+    /// <c>cut_well_formed</c> body must really put a surrogate pair across the cut in UTF-16
+    /// (a high surrogate at index 1023) — otherwise either check would be vacuous here.
     /// </summary>
     [Fact]
     public void RejectedTokenResponseNeedlesAreSound()
@@ -491,30 +522,54 @@ public class ConformanceTests
             Assert.True(NeedleProblem(name, body, mustEcho) is null,
                 $"fixture case {name}: must_echo \"{mustEcho}\" does not occur in its raw_body");
             AssertNeedleInPayload(name, body, MustNotEcho(c));
+            if (c.TryGetProperty("submitted", out _))
+            {
+                var (refreshToken, clientSecret) = RejectedSubmitted(table, c);
+                Assert.False(string.IsNullOrEmpty(refreshToken),
+                    $"fixture case {name}: submitted.refresh_token must be non-empty");
+                Assert.False(string.IsNullOrEmpty(clientSecret),
+                    $"fixture case {name}: submitted.client_secret must be non-empty");
+            }
+            var rawBody = c.GetProperty("raw_body").GetString()!;
+            var expectedBody = ExpectedBody(c);
+            if (expectedBody is not null)
+            {
+                Assert.True(rawBody.Length > TokenManager.MaxDiagnosticBodyChars
+                        && expectedBody == rawBody.Substring(0, TokenManager.MaxDiagnosticBodyChars) + "\u2026",
+                    $"fixture case {name}: expected_body must be the over-cap raw_body's first "
+                    + $"{TokenManager.MaxDiagnosticBodyChars} chars plus \"\u2026\"");
+            }
+            if (CutWellFormed(c))
+            {
+                Assert.True(rawBody.Length > TokenManager.MaxDiagnosticBodyChars
+                        && char.IsHighSurrogate(rawBody[TokenManager.MaxDiagnosticBodyChars - 1]),
+                    $"fixture case {name}: cut_well_formed needs a surrogate pair straddling the "
+                    + $"{TokenManager.MaxDiagnosticBodyChars}-char cut, or the check is vacuous in UTF-16");
+            }
         }
     }
 
     /// <summary>
     /// A NON-2xx token response, with the stored refresh_token and the credentials'
-    /// client_secret seeded from the table's <c>submitted</c> (so those exact values are what
-    /// the refresh sends — asserted on the captured request). The mock answers
+    /// client_secret seeded from <c>submitted</c> — the case's own, else the table's (so those
+    /// exact values are what the refresh sends — asserted on the captured request). The mock answers
     /// <paramref name="status"/> with <paramref name="rawBody"/> on EVERY request (a 400 may
     /// trigger the one reload-retry). The refresh must fail with the typed
     /// <see cref="TokenEndpointException"/> carrying <paramref name="status"/>, leave both
     /// records byte-identical, keep <paramref name="mustEcho"/> in the error for diagnosis,
     /// never carry <paramref name="mustNotEcho"/> anywhere in the chain (ToString, Message,
     /// Body, inner exceptions), and hold no text in the chain longer than
-    /// <c>max_error_chars</c> however large the body.
+    /// <c>max_error_chars</c> however large the body. With <paramref name="expectedBody"/> the
+    /// Body must EQUAL it; with <paramref name="cutWellFormed"/> the Body must be well-formed
+    /// (no unpaired surrogate), start with the raw body's first 1023 chars and end with "…".
     /// </summary>
     [Theory]
     [MemberData(nameof(RejectedTokenResponses))]
     public async Task RejectedTokenResponseFailsTypedRedactedAndCapped(
-        string name, int status, string rawBody, string mustEcho, string? mustNotEcho)
+        string name, int status, string rawBody, string mustEcho, string? mustNotEcho,
+        string refreshToken, string clientSecret, string? expectedBody, bool cutWellFormed)
     {
         var table = RejectedTable();
-        var submitted = table.GetProperty("submitted");
-        var refreshToken = submitted.GetProperty("refresh_token").GetString()!;
-        var clientSecret = submitted.GetProperty("client_secret").GetString()!;
         var maxErrorChars = table.GetProperty("max_error_chars").GetInt32();
         AssertNeedleInPayload(name, Encoding.UTF8.GetBytes(rawBody), mustNotEcho);
 
@@ -556,6 +611,24 @@ public class ConformanceTests
         Assert.True(e.Body.Contains(mustEcho),
             $"case {name}: TokenEndpointException.Body must keep \"{mustEcho}\" (must_echo), got: {e.Body}");
         AssertDoesNotEcho(name, e, mustNotEcho);
+        if (expectedBody is not null)
+        {
+            Assert.True(e.Body == expectedBody,
+                $"case {name}: TokenEndpointException.Body must be exactly the first "
+                + $"{TokenManager.MaxDiagnosticBodyChars} chars plus \"\u2026\" (expected_body); got "
+                + $"{e.Body.Length} chars ending \"{e.Body.Substring(Math.Max(0, e.Body.Length - 8))}\"");
+        }
+        if (cutWellFormed)
+        {
+            var keep = TokenManager.MaxDiagnosticBodyChars - 1;
+            Assert.True(IsWellFormedUtf16(e.Body),
+                $"case {name}: the capped Body split a character (an unpaired surrogate) — "
+                + "cut_well_formed requires well-formed Unicode");
+            Assert.True(e.Body.StartsWith(rawBody.Substring(0, keep), StringComparison.Ordinal),
+                $"case {name}: the capped Body must start with the raw body's first {keep} chars (cut_well_formed)");
+            Assert.True(e.Body.EndsWith("\u2026", StringComparison.Ordinal),
+                $"case {name}: the capped Body must end with \"\u2026\" (cut_well_formed)");
+        }
         foreach (var link in ExceptionChain(e))
         {
             var texts = new List<(string What, string Text)>
@@ -581,6 +654,28 @@ public class ConformanceTests
         Assert.True(
             credsBefore.SequenceEqual(File.ReadAllBytes(temp.Store.CredentialsPath)),
             $"case {name}: credentials.json must be byte-identical after a rejected refresh");
+    }
+
+    /// <summary>True when <paramref name="s"/> holds no unpaired surrogate (every high surrogate
+    /// is followed by a low one, and every low one preceded by a high one).</summary>
+    private static bool IsWellFormedUtf16(string s)
+    {
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (char.IsHighSurrogate(s[i]))
+            {
+                if (i + 1 >= s.Length || !char.IsLowSurrogate(s[i + 1]))
+                {
+                    return false;
+                }
+                i++;
+            }
+            else if (char.IsLowSurrogate(s[i]))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     // --- 1b. implementation-defined token responses ------------------------------------------

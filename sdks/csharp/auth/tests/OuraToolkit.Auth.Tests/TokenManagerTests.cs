@@ -487,9 +487,8 @@ public class TokenManagerTests
     // -- Non-2xx diagnostics: redacted, then capped ---------------------------------------------
 
     /// <summary>
-    /// <see cref="TokenManager.DiagnosticBody"/> replaces EVERY occurrence of each submitted
-    /// secret (not just the first), skips an empty secret (which would otherwise throw or match
-    /// everywhere), and leaves a body at exactly the cap untouched.
+    /// <see cref="TokenManager.DiagnosticBody"/> redacts the longest submitted secret first, so
+    /// a secret nested inside another leaves no fragment of the longer one behind.
     /// </summary>
     [Fact]
     public void DiagnosticBodyRedactsTheLongestSecretFirst()
@@ -501,6 +500,11 @@ public class TokenManagerTests
             TokenManager.DiagnosticBody(Encoding.UTF8.GetBytes("echo rtABCXYZ"), "rtABC", "rtABCXYZ"));
     }
 
+    /// <summary>
+    /// <see cref="TokenManager.DiagnosticBody"/> replaces EVERY occurrence of each submitted
+    /// secret (not just the first), skips an empty secret (which would otherwise throw or match
+    /// everywhere), and leaves a body at exactly the cap untouched.
+    /// </summary>
     [Fact]
     public void DiagnosticBodyRedactsEveryOccurrenceOfEachSubmittedSecret()
     {

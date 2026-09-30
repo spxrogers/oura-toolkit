@@ -27,12 +27,16 @@ THERE, never here — its ``$comment`` is the contract):
   same ``must_not_echo`` rule, needle-in-payload check included — the store holds
   secrets);
 - rejected (non-2xx) token responses, with the stored refresh token and the
-  credentials' client secret seeded from the table's ``submitted`` values -> the typed
+  credentials' client secret seeded from the case's own ``submitted`` values when it
+  carries them, else the table's -> the typed
   :class:`TokenEndpointError` carrying the case's ``status``, ``tokens.json``
   byte-identical, ``must_echo`` present in the error text (the body is kept for
   diagnosis), ``must_not_echo`` (a submitted secret the server echoed) absent from
   every text in the error chain (``str``/``repr``/``args``/attributes such as
-  ``.body``), and no such text longer than ``max_error_chars``;
+  ``.body``), and no such text longer than ``max_error_chars``; a case's
+  ``expected_body`` must EQUAL the error's ``.body``, and ``cut_well_formed`` requires a
+  well-formed (strict-UTF-8-encodable) ``.body`` that starts with the raw body's first
+  1023 characters and ends with ``…``;
 - implementation-defined store files (nesting past a parser's depth limit) -> EITHER
   exactly the case's ``expected`` record OR the typed :class:`StoreFormatError` —
   never an untyped exception (e.g. ``RecursionError``);
@@ -276,7 +280,7 @@ def test_fixture_has_not_shrunk() -> None:
     assert len(HOSTILE_STORE_FILES) >= 21, (
         f"fixture shrank? {len(HOSTILE_STORE_FILES)} hostile_store_files cases"
     )
-    assert len(REJECTED_CASES) >= 4, (
+    assert len(REJECTED_CASES) >= 12, (
         f"fixture shrank? {len(REJECTED_CASES)} rejected_token_responses cases"
     )
     assert len(IMPLEMENTATION_DEFINED_STORE_FILES) >= 1, (
@@ -368,8 +372,8 @@ def test_hostile_2xx_token_response_fails_typed_and_leaves_the_store_untouched(
 def test_rejected_token_response_fails_typed_redacted_and_bounded(
     token_endpoint, tmp_path: Path, case: dict
 ) -> None:
-    """A non-2xx token-endpoint response: the refresh sends the table's ``submitted``
-    secrets, the server answers ``status`` + ``raw_body`` to EVERY request (so a 400's
+    """A non-2xx token-endpoint response: the refresh sends the case's ``submitted``
+    secrets (else the table's), the server answers ``status`` + ``raw_body`` to EVERY request (so a 400's
     one reload-retry sees the same answer), and the error must be the typed
     TokenEndpointError carrying ``status`` whose text keeps ``must_echo`` (diagnosis),
     never contains ``must_not_echo`` anywhere in its chain (a submitted secret the
@@ -389,8 +393,11 @@ def test_rejected_token_response_fails_typed_redacted_and_bounded(
     )
     token_endpoint.handler = lambda form: (status, raw_body)
 
-    submitted_refresh = REJECTED_SUBMITTED["refresh_token"]
-    submitted_secret = REJECTED_SUBMITTED["client_secret"]
+    # A case's own `submitted` (e.g. one secret nested inside another) overrides the
+    # table's.
+    submitted = case.get("submitted", REJECTED_SUBMITTED)
+    submitted_refresh = submitted["refresh_token"]
+    submitted_secret = submitted["client_secret"]
     credentials = ClientCredentials(client_id="cid", client_secret=submitted_secret)
     seeded = Tokens(
         access_token="at-original",
@@ -440,6 +447,28 @@ def test_rejected_token_response_fails_typed_redacted_and_bounded(
         assert len(text) <= REJECTED_MAX_ERROR_CHARS, (
             f"case {case['name']}: max_error_chars contract — {label} is "
             f"{len(text)} chars, over {REJECTED_MAX_ERROR_CHARS} ({contract})"
+        )
+    if "expected_body" in case:
+        assert err.body == case["expected_body"], (
+            f"case {case['name']}: expected_body contract — the body must be EXACTLY "
+            f"the first 1024 characters then '…' (got {len(err.body)} chars ending "
+            f"{err.body[-8:]!r}) ({contract})"
+        )
+    if case.get("cut_well_formed"):
+        try:
+            err.body.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            pytest.fail(
+                f"case {case['name']}: cut_well_formed contract — the body is not "
+                f"well-formed Unicode (half a character): {exc} ({contract})"
+            )
+        assert err.body.startswith(raw_body[:1023]), (
+            f"case {case['name']}: cut_well_formed contract — the body must start with "
+            f"the raw body's first 1023 characters ({contract})"
+        )
+        assert err.body.endswith("\u2026"), (
+            f"case {case['name']}: cut_well_formed contract — a cut body must end "
+            f"with '…' ({contract})"
         )
     assert store.tokens_path.read_bytes() == bytes_before, (
         f"case {case['name']}: tokens.json must be byte-identical ({contract})"

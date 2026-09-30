@@ -505,7 +505,14 @@ test("conformance: rejected (non-2xx) token responses fail typed, keep the body,
   assert.ok(Number.isInteger(maxChars) && maxChars > 0, "rejected_token_responses.max_error_chars");
   const cases = table.cases;
   assert.ok(Array.isArray(cases), "rejected_token_responses.cases");
-  assert.ok(cases.length >= 4, `fixture shrank? ${cases.length} cases`);
+  assert.ok(cases.length >= 12, `fixture shrank? ${cases.length} cases`);
+  // Vacuity guards: the per-case features below must each be exercised by some case.
+  for (const feature of ["submitted", "expected_body", "cut_well_formed"]) {
+    assert.ok(
+      cases.some((c) => c[feature] !== undefined),
+      `rejected_token_responses: no case carries \`${feature}\` — its check would pass vacuously`
+    );
+  }
   // Vacuity guard for the size cap: some case's body must exceed it.
   assert.ok(
     cases.some((c) => typeof c.raw_body === "string" && c.raw_body.length > maxChars),
@@ -517,6 +524,13 @@ test("conformance: rejected (non-2xx) token responses fail typed, keep the body,
     await t.test(`rejected_token_responses: ${c.name}`, async (st) => {
       const { name, status } = c;
       assert.equal(typeof c.raw_body, "string", `case ${name}: raw_body`);
+      // A case's own `submitted` (e.g. one secret nested in another) overrides the table's.
+      const sent = c.submitted === undefined ? submitted : c.submitted;
+      assert.ok(sent && typeof sent === "object", `case ${name}: submitted`);
+      for (const field of ["refresh_token", "client_secret"]) {
+        assert.equal(typeof sent[field], "string", `case ${name}: submitted.${field}`);
+        assert.notEqual(sent[field], "", `case ${name}: submitted.${field} must be non-empty`);
+      }
       assert.ok(Number.isInteger(status) && (status < 200 || status > 299), `case ${name}: status must be non-2xx`);
       assert.equal(typeof c.must_echo, "string", `case ${name}: must_echo`);
       assert.ok(c.raw_body.includes(c.must_echo), `case ${name}: must_echo must occur in raw_body (vacuous otherwise)`);
@@ -530,16 +544,16 @@ test("conformance: rejected (non-2xx) token responses fail typed, keep the body,
       });
       st.after(endpoint.close);
 
-      const creds = () => new auth.ClientCredentials({ clientId: "cid", clientSecret: submitted.client_secret });
+      const creds = () => new auth.ClientCredentials({ clientId: "cid", clientSecret: sent.client_secret });
       const store = withTempStore(st);
       store.saveCredentials(creds());
-      store.saveTokens(expiredTokens(submitted.refresh_token));
+      store.saveTokens(expiredTokens(sent.refresh_token));
       const bytesBefore = fs.readFileSync(store.tokensPath());
 
       const manager = new auth.TokenManager({
         store,
         credentials: creds(),
-        tokens: expiredTokens(submitted.refresh_token),
+        tokens: expiredTokens(sent.refresh_token),
         tokenUrl: endpoint.url,
       });
 
@@ -560,8 +574,8 @@ test("conformance: rejected (non-2xx) token responses fail typed, keep the body,
       // The refresh really sent the seeded secrets (else redacting them proves nothing).
       assert.ok(endpoint.requests.length >= 1, `case ${name}: the refresh must call the endpoint`);
       for (const req of endpoint.requests) {
-        assert.equal(req.params.get("refresh_token"), submitted.refresh_token, `case ${name}: submitted refresh_token`);
-        assert.equal(req.params.get("client_secret"), submitted.client_secret, `case ${name}: submitted client_secret`);
+        assert.equal(req.params.get("refresh_token"), sent.refresh_token, `case ${name}: submitted refresh_token`);
+        assert.equal(req.params.get("client_secret"), sent.client_secret, `case ${name}: submitted client_secret`);
       }
       // The body is kept for diagnosis.
       assert.ok(
@@ -570,6 +584,37 @@ test("conformance: rejected (non-2xx) token responses fail typed, keep the body,
       );
       // A submitted secret the server echoed back is redacted everywhere in the chain.
       assertNoEcho(thrown, c.must_not_echo, name);
+      assert.equal(typeof thrown.body, "string", `case ${name}: TokenEndpointError.body`);
+      // `expected_body`: the kept body is pinned EXACTLY (first 1024 chars, then "…").
+      if (c.expected_body !== undefined) {
+        assert.equal(typeof c.expected_body, "string", `case ${name}: expected_body must be a string`);
+        assert.equal(
+          thrown.body,
+          c.expected_body,
+          `case ${name}: TokenEndpointError.body must equal expected_body exactly (the first 1024 chars, then "…")`
+        );
+      }
+      // `cut_well_formed`: the cut lands inside a non-BMP character — the body must stay
+      // well-formed Unicode (never half a surrogate pair), keep the first 1023 chars, end in "…".
+      if (c.cut_well_formed !== undefined) {
+        assert.equal(c.cut_well_formed, true, `case ${name}: cut_well_formed must be true`);
+        // Vacuity: in UTF-16 the 1024-unit cut must really land inside a surrogate pair.
+        const hi = c.raw_body.charCodeAt(1023);
+        assert.ok(
+          c.raw_body.length > 1024 && hi >= 0xd800 && hi <= 0xdbff,
+          `case ${name}: raw_body's 1024th UTF-16 unit must be a high surrogate (else the guard goes untested)`
+        );
+        const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+        assert.ok(
+          !LONE_SURROGATE.test(thrown.body),
+          `case ${name}: TokenEndpointError.body must be well-formed Unicode (a lone surrogate means the cut split a character)`
+        );
+        assert.ok(
+          thrown.body.startsWith(c.raw_body.slice(0, 1023)),
+          `case ${name}: TokenEndpointError.body must start with the raw body's first 1023 characters`
+        );
+        assert.ok(thrown.body.endsWith("…"), `case ${name}: TokenEndpointError.body must end with "…" when cut`);
+      }
       // Bounded: no string in the chain exceeds max_error_chars, however large the body.
       for (const { where, text } of chainStrings(thrown)) {
         assert.ok(

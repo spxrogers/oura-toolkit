@@ -24,11 +24,13 @@
 //     zero-valued record that would make IsAuthenticated lie, and never a panic; a
 //     case's `must_not_echo` string appears nowhere in the error chain;
 //   - rejected (NON-2xx) token responses, seeded with the fixture's `submitted`
-//     refresh_token + client_secret (and the mock asserting those were sent) → typed
-//     *TokenEndpointError carrying the case's `status`, store byte-identical, `must_echo`
-//     in the error text (the body is kept for diagnosis), `must_not_echo` (a submitted
-//     secret the server echoed) nowhere in the chain, and no chain string longer than
-//     `max_error_chars`;
+//     refresh_token + client_secret (a case's own `submitted` overrides the table's;
+//     the mock asserts those were sent) → typed *TokenEndpointError carrying the case's
+//     `status`, store byte-identical, `must_echo` in the error text (the body is kept
+//     for diagnosis), `must_not_echo` (a submitted secret the server echoed) nowhere in
+//     the chain, no chain string longer than `max_error_chars`, Body EXACTLY
+//     `expected_body` when given, and — for `cut_well_formed` — Body valid UTF-8,
+//     starting with the raw body's first 1023 characters and ending with "…";
 //   - every `must_not_echo` must occur in its case's payload (else the check is
 //     vacuous), and at least 4 hostile token / 5 hostile store cases carry one;
 //   - implementation-defined store files (deep nesting in an unknown field) → EITHER
@@ -165,6 +167,13 @@ func requireNoEchoFloor(t *testing.T, table string, needles []*string, floor int
 }
 
 // conformanceFixture is the decoded shape of codegen/conformance/auth-cases.json.
+// conformanceSubmitted is the secret pair a rejected_token_responses refresh submits
+// (the table's default, or a case's own override).
+type conformanceSubmitted struct {
+	RefreshToken string `json:"refresh_token"`
+	ClientSecret string `json:"client_secret"`
+}
+
 type conformanceFixture struct {
 	HostileTokenResponses []struct {
 		Name string `json:"name"`
@@ -182,17 +191,22 @@ type conformanceFixture struct {
 		MustNotEcho *string `json:"must_not_echo"`
 	} `json:"hostile_store_files"`
 	RejectedTokenResponses struct {
-		Submitted struct {
-			RefreshToken string `json:"refresh_token"`
-			ClientSecret string `json:"client_secret"`
-		} `json:"submitted"`
-		MaxErrorChars int `json:"max_error_chars"`
+		Submitted     conformanceSubmitted `json:"submitted"`
+		MaxErrorChars int                  `json:"max_error_chars"`
 		Cases         []struct {
 			Name        string  `json:"name"`
 			Status      int     `json:"status"`
 			RawBody     *string `json:"raw_body"`
 			MustEcho    string  `json:"must_echo"`
 			MustNotEcho *string `json:"must_not_echo"`
+			// Submitted, when present, overrides the table's `submitted` for this case
+			// (e.g. one secret nested inside the other).
+			Submitted *conformanceSubmitted `json:"submitted"`
+			// ExpectedBody, when present, pins TokenEndpointError.Body EXACTLY.
+			ExpectedBody *string `json:"expected_body"`
+			// CutWellFormed: the cut lands inside a non-BMP character; Body must stay
+			// valid UTF-8, start with the raw body's first 1023 characters, end with "…".
+			CutWellFormed bool `json:"cut_well_formed"`
 		} `json:"cases"`
 	} `json:"rejected_token_responses"`
 	ImplementationDefinedStoreFiles []struct {
@@ -579,27 +593,43 @@ func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 // but a secret the refresh SUBMITTED and the server echoed back (`must_not_echo`) appears
 // nowhere in the error chain — Error(), %+v, %#v, the Body field, every Unwrap — and no
 // string in the chain exceeds `max_error_chars` characters however large the body. The
-// store and credentials are seeded with the fixture's `submitted` values, and the mock
-// asserts that every request really sent them (else the redaction check is vacuous). A
-// 400 may take the manager's one reload-retry; the mock answers every request the same.
+// store and credentials are seeded with the fixture's `submitted` values (a case's own
+// `submitted` overriding the table's), and the mock asserts that every request really
+// sent them (else the redaction check is vacuous). `expected_body` pins the Body EXACTLY;
+// `cut_well_formed` requires a cut inside a multi-byte character to keep the Body valid
+// UTF-8, prefixed by the raw body's first 1023 characters and ending in "…". A 400 may
+// take the manager's one reload-retry; the mock answers every request the same.
 func TestConformanceRejectedTokenResponsesFailTypedRedactedAndBounded(t *testing.T) {
 	fixture := loadConformanceFixture(t)
 	table := fixture.RejectedTokenResponses
-	if n := len(table.Cases); n < 4 {
-		t.Fatalf("fixture shrank? rejected_token_responses has %d cases, want >= 4", n)
+	if n := len(table.Cases); n < 12 {
+		t.Fatalf("fixture shrank? rejected_token_responses has %d cases, want >= 12", n)
 	}
-	sub := table.Submitted
-	if sub.RefreshToken == "" || sub.ClientSecret == "" {
+	if table.Submitted.RefreshToken == "" || table.Submitted.ClientSecret == "" {
 		t.Fatal("fixture rejected_token_responses.submitted must give a non-empty refresh_token and client_secret")
 	}
+	var overrides, exactBodies, wellFormedCuts int
 	if table.MaxErrorChars <= 0 {
 		t.Fatal("fixture rejected_token_responses.max_error_chars is missing")
 	}
 	var needles []*string
 	for _, tc := range table.Cases {
 		needles = append(needles, tc.MustNotEcho)
+		if tc.Submitted != nil {
+			overrides++
+		}
+		if tc.ExpectedBody != nil {
+			exactBodies++
+		}
+		if tc.CutWellFormed {
+			wellFormedCuts++
+		}
 	}
 	requireNoEchoFloor(t, "rejected_token_responses", needles, 3)
+	// Each per-case feature must stay exercised, or its check below is vacuous.
+	if overrides < 1 || exactBodies < 1 || wellFormedCuts < 1 {
+		t.Fatalf("fixture shrank? rejected_token_responses needs >= 1 case each with its own `submitted` (%d), `expected_body` (%d) and `cut_well_formed` (%d)", overrides, exactBodies, wellFormedCuts)
+	}
 
 	for _, tc := range table.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -613,6 +643,13 @@ func TestConformanceRejectedTokenResponsesFailTypedRedactedAndBounded(t *testing
 				t.Fatalf("case %s: must_echo %q must be non-empty and occur in raw_body", tc.Name, tc.MustEcho)
 			}
 			payload := []byte(*tc.RawBody)
+			sub := table.Submitted
+			if tc.Submitted != nil {
+				if tc.Submitted.RefreshToken == "" || tc.Submitted.ClientSecret == "" {
+					t.Fatalf("case %s: its own `submitted` must give a non-empty refresh_token and client_secret", tc.Name)
+				}
+				sub = *tc.Submitted
+			}
 
 			var calls atomic.Int32
 			var sentMu sync.Mutex
@@ -685,6 +722,29 @@ func TestConformanceRejectedTokenResponsesFailTypedRedactedAndBounded(t *testing
 			}
 			assertNoEcho(t, tc.Name, payload, refreshErr, tc.MustNotEcho)
 			assertChainBounded(t, tc.Name, refreshErr, table.MaxErrorChars)
+			if tc.ExpectedBody != nil {
+				if te.Body != *tc.ExpectedBody {
+					t.Fatalf("case %s: TokenEndpointError.Body must be EXACTLY expected_body (first 1024 chars, then \"…\"):\ngot  (%d runes, suffix %q)\nwant (%d runes, suffix %q)",
+						tc.Name, utf8.RuneCountInString(te.Body), runeSuffix(te.Body, 8),
+						utf8.RuneCountInString(*tc.ExpectedBody), runeSuffix(*tc.ExpectedBody, 8))
+				}
+			}
+			if tc.CutWellFormed {
+				raw := []rune(*tc.RawBody)
+				if len(raw) <= 1024 {
+					t.Fatalf("case %s: cut_well_formed needs a raw_body longer than 1024 characters, got %d", tc.Name, len(raw))
+				}
+				prefix := string(raw[:1023])
+				if !utf8.ValidString(te.Body) {
+					t.Fatalf("case %s: the cut split a character — TokenEndpointError.Body is not valid UTF-8 (suffix %q)", tc.Name, te.Body[max(0, len(te.Body)-8):])
+				}
+				if !strings.HasPrefix(te.Body, prefix) {
+					t.Fatalf("case %s: TokenEndpointError.Body must start with the raw body's first 1023 characters", tc.Name)
+				}
+				if !strings.HasSuffix(te.Body, "…") {
+					t.Fatalf("case %s: a cut TokenEndpointError.Body must end with \"…\", got suffix %q", tc.Name, runeSuffix(te.Body, 8))
+				}
+			}
 
 			tokensAfter, err := os.ReadFile(store.TokensPath())
 			if err != nil {
@@ -702,6 +762,12 @@ func TestConformanceRejectedTokenResponsesFailTypedRedactedAndBounded(t *testing
 			}
 		})
 	}
+}
+
+// runeSuffix returns the last n runes of s (for readable failure messages).
+func runeSuffix(s string, n int) string {
+	r := []rune(s)
+	return string(r[max(0, len(r)-n):])
 }
 
 // assertChainBounded fails unless every string rendered from the error chain — Error(),

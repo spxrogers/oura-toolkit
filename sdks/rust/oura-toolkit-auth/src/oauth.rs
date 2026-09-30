@@ -155,7 +155,14 @@ async fn post_token(
     let resp = http.post(token_url).form(params).send().await?;
     let status = resp.status();
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
+        // UTF-8 regardless of any declared charset (as the success path and the other five
+        // companions read it): a mislabelled charset would garble an echoed secret so the
+        // redaction below missed it.
+        let body = resp
+            .bytes()
+            .await
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
         return Err(AuthError::TokenEndpoint {
             status: status.as_u16(),
             body: redacted_error_body(&body, params),
@@ -334,20 +341,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_rejected_code_exchange_redacts_the_echoed_code_and_secret() {
+    async fn a_rejected_code_exchange_redacts_the_echoed_code_and_client_secret() {
         // `oura auth login`'s exchange submits the authorization code; a server that echoes
         // it (or the client secret) back must not get either into the error.
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(400).set_body_string(
-                "invalid_grant: code cdSEC147 is not valid for client secret; cdSEC147",
+                "invalid_grant: code cdSEC147 is not valid for client csSEC963; cdSEC147",
             ))
             .mount(&server)
             .await;
+        let credentials = ClientCredentials {
+            client_id: "cid".into(),
+            client_secret: "csSEC963".into(),
+        };
         let err = exchange_code_at(
             &server.uri(),
             &reqwest::Client::new(),
-            &credentials(),
+            &credentials,
             "cdSEC147",
             "http://localhost:8788/callback",
         )
@@ -361,6 +372,10 @@ mod tests {
         assert!(
             !body.contains("cdSEC147"),
             "the submitted code is redacted: {body}"
+        );
+        assert!(
+            !body.contains("csSEC963"),
+            "the client secret is redacted: {body}"
         );
         assert!(
             !format!("{err:?}").contains("cdSEC147"),

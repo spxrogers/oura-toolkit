@@ -2,6 +2,7 @@ package com.ouratoolkit.auth;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -483,7 +484,11 @@ class ConformanceTest {
      * byte-identical; the body is kept for diagnosis ({@code must_echo} appears in the
      * exception text) but a submitted secret the server echoed is REDACTED
      * ({@code must_not_echo} appears nowhere in the chain), and no text in the chain
-     * exceeds {@code max_error_chars} however large the body.
+     * exceeds {@code max_error_chars} however large the body. A case may carry its own
+     * {@code submitted} (overriding the table's, e.g. one secret nested in another); a case
+     * with {@code expected_body} pins {@link TokenEndpointException#getBody()} EXACTLY; a
+     * case with {@code cut_well_formed} requires the capped body to be well-formed (no
+     * unpaired surrogate), start with the raw body's first 1023 chars and end with "…".
      */
     @TestFactory
     Stream<DynamicTest> rejectedTokenResponsesFailTypedRedactedAndCapped() throws IOException {
@@ -501,9 +506,9 @@ class ConformanceTest {
         int maxErrorChars = maxNode.asInt();
         JsonNode cases = table.get("cases");
         assertNotNull(cases, "fixture's rejected_token_responses lost its cases");
-        assertTrue(cases.size() >= 4,
+        assertTrue(cases.size() >= 12,
                 "fixture shrank? rejected_token_responses has " + cases.size()
-                        + " cases, want >= 4");
+                        + " cases, want >= 12");
         assertNoEchoFloor("rejected_token_responses", cases, 3);
         return StreamSupport.stream(cases.spliterator(), false)
                 .map(c -> DynamicTest.dynamicTest(
@@ -513,9 +518,25 @@ class ConformanceTest {
     }
 
     private void assertRejectedTokenResponseHandled(
-            String refreshToken, String clientSecret, int maxErrorChars, JsonNode testCase)
-            throws Exception {
+            String tableRefreshToken, String tableClientSecret, int maxErrorChars,
+            JsonNode testCase) throws Exception {
         String name = testCase.get("name").asText();
+        String refreshToken = tableRefreshToken;
+        String clientSecret = tableClientSecret;
+        // A case's own `submitted` overrides the table's (e.g. one secret nested in another).
+        JsonNode caseSubmitted = testCase.get("submitted");
+        if (caseSubmitted != null) {
+            refreshToken = requiredText(caseSubmitted, "refresh_token", name + ".submitted");
+            clientSecret = requiredText(caseSubmitted, "client_secret", name + ".submitted");
+            assertTrue(!refreshToken.isEmpty() && !clientSecret.isEmpty(),
+                    name + ": a case's submitted secrets must be non-empty");
+        }
+        JsonNode expectedBodyNode = testCase.get("expected_body");
+        assertTrue(expectedBodyNode == null || expectedBodyNode.isTextual(),
+                name + ": expected_body must be a string");
+        JsonNode wellFormedNode = testCase.get("cut_well_formed");
+        assertTrue(wellFormedNode == null || wellFormedNode.isBoolean(),
+                name + ": cut_well_formed must be a boolean");
         JsonNode statusNode = testCase.get("status");
         assertTrue(statusNode != null && statusNode.isIntegralNumber()
                         && (statusNode.asInt() < 200 || statusNode.asInt() >= 300),
@@ -567,6 +588,25 @@ class ConformanceTest {
                             + "exception text must contain \"" + mustEcho + "\"");
             if (needle.isPresent()) {
                 assertChainDoesNotEcho(name, thrown, needle.get());
+            }
+            if (expectedBodyNode != null) {
+                assertEquals(expectedBodyNode.asText(), thrown.getBody(),
+                        name + ": expected_body — the error body must be EXACTLY the first "
+                                + "1024 characters of the (redacted) body, then \"…\"");
+            }
+            if (wellFormedNode != null && wellFormedNode.asBoolean()) {
+                String got = thrown.getBody();
+                assertTrue(rawBody.length() > 1024,
+                        name + ": cut_well_formed needs a body longer than the cap, or the "
+                                + "check is vacuous");
+                assertFalse(hasUnpairedSurrogate(got),
+                        name + ": cut_well_formed — the capped body must stay well-formed "
+                                + "Unicode (the cut split a surrogate pair)");
+                assertTrue(got.startsWith(rawBody.substring(0, 1023)),
+                        name + ": cut_well_formed — the capped body must start with the raw "
+                                + "body's first 1023 characters");
+                assertTrue(got.endsWith("…"),
+                        name + ": cut_well_formed — the capped body must end with \"…\"");
             }
             for (Map.Entry<String, String> text : chainTexts(thrown).entrySet()) {
                 assertTrue(text.getValue().length() <= maxErrorChars,
@@ -756,6 +796,20 @@ class ConformanceTest {
                 .map(c -> DynamicTest.dynamicTest(
                         c.get("name").asText(),
                         () -> assertRefreshPersistsExpectedRecord(prior, c)));
+    }
+
+    /** True when {@code s} has a high surrogate not followed by a low one, or a lone low one. */
+    private static boolean hasUnpairedSurrogate(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isHighSurrogate(c) && i + 1 < s.length()
+                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String requiredText(JsonNode record, String field, String what) {

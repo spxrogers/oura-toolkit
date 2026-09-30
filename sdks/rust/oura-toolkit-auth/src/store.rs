@@ -291,7 +291,7 @@ fn remove_if_exists(path: &Path) -> Result<bool, AuthError> {
 /// Parse the store record `file`, reporting WHAT went wrong and WHERE — never the file's
 /// values. serde_json's own messages quote the value they choke on (`invalid type: string
 /// "…"`), and the store holds secrets, so the typed error carries only the category, the
-/// position, and (for a missing field) the field's name — our own schema, never data
+/// position, and (for a missing or duplicate field) the field's name — our own schema, never data
 /// (conformance: hostile_store_files `must_not_echo` cases).
 fn parse_record<T: serde::de::DeserializeOwned>(
     file: &'static str,
@@ -310,8 +310,9 @@ fn parse_record<T: serde::de::DeserializeOwned>(
             Category::Io => "an unreadable record".to_owned(),
             Category::Syntax => "malformed JSON".to_owned(),
             Category::Eof => "truncated JSON".to_owned(),
-            // "missing field `x`" names our schema, not the file's data; every other data
-            // error ("invalid type: string \"…\"") may quote a value, so it stays generic.
+            // "missing field `x`" / "duplicate field `x`" name our schema, not the file's
+            // data; every other data error ("invalid type: string \"…\"") may quote a value,
+            // so it stays generic.
             Category::Data => schema_field_error(&e.to_string())
                 .map(|(what, field)| format!("{what} `{field}`"))
                 .unwrap_or_else(|| "an invalid or wrong-typed value".to_owned()),
