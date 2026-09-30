@@ -30,5 +30,5 @@ pub use error::AuthError;
 #[cfg(feature = "test-util")]
 #[doc(hidden)]
 pub use oauth::exchange_code_at;
-pub use oauth::{exchange_code, refresh, token_endpoint_client};
+pub use oauth::{exchange_code, refresh};
 pub use store::{ClientCredentials, StoreLock, TokenStore, Tokens, APP_DIR_NAME};

@@ -645,6 +645,52 @@ mod tests {
         assert!(matches!(err, AuthError::NotAuthenticated), "{err:?}");
     }
 
+    /// The refresh behind every `oura` data call and `oura mcp` tool call must refuse a
+    /// 307/308 from the token endpoint: following it would re-send the client secret and
+    /// refresh token to the `Location` host. It fails typed with the 3xx status, the other
+    /// host receives nothing, and the store is untouched.
+    #[tokio::test]
+    async fn a_refresh_never_follows_a_token_endpoint_redirect_with_the_secret() {
+        let elsewhere = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "stolen", "refresh_token": "stolen", "expires_in": 3600
+            })))
+            .expect(0) // checked on drop: the secrets never reach it
+            .mount(&elsewhere)
+            .await;
+        for status in [307u16, 308] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .insert_header("location", format!("{}/steal", elsewhere.uri())),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let dir = tempfile::tempdir().unwrap();
+            let store = TokenStore::with_dir(dir.path());
+            store.save_tokens(&expired_tokens("r-live")).unwrap();
+            let before = std::fs::read(dir.path().join("tokens.json")).unwrap();
+
+            let m = test_manager(&server, store, Some(expired_tokens("r-live")));
+            let err = m.access_token().await.expect_err(&format!(
+                "a {status} from the token endpoint must not be followed to another host"
+            ));
+            assert!(
+                matches!(err, AuthError::TokenEndpoint { status: s, .. } if s == status),
+                "a {status} from the token endpoint fails typed, got {err:?}"
+            );
+            assert_eq!(
+                std::fs::read(dir.path().join("tokens.json")).unwrap(),
+                before,
+                "a {status} leaves the store untouched"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn genuinely_invalid_refresh_token_surfaces_the_400_without_blind_retry() {
         let server = MockServer::start().await;

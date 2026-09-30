@@ -318,6 +318,37 @@ class TestCrossProcessProtocol:
         )
 
 
+
+class TestRedirects:
+    @pytest.mark.parametrize("status", [307, 308])
+    def test_refresh_never_follows_a_token_endpoint_redirect_with_the_secret(
+        self, token_endpoint, other_endpoint, tmp_path: Path, status: int
+    ) -> None:
+        # Following a 307/308 would re-send the form (client secret + refresh token) to
+        # whatever host `Location` names: it must fail typed, reaching no one else.
+        other_endpoint.handler = lambda form: (
+            200,
+            {"access_token": "stolen", "refresh_token": "stolen", "expires_in": 3600},
+        )
+        token_endpoint.handler = lambda form: (
+            status,
+            "",
+            {"Location": other_endpoint.url},
+        )
+        store = TokenStore(tmp_path)
+        store.save_tokens(expired_tokens("r-live"))
+        before = (tmp_path / "tokens.json").read_bytes()
+        manager = manager_for(token_endpoint, store, expired_tokens("r-live"))
+
+        with pytest.raises(TokenEndpointError) as excinfo:
+            manager.access_token()
+        assert excinfo.value.status == status
+        assert other_endpoint.requests == [], (
+            f"a {status} was followed: the secrets reached the Location host"
+        )
+        assert len(token_endpoint.requests) == 1
+        assert (tmp_path / "tokens.json").read_bytes() == before, "store untouched"
+
 class TestRejectedBodyScrubbing:
     """The non-2xx body carried by TokenEndpointError is scrubbed of every submitted
     secret and then capped at exactly 1024 characters (conformance

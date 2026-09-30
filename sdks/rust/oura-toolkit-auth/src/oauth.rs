@@ -57,13 +57,14 @@ impl std::fmt::Debug for TokenResponse {
     }
 }
 
-/// The HTTP client every token-endpoint call should use: the hard 30s timeout, and NO
-/// redirects. A token request carries the client secret plus a refresh token or an
-/// authorization code in its form body, and reqwest re-sends a reusable body on a 307/308 —
-/// so a followed redirect would hand those secrets to whatever host the `Location` names.
-/// A 3xx instead fails as [`AuthError::TokenEndpoint`] with its status (the other five
-/// companions refuse redirects the same way).
-pub fn token_endpoint_client() -> reqwest::Client {
+/// The HTTP client every token-endpoint call uses: the hard 30s timeout, and NO redirects. A
+/// token request carries the client secret plus a refresh token or an authorization code in
+/// its form body, and reqwest re-sends a reusable body on a 307/308 — so a followed redirect
+/// would hand those secrets to whatever host the `Location` names. A 3xx instead fails as
+/// [`AuthError::TokenEndpoint`] with its status (the other five companions also refuse
+/// redirects). Crate-private: [`exchange_code`], [`refresh`] and [`crate::TokenManager`] build
+/// it themselves, so no caller can hand them a redirect-following client.
+pub(crate) fn token_endpoint_client() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(crate::client::TOKEN_ENDPOINT_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
@@ -71,36 +72,37 @@ pub fn token_endpoint_client() -> reqwest::Client {
         .expect("token-endpoint reqwest client")
 }
 
-/// Exchange an authorization `code` for tokens (confidential client: sends id + secret). Pass
-/// [`token_endpoint_client`] as `http` (it refuses redirects that would re-send the secret).
+/// Exchange an authorization `code` for tokens (confidential client: sends id + secret) over
+/// a client with a 30s timeout that never follows a redirect (which would re-send the code
+/// and secret to the `Location` host).
 pub async fn exchange_code(
-    http: &reqwest::Client,
     credentials: &ClientCredentials,
     code: &str,
     redirect_uri: &str,
 ) -> Result<Tokens, AuthError> {
-    exchange_code_at(TOKEN_URL, http, credentials, code, redirect_uri).await
+    exchange_code_at(TOKEN_URL, credentials, code, redirect_uri).await
 }
 
-/// Refresh using the stored refresh token; the response carries a **rotated** refresh token
-/// which the caller MUST persist (Oura invalidates the previous one).
+/// Refresh using the stored refresh token, over the same redirect-refusing, 30s-timeout client
+/// as [`exchange_code`]; the response carries a **rotated** refresh token which the caller MUST
+/// persist (Oura invalidates the previous one).
 pub async fn refresh(
-    http: &reqwest::Client,
     credentials: &ClientCredentials,
     current: &Tokens,
 ) -> Result<Tokens, AuthError> {
-    refresh_at(TOKEN_URL, http, credentials, current).await
+    refresh_at(TOKEN_URL, &token_endpoint_client(), credentials, current).await
 }
 
 // --- URL-injectable cores (so tests can point at a mock token endpoint) ----------------------
 
+/// [`exchange_code`] against an arbitrary token URL, over the same redirect-refusing client.
 pub async fn exchange_code_at(
     token_url: &str,
-    http: &reqwest::Client,
     credentials: &ClientCredentials,
     code: &str,
     redirect_uri: &str,
 ) -> Result<Tokens, AuthError> {
+    let http = token_endpoint_client();
     let params = [
         ("grant_type", "authorization_code"),
         ("code", code),
@@ -108,7 +110,7 @@ pub async fn exchange_code_at(
         ("client_id", credentials.client_id.as_str()),
         ("client_secret", credentials.client_secret.as_str()),
     ];
-    let resp = post_token(token_url, http, &params).await?;
+    let resp = post_token(token_url, &http, &params).await?;
     // The initial exchange must return a refresh token — persisting an absent or EMPTY one
     // would only surface as a baffling 400 on the NEXT refresh, long after the cause. Fail
     // loud now (there is no prior token to fall back to, unlike a refresh).
@@ -340,10 +342,8 @@ mod tests {
                 .mount(&server)
                 .await;
 
-            let http = reqwest::Client::new();
             let err = exchange_code_at(
                 &server.uri(),
-                &http,
                 &credentials(),
                 "code",
                 "http://localhost:8788/callback",
@@ -374,7 +374,6 @@ mod tests {
         };
         let err = exchange_code_at(
             &server.uri(),
-            &reqwest::Client::new(),
             &credentials,
             "cdSEC147",
             "http://localhost:8788/callback",
@@ -412,9 +411,11 @@ mod tests {
 
     /// A 307/308 from the token endpoint must NOT be followed: reqwest would re-send the form
     /// (client secret + refresh token or code) to the `Location` host. It fails typed with the
-    /// 3xx status and the other host receives nothing — for the code exchange and the refresh.
+    /// 3xx status and the other host receives nothing — through the real code exchange (which
+    /// builds its own client) and a refresh over the shared client. `TokenManager`'s refresh
+    /// wiring is pinned separately in `client.rs`.
     #[tokio::test]
-    async fn the_token_endpoint_client_never_follows_a_redirect_with_the_secret() {
+    async fn token_requests_never_follow_a_redirect_with_the_secret() {
         let elsewhere = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200))
@@ -434,7 +435,6 @@ mod tests {
 
             let err = exchange_code_at(
                 &server.uri(),
-                &http,
                 &credentials(),
                 "code1",
                 "http://localhost:8788/callback",

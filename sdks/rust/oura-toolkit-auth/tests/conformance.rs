@@ -233,7 +233,6 @@ async fn hostile_2xx_token_responses_fail_the_code_exchange_typed() {
             .await;
         let err = exchange_code_at(
             &server.uri(),
-            &reqwest::Client::new(),
             &credentials(),
             "code",
             "http://localhost:8788/callback",

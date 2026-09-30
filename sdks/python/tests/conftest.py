@@ -9,20 +9,21 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 from urllib.parse import parse_qs
 
 import pytest
 
-# (status, json-able body, raw string, or raw bytes)
-Response = Tuple[int, object]
+# (status, json-able body, raw string, or raw bytes), optionally with extra headers
+Response = Union[Tuple[int, object], Tuple[int, object, Dict[str, str]]]
 Handler = Callable[[Dict[str, str]], Response]
 
 
 class MockTokenEndpoint:
     """A scriptable token endpoint. ``handler`` maps the POSTed form (flattened
-    single-value dict) to a ``(status, body)`` response (``bytes`` bodies are sent
-    verbatim, ``str`` as UTF-8, anything else as JSON); every request form is
+    single-value dict) to a ``(status, body)`` or ``(status, body, headers)`` response
+    (``bytes`` bodies are sent verbatim, ``str`` as UTF-8, anything else as JSON;
+    ``headers`` lets a case answer a redirect with a ``Location``); every request form is
     recorded in ``requests`` for load-bearing assertions (call counts, exact
     refresh_token sent, client_secret present)."""
 
@@ -40,7 +41,8 @@ class MockTokenEndpoint:
                 form = {k: v[0] for k, v in parse_qs(raw).items()}
                 with endpoint._requests_mutex:
                     endpoint.requests.append(form)
-                status, body = endpoint.handler(form)
+                status, body, *extra = endpoint.handler(form)
+                headers: Dict[str, str] = extra[0] if extra else {}
                 # bytes are sent VERBATIM (conformance `raw_body_base64`: bodies that
                 # aren't valid UTF-8, which neither a str nor JSON can carry); a str
                 # is sent as its UTF-8 encoding; anything else is json.dumps'd.
@@ -53,6 +55,8 @@ class MockTokenEndpoint:
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
+                for name, value in headers.items():
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(payload)
 
@@ -92,6 +96,14 @@ class MockTokenEndpoint:
 
 @pytest.fixture()
 def token_endpoint():
+    endpoint = MockTokenEndpoint()
+    yield endpoint
+    endpoint.shutdown()
+
+
+@pytest.fixture()
+def other_endpoint():
+    """A second, independent endpoint: where a hostile redirect points."""
     endpoint = MockTokenEndpoint()
     yield endpoint
     endpoint.shutdown()

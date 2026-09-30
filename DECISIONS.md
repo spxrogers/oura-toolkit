@@ -446,13 +446,8 @@ characters (redacting first, so a cut can't expose part of a secret). Pinned by
 one secret nested in another (longest first), a secret straddling the cut, the exact 1024-char
 body plus `…`, a 2-byte `é` body (the cap counts characters, never bytes), and a cut landing
 inside an emoji (the body stays well-formed — the cap counts code points in Rust/Go/Python and
-UTF-16 units in TS/Java/C#, identical on the Basic Multilingual Plane).
-
-Every token-endpoint HTTP client refuses redirects: the form body carries the client secret
-plus a refresh token or an authorization code, and a followed 307/308 re-sends it to whatever
-host `Location` names. The breadth companions already did; the Rust crate (behind `oura` and
-`oura mcp`) followed them until `token_endpoint_client()` (now also the CLI's login client). The Rust
-code exchange (`oura auth login`) also redacts the echoed authorization code.
+UTF-16 units in TS/Java/C#, identical on the Basic Multilingual Plane). The Rust code
+exchange (`oura auth login`) also redacts the echoed authorization code.
 
 In the Rust crate this split `AuthError`: a store record that fails to LOAD is now
 `AuthError::StoreFormat { file, detail }` (the file name and what/where, incl. a missing or
@@ -461,6 +456,16 @@ blanket `From<serde_json::Error>` (a future `?` on a parse can't bypass the reda
 `AuthError` is now `#[non_exhaustive]`, so later variants aren't breaking. Together that is a
 breaking change to `oura-toolkit-auth`'s public error type: it ships in the next minor (0.x)
 release.
+
+Every token-endpoint HTTP client refuses redirects: the form body carries the client secret
+plus a refresh token or an authorization code, and a followed 307/308 re-sends it to whatever
+host `Location` names. The breadth companions already refused them; the Rust crate (behind
+`oura` and `oura mcp`) followed redirects until this change. Its `exchange_code` and `refresh`
+now build the redirect-refusing client themselves instead of taking a caller's
+`reqwest::Client` (a breaking signature change riding the same minor bump), so neither the CLI
+nor a downstream caller can pass one that follows redirects; `TokenManager` uses the same
+client. Every companion pins this with a 307/308 attack test on each token-request path it
+has (in Rust: the code exchange and `TokenManager`'s refresh).
 
 Before this, the six diverged badly on lone surrogates too: Rust failed typed, Python crashed
 untyped while persisting, Go/TS/Java persisted a lossy grant (the escape TS and Java wrote even
