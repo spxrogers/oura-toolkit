@@ -123,6 +123,9 @@ impl RateLimitBudget {
     }
 
     /// Consume one wait if any remain.
+    // `fetch_update` is deprecated (renamed `try_update`) on current stable, but `try_update`
+    // doesn't exist at the MSRV (1.89), so keep the call and silence only this deprecation.
+    #[allow(deprecated)]
     fn try_take(&self) -> bool {
         self.0
             .fetch_update(
