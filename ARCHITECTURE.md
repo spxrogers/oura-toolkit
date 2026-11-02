@@ -18,7 +18,7 @@ companion. Rust is not privileged; it just also happens to host the CLI app.
 ## The pipeline (spec → clients)
 
 ```
-spec/openapi.json  (vendored, pinned: openapi-1.41.json, OpenAPI 3.1)
+spec/openapi.json  (vendored, pinned: openapi-1.43.json, OpenAPI 3.1)
       │   just spec-fetch
       ▼
 codegen/overlay.jq  ── shared overlay (3.1, all languages) ──┐

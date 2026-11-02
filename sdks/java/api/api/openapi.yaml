@@ -9,19 +9,19 @@ info:
     \ Ring data programmatically.\n## Quick Start Guide\n1. Register an [API Application](https://cloud.ouraring.com/oauth/applications)\
     \ and implement OAuth2\n2. **Make Your First API Call**:\n   ```\n   curl -X GET\
     \ https://api.ouraring.com/v2/usercollection/personal_info \\\n   -H \"Authorization:\
-    \ Bearer YOUR_TOKEN_HERE\"\n   ```\n3. **Explore Data Types**:\n   - Browse the\
-    \ available endpoints in this documentation to discover what data you can access\n\
-    \   - Each endpoint includes example requests and responses\n4. **Set Up Webhooks\
-    \ (Strongly Recommended)**:\n   - Webhooks are the preferred way to consume Oura\
-    \ data\n   - We have not had customers hit rate limits with webhooks properly\
-    \ implemented\n   - Make a single request for historical data when a user first\
-    \ connects, then use webhooks for ongoing updates\n   - Webhook notifications\
-    \ come approximately 30 seconds after data syncs from the mobile app\n   - [Set\
-    \ up webhooks](#tag/Webhook-Subscription-Routes) to receive notifications when\
-    \ data changes\n## Common Questions\n- **Data Delay**: Different data types sync\
-    \ at different times - sleep data requires users to open the Oura app, while daily\
-    \ activity and stress may sync in the background\n# Data Access\nIn order to access\
-    \ data, a registered [API Application](https://cloud.ouraring.com/oauth/applications)\
+    \ Bearer YOUR_TOKEN_HERE\" \\\n   -H \"User-Agent: YourAppName/1.0\"\n   ```\n\
+    3. **Explore Data Types**:\n   - Browse the available endpoints in this documentation\
+    \ to discover what data you can access\n   - Each endpoint includes example requests\
+    \ and responses\n4. **Set Up Webhooks (Strongly Recommended)**:\n   - Webhooks\
+    \ are the preferred way to consume Oura data\n   - We have not had customers hit\
+    \ rate limits with webhooks properly implemented\n   - Make a single request for\
+    \ historical data when a user first connects, then use webhooks for ongoing updates\n\
+    \   - Webhook notifications come approximately 30 seconds after data syncs from\
+    \ the mobile app\n   - [Set up webhooks](#tag/Webhook-Subscription-Routes) to\
+    \ receive notifications when data changes\n## Common Questions\n- **Data Delay**:\
+    \ Different data types sync at different times - sleep data requires users to\
+    \ open the Oura app, while daily activity and stress may sync in the background\n\
+    # Data Access\nIn order to access data, a registered [API Application](https://cloud.ouraring.com/oauth/applications)\
     \ is required.\n API Applications are limited to **10** users before requiring\
     \ approval from Oura. There is no limit once an application is approved.\n Additionally,\
     \ Oura users **must provide consent** to share each data type an API Application\
@@ -32,9 +32,15 @@ info:
     \ information, see our [Authentication instructions](https://cloud.ouraring.com/docs/authentication).\n\
     Access tokens must be included in the request header as follows:\n```http\nGET\
     \ /v2/usercollection/personal_info HTTP/1.1\nHost: api.ouraring.com\nAuthorization:\
-    \ Bearer <token>\n```\nPlease note that personal access tokens were deprecated\
-    \ in December 2025 and are no longer available for use.\n# Oura HTTP Response\
-    \ Codes\n| Response Code                        | Description |\n| ------------------------------------\
+    \ Bearer <token>\nUser-Agent: YourAppName/1.0\n```\nPlease note that personal\
+    \ access tokens were deprecated in December 2025 and are no longer available for\
+    \ use.\n# User-Agent Header\nEvery request must include a `User-Agent` header\
+    \ that identifies your application, for example `User-Agent: YourAppName/1.0`.\
+    \ Requests without one may be rejected. Not every HTTP library sends a default\
+    \ value, so set it explicitly rather than relying on the default. Browsers set\
+    \ their own `User-Agent` automatically; every other client (server-side code,\
+    \ scripts, native apps) must set it.\n\n# Oura HTTP Response Codes\n| Response\
+    \ Code                        | Description |\n| ------------------------------------\
     \ | - |\n| 200 OK                               | Successful Response        \
     \ |\n| 400 Query Parameter Validation Error | The request contains query parameters\
     \ that are invalid or incorrectly formatted. |\n| 401 Unauthorized           \
@@ -122,6 +128,8 @@ tags:
     CLIENT_ID = "YOUR_CLIENT_ID"
     CLIENT_SECRET = "YOUR_CLIENT_SECRET"
     REDIRECT_URI = "YOUR_REDIRECT_URI"
+    # Identify your application on every request to api.ouraring.com
+    USER_AGENT = "YourAppName/1.0"
 
     # Step 1: Direct user to authorization page
     auth_params = {
@@ -146,13 +154,13 @@ tags:
         "client_secret": CLIENT_SECRET,
         "redirect_uri": REDIRECT_URI
     }
-    response = requests.post(token_url, data=token_data)
+    response = requests.post(token_url, data=token_data, headers={"User-Agent": USER_AGENT})
     tokens = response.json()
     access_token = tokens["access_token"]
     refresh_token = tokens["refresh_token"]
 
     # Step 3: Use the access token to make API calls
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
     sleep_data = requests.get(
         "https://api.ouraring.com/v2/usercollection/sleep",
         headers=headers,
@@ -168,7 +176,7 @@ tags:
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET
         }
-        response = requests.post(token_url, data=token_data)
+        response = requests.post(token_url, data=token_data, headers={"User-Agent": USER_AGENT})
         new_tokens = response.json()
         return new_tokens["access_token"], new_tokens["refresh_token"]
     ```
@@ -197,6 +205,7 @@ tags:
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "YourAppName/1.0",
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
@@ -220,7 +229,8 @@ tags:
         `https://api.ouraring.com/v2/usercollection/sleep?start_date=${startDate}&end_date=${endDate}`,
         {
           headers: {
-            Authorization: `Bearer ${accessToken}`
+            Authorization: `Bearer ${accessToken}`,
+            "User-Agent": "YourAppName/1.0"
           }
         }
       );
@@ -349,6 +359,7 @@ tags:
     - For OAuth2 applications, try refreshing the token
     ### I'm getting 403 Forbidden errors
     This usually means the user's Oura subscription has expired or they haven't granted permission for the specific data type you're requesting.
+    Requests without a `User-Agent` header may also be rejected with a 403. Every request must send one identifying your application (see [User-Agent Header](#section/User-Agent-Header)).
     ### Why am I not receiving webhook events?
     Ensure that:
     - Your webhook endpoint is publicly accessible
@@ -394,13 +405,15 @@ tags:
     **Solution**: Ensure you're including "Bearer" before your token:
     ```
     Authorization: Bearer your-token-here
+    User-Agent: YourAppName/1.0
     ```
     **Example Correct Implementation**:
     ```javascript
     // JavaScript example
     fetch('https://api.ouraring.com/v2/usercollection/personal_info', {
       headers: {
-        'Authorization': 'Bearer ' + accessToken  // Note the space after "Bearer"
+        'Authorization': 'Bearer ' + accessToken,  // Note the space after "Bearer"
+        'User-Agent': 'YourAppName/1.0'
       }
     })
     ```
@@ -410,6 +423,7 @@ tags:
     ```http
     POST https://api.ouraring.com/oauth/token
     Content-Type: application/x-www-form-urlencoded
+    User-Agent: YourAppName/1.0
 
     grant_type=refresh_token&
     refresh_token=YOUR_REFRESH_TOKEN&
@@ -424,7 +438,8 @@ tags:
       try {
         const response = await fetch(`https://api.ouraring.com/v2/${endpoint}`, {
           headers: {
-            'Authorization': `Bearer ${accessToken}`
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'YourAppName/1.0'
           }
         });
 
@@ -435,7 +450,8 @@ tags:
           // Retry the request with the new token
           return fetch(`https://api.ouraring.com/v2/${endpoint}`, {
             headers: {
-              'Authorization': `Bearer ${newTokens.access_token}`
+              'Authorization': `Bearer ${newTokens.access_token}`,
+              'User-Agent': 'YourAppName/1.0'
             }
           });
         }
@@ -451,7 +467,8 @@ tags:
       const response = await fetch('https://api.ouraring.com/oauth/token', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'YourAppName/1.0'
         },
         body: new URLSearchParams({
           'grant_type': 'refresh_token',
@@ -532,7 +549,7 @@ tags:
     **Testing Token Exchange**:
     ```bash
     # Using curl to debug token exchange
-    curl -X POST https://api.ouraring.com/oauth/token   -d "grant_type=authorization_code"   -d "code=YOUR_AUTH_CODE"   -d "client_id=YOUR_CLIENT_ID"   -d "client_secret=YOUR_CLIENT_SECRET"   -d "redirect_uri=YOUR_REDIRECT_URI"
+    curl -X POST https://api.ouraring.com/oauth/token   -H "User-Agent: YourAppName/1.0"   -d "grant_type=authorization_code"   -d "code=YOUR_AUTH_CODE"   -d "client_id=YOUR_CLIENT_ID"   -d "client_secret=YOUR_CLIENT_SECRET"   -d "redirect_uri=YOUR_REDIRECT_URI"
     ```
     ## Authentication Best Practices
     ### Security Recommendations
@@ -703,7 +720,7 @@ tags:
     \ to your callback URL with query parameters:\n   ```\n   GET https://your-server.com/oura-webhook?verification_token=your-token&challenge=random-string\n\
     \   ```\n\n2. Your endpoint must verify the token and respond with the challenge:\n\
     \   ```json\n   {\n     \"challenge\": \"random-string\"\n   }\n   ```\n\n3. If\
-    \ verification succeeds, your subscription is activated\n\n![Verification Flow](/img/webhook-verification-flow-diagram.drawio.png)\n\
+    \ verification succeeds, your subscription is activated\n\n![Verification Flow](/v2/static/img/webhook-verification-flow-diagram.drawio.png)\n\
     \n### Step 4: Receiving and Processing Events\nWhen an event occurs (e.g., user\
     \ syncs new sleep data):\n\n1. Oura sends a POST request to your callback URL:\n\
     \   ```\n   POST https://your-server.com/oura-webhook\n   Headers:\n     x-oura-signature:\
@@ -820,18 +837,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_activity'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,score' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -839,7 +858,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -890,16 +910,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -907,7 +930,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -974,18 +998,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,pulse_wave_velocity' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -993,7 +1019,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1044,16 +1071,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1061,7 +1091,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1128,18 +1159,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,score' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1147,7 +1180,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1198,16 +1232,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1215,7 +1252,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1282,17 +1320,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01'\
-          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse =\
-          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1300,7 +1341,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1351,16 +1393,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1368,7 +1413,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1435,18 +1481,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,score' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1454,7 +1502,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1505,16 +1554,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1522,7 +1574,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1589,18 +1642,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'breathing_disturbance_index,day' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1608,7 +1663,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1659,16 +1715,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1676,7 +1735,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1743,18 +1803,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_stress'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,day_summary' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1762,7 +1824,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1813,16 +1876,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1830,7 +1896,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1897,17 +1964,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01'\
-          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse =\
-          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1915,7 +1985,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -1966,16 +2037,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -1983,7 +2057,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2050,18 +2125,21 @@ paths:
         label: cURL
         source: "# The '+' symbol in the timezone must be escaped to `%2B` if included.\
           \ \ncurl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm'\
-          \ \\ \n--header 'Authorization: Bearer <token>'"
+          \ \\ \n--header 'Authorization: Bearer <token>' \\\n--header 'User-Agent:\
+          \ YourAppName/1.0'"
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/heartrate'\
           \ \nparams={ \n    'start_datetime': '2021-11-01T00:00:00-08:00', \n   \
           \ 'end_datetime': '2021-12-01T00:00:00-08:00',\n    'fields': 'timestamp,bpm'\
-          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse\
-          \ = requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2069,7 +2147,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2136,18 +2215,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'end_day,end_time' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2155,7 +2236,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2206,16 +2288,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2223,7 +2308,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2290,18 +2376,21 @@ paths:
         label: cURL
         source: "# The '+' symbol in the timezone must be escaped to `%2B` if included.\
           \ \ncurl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix'\
-          \ \\ \n--header 'Authorization: Bearer <token>'"
+          \ \\ \n--header 'Authorization: Bearer <token>' \\\n--header 'User-Agent:\
+          \ YourAppName/1.0'"
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/ring_battery_level'\
           \ \nparams={ \n    'start_datetime': '2021-11-01T00:00:00-08:00', \n   \
           \ 'end_datetime': '2021-12-01T00:00:00-08:00',\n    'fields': 'timestamp,timestamp_unix'\
-          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse\
-          \ = requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2309,7 +2398,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2358,17 +2448,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration?fields=color,design' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration'\
           \ \nparams = {'fields': 'color,design'}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration?fields=color,design',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration?fields=color,design',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2376,7 +2468,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration?fields=color,design\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2427,16 +2520,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2444,7 +2540,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2511,18 +2608,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/session'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,end_datetime' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2530,7 +2629,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2581,16 +2681,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2598,7 +2701,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2665,18 +2769,21 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/sleep'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'average_breath,average_heart_rate' \n}\nheaders = { \n \
-          \ 'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ 'Authorization': 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0'\
+          \ \n}\nresponse = requests.request('GET', url, headers=headers, params=params)\
+          \ \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2684,7 +2791,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2735,16 +2843,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2752,7 +2863,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2819,18 +2931,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/sleep_time'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,optimal_bedtime' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2838,7 +2952,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2889,16 +3004,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2906,7 +3024,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -2973,17 +3092,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/tag'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01'\
-          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse =\
-          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -2991,7 +3113,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3042,16 +3165,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3059,7 +3185,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3126,18 +3253,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/vO2_max'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,timestamp' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3145,7 +3274,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3196,16 +3326,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3213,7 +3346,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3280,18 +3414,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/workout'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'activity,calories' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3299,7 +3435,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3350,16 +3487,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/sandbox/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/sandbox/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/sandbox/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3367,7 +3507,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/sandbox/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3445,18 +3586,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_activity'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,score' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3464,7 +3607,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_activity?start_date=2021-11-01&end_date=2021-12-01&fields=day,score\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3515,16 +3659,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3532,7 +3679,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_activity/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3610,18 +3758,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,pulse_wave_velocity' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3629,7 +3779,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age?start_date=2021-11-01&end_date=2021-12-01&fields=day,pulse_wave_velocity\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3680,16 +3831,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3697,7 +3851,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_cardiovascular_age/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3775,18 +3930,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_readiness'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,score' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3794,7 +3951,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=2021-11-01&end_date=2021-12-01&fields=day,score\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3845,16 +4003,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3862,7 +4023,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_readiness/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -3939,17 +4101,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_resilience'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01'\
-          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse =\
-          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -3957,7 +4122,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_resilience?start_date=2021-11-01&end_date=2021-12-01\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4008,16 +4174,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4025,7 +4194,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_resilience/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4103,18 +4273,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_sleep'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,score' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4122,7 +4294,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=2021-11-01&end_date=2021-12-01&fields=day,score\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4173,16 +4346,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4190,7 +4366,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_sleep/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4268,18 +4445,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_spo2'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'breathing_disturbance_index,day' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4287,7 +4466,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_spo2?start_date=2021-11-01&end_date=2021-12-01&fields=breathing_disturbance_index,day\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4338,16 +4518,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4355,7 +4538,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_spo2/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4433,18 +4617,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_stress'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,day_summary' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4452,7 +4638,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_stress?start_date=2021-11-01&end_date=2021-12-01&fields=day,day_summary\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4503,16 +4690,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4520,7 +4710,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/daily_stress/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4597,17 +4788,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/enhanced_tag'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01'\
-          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse =\
-          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4615,7 +4809,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/enhanced_tag?start_date=2021-11-01&end_date=2021-12-01\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4666,16 +4861,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4683,7 +4881,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/enhanced_tag/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4770,18 +4969,21 @@ paths:
         label: cURL
         source: "# The '+' symbol in the timezone must be escaped to `%2B` if included.\
           \ \ncurl --location --request GET 'https://api.ouraring.com/v2/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm'\
-          \ \\ \n--header 'Authorization: Bearer <token>'"
+          \ \\ \n--header 'Authorization: Bearer <token>' \\\n--header 'User-Agent:\
+          \ YourAppName/1.0'"
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/heartrate'\
           \ \nparams={ \n    'start_datetime': '2021-11-01T00:00:00-08:00', \n   \
           \ 'end_datetime': '2021-12-01T00:00:00-08:00',\n    'fields': 'timestamp,bpm'\
-          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse\
-          \ = requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4789,7 +4991,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/heartrate?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,bpm\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4823,24 +5026,28 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/personal_info' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/personal_info'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers)\
+          \ \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders,\n}; \nfetch('https://api.ouraring.com/v2/usercollection/personal_info',\
-          \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
-          \ => console.log(result)) \n  .catch(error => console.log('error', error));"
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders,\n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/personal_info', requestOptions)\
+          \ \n  .then(response => response.text()) \n  .then(result => console.log(result))\
+          \ \n  .catch(error => console.log('error', error));"
         label: JavaScript
       - lang: Java
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/personal_info\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4918,18 +5125,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/rest_mode_period'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'end_day,end_time' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -4937,7 +5146,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/rest_mode_period?start_date=2021-11-01&end_date=2021-12-01&fields=end_day,end_time\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -4988,16 +5198,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5005,7 +5218,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/rest_mode_period/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5092,18 +5306,21 @@ paths:
         label: cURL
         source: "# The '+' symbol in the timezone must be escaped to `%2B` if included.\
           \ \ncurl --location --request GET 'https://api.ouraring.com/v2/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix'\
-          \ \\ \n--header 'Authorization: Bearer <token>'"
+          \ \\ \n--header 'Authorization: Bearer <token>' \\\n--header 'User-Agent:\
+          \ YourAppName/1.0'"
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/ring_battery_level'\
           \ \nparams={ \n    'start_datetime': '2021-11-01T00:00:00-08:00', \n   \
           \ 'end_datetime': '2021-12-01T00:00:00-08:00',\n    'fields': 'timestamp,timestamp_unix'\
-          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse\
-          \ = requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n} \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5111,7 +5328,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/ring_battery_level?start_datetime=2021-11-01T00:00:00-08:00&end_datetime=2021-12-01T00:00:00-08:00&fields=timestamp,timestamp_unix\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5171,17 +5389,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/ring_configuration?fields=color,design' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/ring_configuration'\
           \ \nparams = {'fields': 'color,design'}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/ring_configuration?fields=color,design',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/ring_configuration?fields=color,design',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5189,7 +5409,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/ring_configuration?fields=color,design\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5240,16 +5461,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5257,7 +5481,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/ring_configuration/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5335,18 +5560,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/session'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,end_datetime' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5354,7 +5581,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/session?start_date=2021-11-01&end_date=2021-12-01&fields=day,end_datetime\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5405,16 +5633,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5422,7 +5653,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/session/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5500,18 +5732,21 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/sleep'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'average_breath,average_heart_rate' \n}\nheaders = { \n \
-          \ 'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ 'Authorization': 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0'\
+          \ \n}\nresponse = requests.request('GET', url, headers=headers, params=params)\
+          \ \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5519,7 +5754,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/sleep?start_date=2021-11-01&end_date=2021-12-01&fields=average_breath,average_heart_rate\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5570,16 +5806,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5587,7 +5826,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/sleep/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5665,18 +5905,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/sleep_time'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,optimal_bedtime' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5684,7 +5926,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/sleep_time?start_date=2021-11-01&end_date=2021-12-01&fields=day,optimal_bedtime\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5735,16 +5978,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5752,7 +5998,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/sleep_time/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5829,17 +6076,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/tag'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01'\
-          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse =\
-          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
+          \ \n}\nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5847,7 +6097,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/tag?start_date=2021-11-01&end_date=2021-12-01\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5898,16 +6149,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -5915,7 +6169,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/tag/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -5993,18 +6248,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/vO2_max'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'day,timestamp' \n}\nheaders = { \n  'Authorization': 'Bearer\
-          \ <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse = requests.request('GET',\
+          \ url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -6012,7 +6269,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/vO2_max?start_date=2021-11-01&end_date=2021-12-01&fields=day,timestamp\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -6063,16 +6321,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -6080,7 +6341,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/vO2_max/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -6158,18 +6420,20 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/workout'\
           \ \nparams={ \n    'start_date': '2021-11-01', \n    'end_date': '2021-12-01',\n\
           \    'fields': 'activity,calories' \n}\nheaders = { \n  'Authorization':\
-          \ 'Bearer <token>' \n}\nresponse = requests.request('GET', url, headers=headers,\
-          \ params=params) \nprint(response.text)"
+          \ 'Bearer <token>', \n  'User-Agent': 'YourAppName/1.0' \n}\nresponse =\
+          \ requests.request('GET', url, headers=headers, params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -6177,7 +6441,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/workout?start_date=2021-11-01&end_date=2021-12-01&fields=activity,calories\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -6228,16 +6493,19 @@ paths:
         label: cURL
         source: |-
           curl --location --request GET 'https://api.ouraring.com/v2/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e' \
-          --header 'Authorization: Bearer <token>'
+          --header 'Authorization: Bearer <token>' \
+          --header 'User-Agent: YourAppName/1.0'
       - lang: Python
         source: "import requests \nurl = 'https://api.ouraring.com/v2/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e'\
-          \ \nheaders = { \n  'Authorization': 'Bearer <token>' \n}\nresponse = requests.request('GET',\
-          \ url, headers=headers, params=params) \nprint(response.text)"
+          \ \nheaders = { \n  'Authorization': 'Bearer <token>', \n  'User-Agent':\
+          \ 'YourAppName/1.0' \n}\nresponse = requests.request('GET', url, headers=headers,\
+          \ params=params) \nprint(response.text)"
         label: Python
       - lang: JavaScript
         source: "var myHeaders = new Headers(); \nmyHeaders.append('Authorization',\
-          \ 'Bearer <token>'); \nvar requestOptions = { \n  method: 'GET', \n  headers:\
-          \ myHeaders, \n}; \nfetch('https://api.ouraring.com/v2/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e',\
+          \ 'Bearer <token>'); \nmyHeaders.append('User-Agent', 'YourAppName/1.0');\
+          \ \nvar requestOptions = { \n  method: 'GET', \n  headers: myHeaders, \n\
+          }; \nfetch('https://api.ouraring.com/v2/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e',\
           \ requestOptions) \n  .then(response => response.text()) \n  .then(result\
           \ => console.log(result)) \n  .catch(error => console.log('error', error));"
         label: JavaScript
@@ -6245,7 +6513,8 @@ paths:
         source: "OkHttpClient client = new OkHttpClient().newBuilder() \n  .build();\
           \ \nRequest request = new Request.Builder() \n  .url(\"https://api.ouraring.com/v2/usercollection/workout/2-5daccc095220cc5493a4e9c2b681ca941e\"\
           ) \n  .method(\"GET\", null) \n  .addHeader(\"Authorization\", \"Bearer\
-          \ <token>\") \n  .build(); \nResponse response = client.newCall(request).execute();"
+          \ <token>\") \n  .addHeader(\"User-Agent\", \"YourAppName/1.0\") \n  .build();\
+          \ \nResponse response = client.newCall(request).execute();"
         label: Java
       x-accepts:
       - application/json
@@ -6271,7 +6540,8 @@ paths:
       - lang: cURL
         label: cURL
         source: "curl --location --request GET 'https://api.ouraring.com/v2/webhook/subscription'\
-          \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'"
+          \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'\
+          \ --header 'User-Agent: YourAppName/1.0'"
       x-accepts:
       - application/json
     post:
@@ -6305,7 +6575,7 @@ paths:
       - lang: cURL
         label: cURL
         source: |-
-          curl --location --request POST 'https://api.ouraring.com/v2/webhook/subscription' --header 'x-client-id: client-id' --header 'x-client-secret: client-secret' --header 'Content-Type: application/json' --data-raw '{
+          curl --location --request POST 'https://api.ouraring.com/v2/webhook/subscription' --header 'x-client-id: client-id' --header 'x-client-secret: client-secret' --header 'User-Agent: YourAppName/1.0' --header 'Content-Type: application/json' --data-raw '{
               "callback_url": "https://my-api/oura/tag/delete",
               "verification_token": "123",
               "event_type": "delete",
@@ -6352,7 +6622,7 @@ paths:
         label: cURL
         source: "curl --location --request PUT 'https://api.ouraring.com/v2/webhook/subscription/renew/5d3fe17b-f880-4d93-b9b6-afbfb76c1e78'\
           \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'\
-          \ --header 'Content-Type: application/json'"
+          \ --header 'User-Agent: YourAppName/1.0' --header 'Content-Type: application/json'"
       x-accepts:
       - application/json
   /v2/webhook/subscription/{id}:
@@ -6388,7 +6658,8 @@ paths:
       - lang: cURL
         label: cURL
         source: "curl --location --request DELETE 'https://api.ouraring.com/v2/webhook/subscription/5d3fe17b-f880-4d93-b9b6-afbfb76c1e78'\
-          \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'"
+          \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'\
+          \ --header 'User-Agent: YourAppName/1.0'"
       x-accepts:
       - application/json
     get:
@@ -6427,7 +6698,8 @@ paths:
       - lang: cURL
         label: cURL
         source: "curl --location --request GET 'https://api.ouraring.com/v2/webhook/subscription/5d3fe17b-f880-4d93-b9b6-afbfb76c1e78'\
-          \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'"
+          \ --header 'x-client-id: client-id' --header 'x-client-secret: client-secret'\
+          \ --header 'User-Agent: YourAppName/1.0'"
       x-accepts:
       - application/json
     put:
@@ -6472,7 +6744,7 @@ paths:
       - lang: cURL
         label: cURL
         source: |-
-          curl --location --request PUT 'https://api.ouraring.com/v2/webhook/subscription/5d3fe17b-f880-4d93-b9b6-afbfb76c1e78' --header 'x-client-id: client-id' --header 'x-client-secret: client-secret' --header 'Content-Type: application/json' --data-raw '{
+          curl --location --request PUT 'https://api.ouraring.com/v2/webhook/subscription/5d3fe17b-f880-4d93-b9b6-afbfb76c1e78' --header 'x-client-id: client-id' --header 'x-client-secret: client-secret' --header 'User-Agent: YourAppName/1.0' --header 'Content-Type: application/json' --data-raw '{
               "callback_url": "https://my-api/oura/tag/delete",
               "verification_token": "123",
               "event_type": "delete",
@@ -6606,7 +6878,6 @@ components:
       - daily_cardiovascular_age
       - daily_resilience
       - vo2_max
-      - meal
       title: ExtApiV2DataType
       type: string
     HTTPValidationError:

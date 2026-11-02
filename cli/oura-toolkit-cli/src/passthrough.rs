@@ -177,9 +177,10 @@ pub async fn execute(manager: &TokenManager, prepared: Prepared) -> Result<Strin
         paginate,
     } = prepared;
     let path = path.as_str();
-    // Same 30s per-request timeout as `api::authorized_client`; a fresh Bearer is injected
-    // per attempt inside `send`, so this client carries no default auth header.
+    // Same 30s per-request timeout and User-Agent as `api::authorized_client`; a fresh Bearer
+    // is injected per attempt inside `send`, so this client carries no default auth header.
     let http = reqwest::Client::builder()
+        .user_agent(crate::api::USER_AGENT)
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .context("building the HTTP client")?;

@@ -38,6 +38,15 @@ public sealed class TokenManager : IDisposable
     public static readonly TimeSpan TokenEndpointTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// The <c>User-Agent</c> every token-endpoint call carries: <c>OuraToolkit.Auth/&lt;version&gt;</c>.
+    /// Oura's API (openapi-1.43+) requires a <c>User-Agent</c> identifying the application on
+    /// every request and may reject requests without one, and .NET's <c>HttpClient</c> sends
+    /// none by default.
+    /// </summary>
+    public static readonly string UserAgent =
+        "OuraToolkit.Auth/" + typeof(TokenManager).Assembly.GetName().Version!.ToString(3);
+
+    /// <summary>
     /// The largest <c>expires_in</c> (seconds) a token response may carry: <see cref="int.MaxValue"/>
     /// (2147483647, ~68 years). Shared across every companion by the conformance fixture. It
     /// keeps <c>now + expires_in</c> exact (no overflow in the <c>expires_at</c> sum) and the
@@ -113,6 +122,7 @@ public sealed class TokenManager : IDisposable
             ? new HttpClient(CreateRedirectRefusingHandler())
             : new HttpClient(handler);
         _http.Timeout = httpTimeout ?? TokenEndpointTimeout;
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
     }
 
     /// <summary>

@@ -97,6 +97,70 @@ fn env_token_authorizes_a_data_command_with_no_store() {
     );
 }
 
+/// The exact `User-Agent` the binary must send: Oura (openapi-1.43+) requires one
+/// identifying the application on every request and may reject requests without it. Spelled
+/// out here (not imported from the crate) so a wrong constant can't vouch for itself.
+const EXPECTED_USER_AGENT: &str = concat!("oura-toolkit/", env!("CARGO_PKG_VERSION"));
+
+/// Run the real binary against a mock that answers `route` ONLY when the request carries the
+/// exact `User-Agent`; returns the process output.
+fn run_requiring_user_agent(route: &'static str, args: &[&str]) -> std::process::Output {
+    let oura = mock_oura(|server| {
+        Box::pin(async move {
+            Mock::given(method("GET"))
+                .and(path(route))
+                .and(header("user-agent", EXPECTED_USER_AGENT))
+                .respond_with(page(vec![sleep_doc("2026-06-26", 77)], None))
+                .mount(server)
+                .await;
+        })
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("oura"));
+    base_env(&mut cmd, dir.path());
+    cmd.args(args)
+        .env("OURA_ACCESS_TOKEN", "env-tok-xyz")
+        .env("OURA_API_BASE_URL", oura.server.uri())
+        .stdin(Stdio::null())
+        .output()
+        .expect("run oura")
+}
+
+#[test]
+fn a_data_command_sends_the_oura_toolkit_user_agent() {
+    let out = run_requiring_user_agent(
+        "/v2/usercollection/daily_sleep",
+        &[
+            "sleep",
+            "--json",
+            "--start",
+            "2026-06-26",
+            "--end",
+            "2026-06-26",
+        ],
+    );
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("2026-06-26"),
+        "data commands must send `User-Agent: {EXPECTED_USER_AGENT}` (status {:?}); stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn oura_api_passthrough_sends_the_oura_toolkit_user_agent() {
+    let out = run_requiring_user_agent(
+        "/v2/usercollection/daily_sleep",
+        &["api", "/v2/usercollection/daily_sleep"],
+    );
+    assert!(
+        out.status.success() && String::from_utf8_lossy(&out.stdout).contains("2026-06-26"),
+        "`oura api` must send `User-Agent: {EXPECTED_USER_AGENT}` (status {:?}); stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 #[test]
 fn wrong_env_token_is_rejected_without_creating_a_store() {
     // The negative half: a Bearer the mock doesn't recognise gets no 200 (wiremock 404s an

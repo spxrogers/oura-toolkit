@@ -57,6 +57,25 @@ public class TokenManagerTests
     }
 
     /// <summary>
+    /// Oura (openapi-1.43+) requires an identifying <c>User-Agent</c> on every request, and
+    /// .NET's HttpClient sends none by default: every token-endpoint call must carry
+    /// <c>OuraToolkit.Auth/&lt;major.minor.patch&gt;</c>.
+    /// </summary>
+    [Fact]
+    public async Task RefreshSendsTheOuraToolkitUserAgent()
+    {
+        using var temp = new TempStore();
+        temp.Store.SaveTokens(Fixtures.Expired("r1"));
+        var endpoint = GrantOnly("r1", accessToken: "fresh-access", rotatedTo: "r2");
+        using var manager = Manager(temp, endpoint, Fixtures.Expired("r1"));
+
+        Assert.Equal("fresh-access", await manager.GetAccessTokenAsync());
+
+        Assert.Matches(@"^OuraToolkit\.Auth/\d+\.\d+\.\d+$", TokenManager.UserAgent);
+        Assert.Equal(TokenManager.UserAgent, Assert.Single(endpoint.UserAgents));
+    }
+
+    /// <summary>
     /// THE rotation-persistence guarantee: Oura invalidates the previous refresh token on
     /// every refresh, so the newly returned one must land on disk — and the refresh must be
     /// a confidential-client call carrying client_id + client_secret in the form body.

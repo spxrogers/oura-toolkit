@@ -62,10 +62,12 @@ impl std::fmt::Debug for TokenResponse {
 /// its form body, and reqwest re-sends a reusable body on a 307/308 — so a followed redirect
 /// would hand those secrets to whatever host the `Location` names. A 3xx instead fails as
 /// [`AuthError::TokenEndpoint`] with its status (the other five companions also refuse
-/// redirects). Crate-private: [`exchange_code`], [`refresh`] and [`crate::TokenManager`] build
+/// redirects). It also carries [`crate::USER_AGENT`], which Oura requires on every request
+/// (openapi-1.43+). Crate-private: [`exchange_code`], [`refresh`] and [`crate::TokenManager`] build
 /// it themselves, so no caller can hand them a redirect-following client.
 pub(crate) fn token_endpoint_client() -> reqwest::Client {
     reqwest::Client::builder()
+        .user_agent(crate::USER_AGENT)
         .timeout(crate::client::TOKEN_ENDPOINT_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -454,6 +456,31 @@ mod tests {
                 "refresh: a {status} fails typed, got {err:?}"
             );
         }
+    }
+
+    /// The code exchange builds its own client; Oura (openapi-1.43+) requires an identifying
+    /// `User-Agent`, which reqwest does not send by default. The mock answers only when the
+    /// exact header is present.
+    #[tokio::test]
+    async fn the_code_exchange_sends_the_user_agent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(wiremock::matchers::header("user-agent", crate::USER_AGENT))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "a1", "refresh_token": "r1", "expires_in": 3600
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let tokens = exchange_code_at(
+            &server.uri(),
+            &credentials(),
+            "code1",
+            "http://localhost:8788/callback",
+        )
+        .await
+        .expect("the exchange must send `User-Agent: oura-toolkit-auth/<version>`");
+        assert_eq!(tokens.access_token, "a1");
     }
 
     #[tokio::test]

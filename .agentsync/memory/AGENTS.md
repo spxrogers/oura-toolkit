@@ -73,7 +73,7 @@ Vendor Oura's OpenAPI **v3.1** spec (title "Oura API Documentation", version **2
 it at `spec/openapi.json` from the versioned export:
 
 ```
-https://api.ouraring.com/v2/static/json/openapi-1.41.json
+https://api.ouraring.com/v2/static/json/openapi-1.43.json
 ```
 
 - Fetched via `just spec-fetch`. The spec drives **EVERYTHING** downstream — the Rust client,
@@ -173,6 +173,10 @@ and 9 scopes (`email personal daily heartrate workout tag session spo2 heart_hea
   holds no secrets. Contract: `docs/cli-contract.md` → Scope changes.
 - **Headless**: `OURA_ACCESS_TOKEN` injects a raw Bearer that bypasses the store (no login, no
   refresh); `OURA_API_BASE_URL` points the client at an alternate host/proxy/mock.
+- **User-Agent** (openapi-1.43+ requires one on every request): the CLI/MCP data plane sends
+  `oura-toolkit/<version>`, `oura-toolkit-auth` sends `oura-toolkit-auth/<version>`, the C#
+  companion `OuraToolkit.Auth/<version>` (reqwest and .NET send none by default); the other
+  companions' runtimes already send one. Each is pinned by a test.
 
 ### Token store (in oura-toolkit-auth)
 

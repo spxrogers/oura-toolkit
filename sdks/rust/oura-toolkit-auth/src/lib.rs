@@ -23,7 +23,9 @@ pub mod metadata;
 mod oauth;
 mod store;
 
-pub use client::{build_authenticated_client, AuthMiddleware, TokenManager, REFRESH_SKEW_SECS};
+pub use client::{
+    build_authenticated_client, AuthMiddleware, TokenManager, REFRESH_SKEW_SECS, USER_AGENT,
+};
 pub use error::AuthError;
 /// The code exchange against an arbitrary token URL — the conformance suite's seam for
 /// running hostile bodies through the exchange (hermetic tests only).

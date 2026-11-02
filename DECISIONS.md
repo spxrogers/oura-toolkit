@@ -340,6 +340,19 @@ weekly run crashed instead of reporting — and never reached the probe that wou
 the replacement. A 404/410 on the pinned export is now reported as drift ("withdrawn") and the
 probe still runs; only network/5xx failures exit 2. Selftest case 6 guards it.
 
+### openapi-1.43: an explicit User-Agent everywhere it was missing (#116)
+1.41 → 1.43 changed one schema (the webhook `ExtApiV2DataType` enum dropped `meal`) and added
+a documented requirement: every request must carry a `User-Agent` identifying the app, and
+requests without one may be rejected. `reqwest` and .NET's `HttpClient` send none by default,
+so the Rust CLI/MCP data plane (`oura-toolkit/<version>`), `oura-toolkit-auth`
+(`oura-toolkit-auth/<version>`, token endpoint + `build_authenticated_client`) and the C#
+companion (`OuraToolkit.Auth/<version>`) now set one explicitly, each pinned by a test whose
+mock answers only with the exact header. The TS (Node fetch), Python (urllib3), Go
+(`net/http`) and Java (`HttpClient`) companions keep their runtime's default User-Agent, which
+satisfies the requirement. Of the generated breadth clients, Go, Python and C# send
+`OpenAPI-Generator/<version>/<lang>`, and Java (`native`) and TypeScript (fetch) inherit their
+runtime's default.
+
 ### Scope changes re-consent once, data-driven (#116)
 Oura renamed `spo2Daily` → `spo2` and added `heart_health` in openapi-1.41. A refresh
 can't widen a grant, so logins from before a scope change silently lack the new scopes.

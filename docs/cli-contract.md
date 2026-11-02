@@ -195,6 +195,10 @@ values are ignored (treated as unset).
   proxy or mock, never a real network path.
 - **`NO_COLOR`** — disables ANSI color (same as `--no-color`).
 
+Every Oura API request from the data commands, `oura api` and `oura mcp` carries
+`User-Agent: oura-toolkit/<version>` (Oura's API requires an identifying User-Agent as of
+openapi-1.43); token-endpoint calls carry `oura-toolkit-auth/<version>`.
+
 ## Error style
 
 One line to stderr: `oura: <what failed>: <why>` — followed by a `hint:` line when the fix

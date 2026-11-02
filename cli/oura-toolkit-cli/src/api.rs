@@ -69,6 +69,12 @@ pub fn access_token_override(env: impl Fn(&str) -> Option<String>) -> Option<Str
         .filter(|t| !t.is_empty())
 }
 
+/// The `User-Agent` every Oura API request from the CLI (and `oura mcp`) carries. Oura's API
+/// (openapi-1.43+) requires one identifying the application on every request and may reject
+/// requests without it; reqwest sends none by default. (Token-endpoint calls go through
+/// `oura-toolkit-auth` and carry its own [`oura_toolkit_auth::USER_AGENT`].)
+pub const USER_AGENT: &str = concat!("oura-toolkit/", env!("CARGO_PKG_VERSION"));
+
 /// Build a generated-API client whose every request carries a fresh Bearer token.
 ///
 /// The token is resolved NOW (refreshing if expired, #22 semantics); the client is cheap
@@ -84,6 +90,7 @@ pub async fn authorized_client(
     let mut headers = HeaderMap::with_capacity(1);
     headers.insert(AUTHORIZATION, value);
     let http = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
         .default_headers(headers)
         .timeout(std::time::Duration::from_secs(30))
         .build()
