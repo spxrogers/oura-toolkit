@@ -58,7 +58,12 @@ public sealed class TokenEndpointException : OuraAuthException
     /// <summary>HTTP status code from the token endpoint.</summary>
     public int StatusCode { get; }
 
-    /// <summary>Response body from the token endpoint (server-supplied; never our secrets).</summary>
+    /// <summary>
+    /// Response body from the token endpoint (server-supplied), for diagnosis only: on a
+    /// non-2xx, every secret the request submitted is replaced with <c>[REDACTED]</c> and the
+    /// text is capped at 1024 characters (<c>…</c> appended when cut); on a malformed 2xx it is
+    /// a fixed, secret-free description instead.
+    /// </summary>
     public string Body { get; }
 }
 
@@ -80,6 +85,16 @@ public sealed class StoreFormatException : OuraAuthException
     /// <summary>Creates the exception naming the offending record file.</summary>
     public StoreFormatException(string path, Exception inner)
         : base($"token store format error in {path}: {inner.Message}", inner)
+    {
+    }
+
+    /// <summary>
+    /// Creates the exception naming the offending record file with a fixed reason and NO inner
+    /// exception — for failures this library detects itself (not valid UTF-8, a JSON null
+    /// record), where there is no underlying parser error to chain.
+    /// </summary>
+    internal StoreFormatException(string path, string reason)
+        : base($"token store format error in {path}: {reason}")
     {
     }
 }

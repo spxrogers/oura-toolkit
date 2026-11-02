@@ -64,7 +64,7 @@ class TestDefaultScopes:
         scopes = default_scopes()
         assert "email" not in scopes
         assert set(scopes) == set(ALL_SCOPES) - {"email"}
-        assert len(scopes) == 7
+        assert len(scopes) == 8
 
     def test_unknown_default_scope_fails_loud_naming_the_scope(self) -> None:
         with pytest.raises(AuthError, match="bogusScope"):

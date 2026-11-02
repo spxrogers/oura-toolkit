@@ -199,6 +199,75 @@ class TokenManagerTest {
     }
 
     @Test
+    void invalidUtf8400BodyStillSurfacesTheTyped400() throws Exception {
+        // Non-2xx bodies decode LENIENTLY (they're diagnostics only). A 400 whose body is
+        // not valid UTF-8 must still surface as the typed 400 TokenEndpointException — the
+        // status the reload-retry arm and the caller's "re-login" handling key on — never be
+        // reclassified (e.g. as a TransportException by a strict decode) or crash.
+        byte[] invalidUtf8 = {
+            '{', '"', 'e', 'r', 'r', 'o', 'r', '"', ':', '"',
+            'i', 'n', 'v', 'a', 'l', 'i', 'd', '_', 'g', 'r', 'a', 'n', 't', '"', ',',
+            '"', 'x', '"', ':', '"', (byte) 0xFF, (byte) 0xFE, '"', '}'
+        };
+        try (TokenEndpointStub stub = new TokenEndpointStub(
+                form -> new TokenEndpointStub.Response(400, invalidUtf8))) {
+            TokenStore store = new TokenStore(dir);
+            Tokens original = expiredTokens("r-dead");
+            store.saveTokens(original);
+            TokenManager m = manager(stub, expiredTokens("r-dead"));
+
+            TokenEndpointException e =
+                    assertThrows(TokenEndpointException.class, m::getAccessToken,
+                            "an invalid-UTF-8 400 body must still surface the typed "
+                                    + "TokenEndpointException");
+            assertEquals(400, e.getStatus(), "the 400 status must survive the lenient decode");
+            assertTrue(e.getBody().contains("invalid_grant"),
+                    "the lenient decode keeps the readable part of the diagnostic body");
+            assertEquals(1, stub.requests.get(),
+                    "disk did not move past what we sent — no blind retry");
+            assertEquals(original, store.loadTokens().orElseThrow(),
+                    "a 400 must persist nothing");
+        }
+    }
+
+    @Test
+    void unparseable2xxBodyLeaksNoBodyTextThroughTheExceptionOrItsCause() throws Exception {
+        // Jackson's parse-error messages QUOTE the offending body text ("Unrecognized token
+        // 'rt...'"), and a 2xx token body may carry token material. The typed
+        // TransportException must not carry it — neither in its own message nor via a
+        // chained cause that a logged stack trace would print.
+        String secret = "rtSECRETvalue123";
+        String[] bodies = {
+            "{\"access_token\":\"at-x\",\"refresh_token\":" + secret + ",\"expires_in\":3600}",
+            "{\"access_token\":\"at-x\",\"expires_in\":3600} " + secret,
+        };
+        String[] labels = {"unquoted token value", "trailing data"};
+        for (int i = 0; i < bodies.length; i++) {
+            String body = bodies[i];
+            String label = labels[i];
+            Path caseDir = Files.createTempDirectory(dir, "leak");
+            TokenStore store = new TokenStore(caseDir);
+            Tokens original = expiredTokens("r1");
+            store.saveTokens(original);
+            try (TokenEndpointStub stub = new TokenEndpointStub(
+                    form -> new TokenEndpointStub.Response(200, body))) {
+                TokenManager m = new TokenManager(store, credentials(), expiredTokens("r1"));
+                m.overrideTokenUrl(stub.url());
+
+                TransportException e = assertThrows(TransportException.class, m::getAccessToken,
+                        label + ": an unparseable 2xx must surface the typed TransportException");
+                for (Throwable t = e; t != null; t = t.getCause()) {
+                    assertTrue(!String.valueOf(t).contains(secret),
+                            label + ": the exception chain must not echo 2xx body text, but "
+                                    + t.getClass().getName() + " does");
+                }
+                assertEquals(original, store.loadTokens().orElseThrow(),
+                        label + ": an unparseable 2xx must persist nothing");
+            }
+        }
+    }
+
+    @Test
     void proactiveRefreshHonorsTheSkewWindow() throws Exception {
         try (TokenEndpointStub stub = new TokenEndpointStub(
                 form -> TokenEndpointStub.ok("fresh-access", "r2", 3600))) {

@@ -48,6 +48,52 @@ DEFAULT_SKEW_SECS = 60
 #: ~2x this value: the 400-retry arm can chain a second endpoint call under the same lock.
 TOKEN_ENDPOINT_TIMEOUT = 30.0
 
+#: Largest accepted token-endpoint ``expires_in`` (seconds; i32::MAX, ~68 years). The
+#: conformance contract (#58, ``auth-cases.json``) requires a JSON integer in
+#: ``1..=MAX_EXPIRES_IN_SECS``: the cap keeps ``now + expires_in`` exact and readable by
+#: EVERY companion's store — incl. Rust's i64 ``expires_at`` and JavaScript's
+#: double-backed numbers — so a Python-persisted record can never become a hostile store
+#: file for another language. Anything larger is a broken server, not a real lifetime.
+MAX_EXPIRES_IN_SECS = 2_147_483_647
+
+
+def _is_valid_unicode(value: str) -> bool:
+    """False when ``value`` holds a lone surrogate (which ``json.loads`` accepts from a
+    ``\\uD800``-style escape) — i.e. it can't be encoded as UTF-8 and so can't be
+    persisted."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+#: Longest token-endpoint error body (in characters) kept in a
+#: :class:`TokenEndpointError` for a non-2xx response; longer bodies are cut and
+#: marked with a trailing "…" (conformance `rejected_token_responses`: no error text
+#: may exceed the fixture's `max_error_chars`, however large the server's body).
+MAX_ERROR_BODY_CHARS = 1024
+
+#: What a submitted secret echoed back in a non-2xx body is replaced with.
+REDACTED = "[REDACTED]"
+
+
+def _rejected_body(body: str, secrets: tuple[str, ...]) -> str:
+    """A non-2xx token-endpoint body made safe to carry in an error (conformance
+    `rejected_token_responses`): (a) EVERY occurrence of each secret the request
+    submitted (refresh token, client secret) is replaced with ``[REDACTED]`` — a
+    server may echo them back, and the error ends up in logs/tracebacks; then (b) the
+    result is capped at :data:`MAX_ERROR_BODY_CHARS` characters ("…" appended when
+    cut). Redaction runs BEFORE the cap so a cut can't leave a secret's prefix that
+    no longer matches. Longer secrets are replaced first, so a secret that contains
+    another is still scrubbed whole; empty secrets are skipped (replacing "" would
+    splice the marker between every character)."""
+    for secret in sorted({s for s in secrets if s}, key=len, reverse=True):
+        body = body.replace(secret, REDACTED)
+    if len(body) > MAX_ERROR_BODY_CHARS:
+        body = body[:MAX_ERROR_BODY_CHARS] + "\u2026"
+    return body
+
 
 class TokenManager:
     """Owns the current tokens and the machinery to keep them fresh. Thread-safe
@@ -217,30 +263,67 @@ class TokenManager:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if not 200 <= resp.status < 300:
+            # Non-2xx: the server's body is kept for diagnosis, but scrubbed of every
+            # secret THIS request submitted (a server may echo the refresh token or
+            # client secret back) and capped — see _rejected_body.
             raise TokenEndpointError(
-                resp.status, resp.data.decode("utf-8", errors="replace")
+                resp.status,
+                _rejected_body(
+                    resp.data.decode("utf-8", errors="replace"),
+                    (current.refresh_token, self._credentials.client_secret),
+                ),
             )
         # A hostile/broken 2xx body must surface as the typed TokenEndpointError, never
-        # a raw JSONDecodeError/KeyError/ValueError detonating downstream (mirrors the
-        # Rust crate's `resp.json::<TokenResponse>()?` -> AuthError::Serde mapping). The
-        # error body is a FIXED, secret-free description — the raw response is NOT echoed,
-        # since a partial 2xx body may carry token material.
+        # a raw JSONDecodeError/KeyError/ValueError/RecursionError detonating downstream
+        # (mirrors the Rust crate, which maps EVERY decode failure to
+        # `AuthError::InvalidTokenResponse` with a static message). The error body is a
+        # FIXED, secret-free description — the raw response is NOT echoed, since a
+        # partial 2xx body may carry token material.
+        #
+        # Strict UTF-8 first (conformance `body_invalid_utf8_*`; RFC 8259 §8.1): a body
+        # that isn't valid UTF-8 ANYWHERE — unknown fields included — isn't JSON text at
+        # all. Decoding explicitly (never `json.loads(bytes)`, which sniffs UTF-16/32)
+        # and strictly (never errors="replace", which would persist U+FFFD) makes the
+        # whole response malformed, even though the server already rotated.
+        #
+        # NO exception chaining on this parse path (conformance `must_not_echo`, e.g.
+        # `body_invalid_utf8_secret`): a UnicodeDecodeError's repr() quotes the ENTIRE
+        # input bytes (incl. the rotated refresh token) and a JSONDecodeError keeps the
+        # whole body in `.doc`. `raise ... from None` would still leave the parser error
+        # reachable via `__context__`, so each failure is recorded as a fixed message
+        # and the typed error is raised OUTSIDE the `except` block — nothing chains.
+        text: Optional[str]
         try:
-            payload = json.loads(resp.data)
-        except ValueError as e:
+            text = resp.data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = None
+        if text is None:
             raise TokenEndpointError(
-                resp.status, "token-endpoint response was not valid JSON"
-            ) from e
+                resp.status, "token-endpoint response was not valid UTF-8"
+            )
+        # RecursionError too (conformance `body_deeply_nested`, an
+        # implementation_defined_token_responses case): json.loads recurses per nesting
+        # level, so a body nested past the interpreter's recursion limit — even inside
+        # an unknown field — raises RecursionError (a RuntimeError, NOT a ValueError).
+        # Rejecting it is allowed; letting it escape untyped is not.
+        parse_failure: Optional[str] = None
+        try:
+            payload = json.loads(text)
+        except ValueError:
+            parse_failure = "token-endpoint response was not valid JSON"
+        except RecursionError:
+            parse_failure = "token-endpoint response was nested too deeply"
+        if parse_failure is not None:
+            raise TokenEndpointError(resp.status, parse_failure)
         if not isinstance(payload, dict):
             raise TokenEndpointError(
                 resp.status, "token-endpoint response was not a JSON object"
             )
-        try:
-            access_token = payload["access_token"]
-        except KeyError as e:
+        if "access_token" not in payload:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response missing 'access_token'"
-            ) from e
+            )
+        access_token = payload["access_token"]
         if not isinstance(access_token, str):
             raise TokenEndpointError(
                 resp.status, "token-endpoint response 'access_token' was not a string"
@@ -253,30 +336,80 @@ class TokenManager:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response 'access_token' was empty"
             )
-        try:
-            expires_in = int(payload["expires_in"])
-        except KeyError as e:
+        if "expires_in" not in payload:
             raise TokenEndpointError(
                 resp.status, "token-endpoint response missing 'expires_in'"
-            ) from e
-        except (TypeError, ValueError) as e:
+            )
+        expires_in = payload["expires_in"]
+        # expires_in must be a JSON INTEGER (conformance `expires_in_fractional` /
+        # `_numeric_string` / `_overflows_double`): never coerce with int(), which
+        # would truncate 3600.5, parse "3600", and raise an untyped OverflowError on
+        # the `inf` that json.loads yields for 1e400. `bool` is an int subclass in
+        # Python but `true` is not a JSON integer, so it is excluded explicitly.
+        if type(expires_in) is not int:
             raise TokenEndpointError(
-                resp.status, "token-endpoint response 'expires_in' was not numeric"
-            ) from e
+                resp.status, "token-endpoint response 'expires_in' was not an integer"
+            )
         # Second half of the hostile-2xx guard family (#58): a zero/negative lifetime
-        # is an already-expired Bearer — reject it, keep the store untouched.
-        if expires_in <= 0:
+        # is an already-expired Bearer, and one beyond MAX_EXPIRES_IN_SECS
+        # (`expires_in_above_cap` / `_i64_max`) would persist an expires_at other
+        # companions can't read exactly — reject both, keep the store untouched.
+        if not 1 <= expires_in <= MAX_EXPIRES_IN_SECS:
             raise TokenEndpointError(
-                resp.status, "token-endpoint response 'expires_in' was not positive"
+                resp.status, "token-endpoint response 'expires_in' was out of range"
             )
         rotated = payload.get("refresh_token")
+        returned_token_type = payload.get("token_type")
+        # Type guard (conformance `wrong_type_refresh_token` / `wrong_type_token_type`):
+        # both fields are persisted verbatim, so a non-string (42, {"a":1}, …) would
+        # be written into tokens.json and corrupt the store — fail typed instead.
+        # Omitted/null/empty stays lenient (keeps the stored value, below), like
+        # Rust's Option<String>. Unlike `scope`, these are not informational.
+        for field, value in (
+            ("refresh_token", rotated),
+            ("token_type", returned_token_type),
+        ):
+            if value is not None and not isinstance(value, str):
+                raise TokenEndpointError(
+                    resp.status,
+                    f"token-endpoint response '{field}' was not a string",
+                )
+        # Malformed-Unicode guard (conformance `*_lone_surrogate` cases): json.loads
+        # accepts a lone-surrogate escape like "\ud800", yielding a str that is NOT
+        # valid Unicode — the store writer would then raise an untyped
+        # UnicodeEncodeError AFTER the server already rotated the refresh token. Any
+        # of the four fields we read must encode as UTF-8, or the whole RESPONSE is
+        # malformed: fail typed here, before anything is written. (Non-string scopes
+        # stay lenient below; this only rejects strings that aren't valid Unicode.
+        # Unknown fields are never read, so they are deliberately NOT validated —
+        # conformance `unknown_field_lone_surrogate` must succeed.)
+        for field in ("access_token", "refresh_token", "scope", "token_type"):
+            value = payload.get(field)
+            if isinstance(value, str) and not _is_valid_unicode(value):
+                raise TokenEndpointError(
+                    resp.status,
+                    f"token-endpoint response '{field}' was not valid Unicode",
+                )
+        # Scope (conformance `refresh_success_cases`): an omitted, null, non-string,
+        # empty, or whitespace-only scope keeps the prior grant (RFC 6749 §5.1 lets
+        # the server omit an unchanged scope; persisting a blank would erase the grant
+        # the CLI's re-consent check reads). Only a real scope string replaces it.
+        returned_scope = payload.get("scope")
+        scope = (
+            returned_scope
+            if isinstance(returned_scope, str) and returned_scope.strip()
+            else current.scope
+        )
         return Tokens(
             access_token=access_token,
-            # Persist the rotated token; keep the old one only if the server omits it.
-            refresh_token=rotated if rotated is not None else current.refresh_token,
+            # Persist the rotated token. An omitted, null or EMPTY refresh_token means
+            # the server didn't rotate it (conformance `refresh_token_empty`): keep the
+            # current one — persisting "" would make the next refresh 400.
+            refresh_token=rotated if rotated else current.refresh_token,
             expires_at=int(time.time()) + expires_in,
-            # Explicit null is treated like omission (Rust: `resp.scope.or_else(...)`) —
-            # `.get(k, default)` would hand back None for a present-but-null key.
-            scope=payload.get("scope") or current.scope,
-            token_type=payload.get("token_type") or current.token_type,
+            scope=scope,
+            # Same fallback for an omitted/null/empty token_type (`token_type_empty`).
+            token_type=(
+                returned_token_type if returned_token_type else current.token_type
+            ),
         )

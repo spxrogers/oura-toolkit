@@ -118,6 +118,9 @@ public sealed class MockTokenEndpoint : HttpMessageHandler
     /// <summary>Every request body seen, in order (thread-safe).</summary>
     public List<string> Bodies { get; } = new();
 
+    /// <summary>Every request's <c>User-Agent</c> header as sent, in order (thread-safe).</summary>
+    public List<string> UserAgents { get; } = new();
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -133,6 +136,10 @@ public sealed class MockTokenEndpoint : HttpMessageHandler
         lock (Bodies)
         {
             Bodies.Add(body);
+        }
+        lock (UserAgents)
+        {
+            UserAgents.Add(request.Headers.UserAgent.ToString());
         }
         return _respond(body);
     }

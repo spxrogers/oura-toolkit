@@ -26,6 +26,10 @@ Call tools in parallel where possible. If a tool returns an authentication error
 retry: tell the user to run `oura auth login` in a terminal (or `oura auth setup` first
 if they've never registered an Oura OAuth app), then stop.
 
+If a tool result carries a note that Oura changed its API permissions, the data is still
+good: finish the check-in, then pass the note on once, which asks the user to run
+`oura auth login` in a terminal to grant the new scopes.
+
 ## Interpret
 
 - Scores are 1–100. Rough bands: 85+ excellent, 70–84 good, 60–69 fair, <60 pay

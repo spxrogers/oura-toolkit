@@ -1,16 +1,52 @@
 // Cross-language auth-companion conformance (#58) — the GO leg.
 //
 // Iterates codegen/conformance/auth-cases.json (the single source for the hostile
-// token-endpoint responses, hostile store files, and canonical store records that every
-// companion suite must exercise; cases are added THERE, never here):
+// token-endpoint responses, hostile store files, successful-refresh expectations, and
+// canonical store records that every companion suite must exercise; cases are added
+// THERE, never here — its `$comment` is the contract):
 //
-//   - hostile-but-2xx token responses → typed *TokenEndpointError, store UNTOUCHED (the
-//     rotated refresh token is never burned by persisting a blank/expired Bearer);
-//   - hostile store files → typed *StoreFormatError, never a zero-valued record that
-//     would make IsAuthenticated lie, and never a panic;
+//   - hostile-but-2xx token responses (EXACTLY ONE of `body`, verbatim `raw_body`, or
+//     decoded `raw_body_base64` bytes — one shared helper for all three token-endpoint
+//     tables) → typed *TokenEndpointError, store UNTOUCHED (the rotated refresh token
+//     is never burned by persisting a blank/expired Bearer; a non-string
+//     refresh_token/token_type fails typed; a lone surrogate in any of the four fields
+//     read — access_token, refresh_token, token_type, scope — is never persisted; a body with invalid UTF-8 ANYWHERE fails; an expires_in outside
+//     1..=2147483647, fractional, or a numeric string fails; trailing data after the
+//     one top-level value fails); a case's `must_not_echo` string appears nowhere in
+//     the error's text or any error it chains;
+//   - implementation-defined 2xx token responses (BOM, duplicate keys, deep nesting,
+//     3600.0, an upper-case key) → EITHER success persisting access_token
+//     "at-refreshed", refresh_token "rt-refreshed" or the prior one (never empty) and
+//     expires_at = refresh time + 3600, OR typed *TokenEndpointError with the store
+//     byte-identical;
+//   - hostile store files (EXACTLY ONE of `content` or decoded `content_base64` bytes;
+//     a file that isn't valid UTF-8 fails) → typed *StoreFormatError, never a
+//     zero-valued record that would make IsAuthenticated lie, and never a panic; a
+//     case's `must_not_echo` string appears nowhere in the error chain;
+//   - rejected (NON-2xx) token responses, seeded with the fixture's `submitted`
+//     refresh_token + client_secret (a case's own `submitted` overrides the table's;
+//     the mock asserts those were sent) → typed *TokenEndpointError carrying the case's
+//     `status`, store byte-identical, `must_echo` in the error text (the body is kept
+//     for diagnosis), `must_not_echo` (a submitted secret the server echoed) nowhere in
+//     the chain, no chain string longer than `max_error_chars`, Body EXACTLY
+//     `expected_body` when given, and — for `cut_well_formed` — Body valid UTF-8,
+//     starting with the raw body's first 1023 characters and ending with "…";
+//   - every `must_not_echo` must occur in its case's payload (else the check is
+//     vacuous), and at least 4 hostile token / 5 hostile store cases carry one;
+//   - implementation-defined store files (deep nesting in an unknown field) → EITHER
+//     exactly the fixture's `expected` record OR the typed *StoreFormatError;
 //   - canonical valid records → load with exactly the fixture's field values and
 //     round-trip through this package's own persist path (the cross-language store
-//     compatibility check — field names are the shared wire format, #54).
+//     compatibility check — field names are the shared wire format, #54);
+//   - successful refreshes from the fixture's `prior` record → the refresh SUCCEEDS and
+//     persists EXACTLY `expected` (access_token, refresh_token, scope, token_type, and
+//     expires_at = refresh time + expires_in): an omitted/null/empty/whitespace (incl.
+//     U+00A0) or non-string scope keeps the prior grant; an omitted/null/EMPTY
+//     refresh_token or token_type keeps the prior value; expires_in at 1 and at the cap
+//     succeeds; an unknown field is never validated; the request SENT the prior
+//     refresh_token;
+//   - the fixture's top-level tables are exactly the seven above, so a renamed/added
+//     table can't be silently skipped by this leg.
 //
 // Mirrors the Rust reference leg (sdks/rust/oura-toolkit-auth/tests/conformance.rs).
 package auth
@@ -18,30 +54,186 @@ package auth
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
+	"unicode/utf8"
 )
+
+// conformanceBody is how a token-endpoint case gives its 2xx body: EXACTLY ONE of
+// `body` (JSON, kept raw so the server replays it verbatim — a wrong-typed field (42,
+// "soon") or an omitted-vs-null-vs-blank one reaches the companion exactly as authored),
+// `raw_body` (sent verbatim), or `raw_body_base64` (decoded bytes JSON can't hold, e.g.
+// invalid UTF-8 or a BOM). Shared by all three token-endpoint harnesses.
+type conformanceBody struct {
+	Body          json.RawMessage `json:"body"`
+	RawBody       *string         `json:"raw_body"`
+	RawBodyBase64 *string         `json:"raw_body_base64"`
+}
+
+// payload resolves the case's body, failing the test (naming the case) unless exactly
+// one of body / raw_body / raw_body_base64 is present. verbatim reports a raw_body /
+// raw_body_base64 payload (possibly not JSON, so served with no content-type claim).
+func (b conformanceBody) payload(t *testing.T, name string) (payload []byte, verbatim bool) {
+	t.Helper()
+	present := 0
+	if len(b.Body) != 0 {
+		present++
+	}
+	if b.RawBody != nil {
+		present++
+	}
+	if b.RawBodyBase64 != nil {
+		present++
+	}
+	if present != 1 {
+		t.Fatalf("case %s: must give EXACTLY ONE of body / raw_body / raw_body_base64, found %d", name, present)
+	}
+	switch {
+	case b.RawBodyBase64 != nil:
+		decoded, err := base64.StdEncoding.DecodeString(*b.RawBodyBase64)
+		if err != nil {
+			t.Fatalf("case %s: raw_body_base64 is not valid base64: %v", name, err)
+		}
+		return decoded, true
+	case b.RawBody != nil:
+		return []byte(*b.RawBody), true
+	default:
+		return b.Body, false
+	}
+}
+
+// serveConformanceBody writes a 2xx carrying the resolved case payload.
+func serveConformanceBody(w http.ResponseWriter, payload []byte, verbatim bool) {
+	if !verbatim {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
+}
+
+// conformanceStoreContent is how a store-file case gives the file: EXACTLY ONE of
+// `content` (text) or `content_base64` (raw bytes JSON can't hold, e.g. invalid UTF-8).
+// Shared by both store-file harnesses.
+type conformanceStoreContent struct {
+	Content       *string `json:"content"`
+	ContentBase64 *string `json:"content_base64"`
+}
+
+// fileContent resolves the case's file content, failing the test (naming the case) unless
+// exactly one of content / content_base64 is present.
+func (c conformanceStoreContent) fileContent(t *testing.T, name string) []byte {
+	t.Helper()
+	switch {
+	case c.Content != nil && c.ContentBase64 == nil:
+		return []byte(*c.Content)
+	case c.ContentBase64 != nil && c.Content == nil:
+		decoded, err := base64.StdEncoding.DecodeString(*c.ContentBase64)
+		if err != nil {
+			t.Fatalf("case %s: content_base64 is not valid base64: %v", name, err)
+		}
+		return decoded
+	default:
+		t.Fatalf("case %s: must give EXACTLY ONE of content / content_base64", name)
+		return nil
+	}
+}
+
+// requireNoEchoFloor fails unless at least `floor` of a hostile table's cases carry
+// `must_not_echo` — the no-echo checks can't silently vanish from the fixture.
+func requireNoEchoFloor(t *testing.T, table string, needles []*string, floor int) {
+	t.Helper()
+	n := 0
+	for _, needle := range needles {
+		if needle != nil {
+			n++
+		}
+	}
+	if n < floor {
+		t.Fatalf("fixture shrank? %s has %d cases with must_not_echo, want >= %d", table, n, floor)
+	}
+}
+
+// conformanceSubmitted is the secret pair a rejected_token_responses refresh submits
+// (the table's default, or a case's own override).
+type conformanceSubmitted struct {
+	RefreshToken string `json:"refresh_token"`
+	ClientSecret string `json:"client_secret"`
+}
 
 // conformanceFixture is the decoded shape of codegen/conformance/auth-cases.json.
 type conformanceFixture struct {
 	HostileTokenResponses []struct {
 		Name string `json:"name"`
-		// Body is kept raw: the server replays the fixture's JSON verbatim, so a
-		// wrong-typed field (42, "soon") reaches the companion exactly as authored.
-		Body    json.RawMessage `json:"body"`
-		RawBody *string         `json:"raw_body"`
+		conformanceBody
+		MustNotEcho *string `json:"must_not_echo"`
 	} `json:"hostile_token_responses"`
+	ImplementationDefinedTokenResponses []struct {
+		Name string `json:"name"`
+		conformanceBody
+	} `json:"implementation_defined_token_responses"`
 	HostileStoreFiles []struct {
-		Name    string `json:"name"`
-		File    string `json:"file"`
-		Content string `json:"content"`
+		Name string `json:"name"`
+		File string `json:"file"`
+		conformanceStoreContent
+		MustNotEcho *string `json:"must_not_echo"`
 	} `json:"hostile_store_files"`
+	RejectedTokenResponses struct {
+		Submitted     conformanceSubmitted `json:"submitted"`
+		MaxErrorChars int                  `json:"max_error_chars"`
+		Cases         []struct {
+			Name        string  `json:"name"`
+			Status      int     `json:"status"`
+			RawBody     *string `json:"raw_body"`
+			MustEcho    string  `json:"must_echo"`
+			MustNotEcho *string `json:"must_not_echo"`
+			// Submitted, when present, overrides the table's `submitted` for this case
+			// (e.g. one secret nested inside the other).
+			Submitted *conformanceSubmitted `json:"submitted"`
+			// ExpectedBody, when present, pins TokenEndpointError.Body EXACTLY.
+			ExpectedBody *string `json:"expected_body"`
+			// CutWellFormed: the cut lands inside a non-BMP character; Body must stay
+			// valid UTF-8, start with the raw body's first 1023 characters, end with "…".
+			CutWellFormed bool `json:"cut_well_formed"`
+		} `json:"cases"`
+	} `json:"rejected_token_responses"`
+	ImplementationDefinedStoreFiles []struct {
+		Name string `json:"name"`
+		File string `json:"file"`
+		conformanceStoreContent
+		Expected json.RawMessage `json:"expected"`
+	} `json:"implementation_defined_store_files"`
+	RefreshSuccessCases struct {
+		Prior struct {
+			AccessToken  string `json:"access_token"`
+			RefreshToken string `json:"refresh_token"`
+			Scope        string `json:"scope"`
+			TokenType    string `json:"token_type"`
+		} `json:"prior"`
+		Cases []struct {
+			Name string `json:"name"`
+			conformanceBody
+			Expected struct {
+				AccessToken  string `json:"access_token"`
+				RefreshToken string `json:"refresh_token"`
+				Scope        string `json:"scope"`
+				TokenType    string `json:"token_type"`
+				ExpiresIn    int64  `json:"expires_in"`
+			} `json:"expected"`
+		} `json:"cases"`
+	} `json:"refresh_success_cases"`
 	ValidRecords map[string]json.RawMessage `json:"valid_records"`
 }
 
@@ -49,6 +241,16 @@ type conformanceFixture struct {
 // ancestor holding the justfile + README — the same walk as the Rust leg) and decodes
 // the shared fixture. Monorepo-only by design.
 func loadConformanceFixture(t *testing.T) conformanceFixture {
+	t.Helper()
+	var f conformanceFixture
+	if err := json.Unmarshal(readConformanceFixture(t), &f); err != nil {
+		t.Fatalf("fixture is not valid JSON: %v", err)
+	}
+	return f
+}
+
+// readConformanceFixture returns the shared fixture's raw bytes.
+func readConformanceFixture(t *testing.T) []byte {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {
@@ -68,16 +270,88 @@ func loadConformanceFixture(t *testing.T) conformanceFixture {
 	if err != nil {
 		t.Fatalf("reading the shared fixture: %v", err)
 	}
-	var f conformanceFixture
-	if err := json.Unmarshal(data, &f); err != nil {
-		t.Fatalf("fixture is not valid JSON: %v", err)
+	return data
+}
+
+// The fixture's top-level tables must be EXACTLY the seven this leg iterates: a table
+// renamed (as refresh_scope_cases → refresh_success_cases was) or added upstream would
+// otherwise decode to a zero value / be ignored, silently skipping its cases here.
+func TestConformanceFixtureTopLevelTablesAreExactlyTheKnownSeven(t *testing.T) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(readConformanceFixture(t), &top); err != nil {
+		t.Fatalf("fixture is not a JSON object: %v", err)
 	}
-	return f
+	var got []string
+	for k := range top {
+		if k != "$comment" {
+			got = append(got, k)
+		}
+	}
+	sort.Strings(got)
+	want := []string{"hostile_store_files", "hostile_token_responses", "implementation_defined_store_files", "implementation_defined_token_responses", "refresh_success_cases", "rejected_token_responses", "valid_records"}
+	if len(got) != len(want) {
+		t.Fatalf("fixture top-level tables = %v, want exactly %v (update this leg's harnesses for any added/renamed table)", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("fixture top-level tables = %v, want exactly %v (update this leg's harnesses for any added/renamed table)", got, want)
+		}
+	}
 }
 
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+// assertNoEcho enforces a case's `must_not_echo`: the secret must appear NOWHERE in the
+// error's text, nor in the text (or %#v rendering) of any error it chains — walked
+// recursively through errors.Unwrap AND joined errors (Unwrap() []error), since a parser
+// message quoting the body/file would leak token material through a wrapped cause even
+// when the outer message is fixed. A nil mustNotEcho is a no-op; an empty one is a
+// fixture bug (it would match everything), and so is one that does not occur in the
+// case's payload (the decoded body / file bytes): the check would pass vacuously, since
+// no parser can echo a string it never saw.
+func assertNoEcho(t *testing.T, name string, payload []byte, err error, mustNotEcho *string) {
+	t.Helper()
+	if mustNotEcho == nil {
+		return
+	}
+	secret := *mustNotEcho
+	if secret == "" {
+		t.Fatalf("case %s: must_not_echo is empty in the fixture", name)
+	}
+	if !bytes.Contains(payload, []byte(secret)) {
+		t.Fatalf("case %s: must_not_echo %q does not occur in the case's payload — the no-echo check would be vacuous", name, secret)
+	}
+	var visited int
+	var walk func(e error, depth int)
+	walk = func(e error, depth int) {
+		if e == nil {
+			return
+		}
+		if depth > 64 {
+			t.Fatalf("case %s: error chain deeper than 64 — cyclic Unwrap?", name)
+		}
+		visited++
+		for _, rendered := range []string{e.Error(), fmt.Sprintf("%+v", e), fmt.Sprintf("%#v", e)} {
+			if strings.Contains(rendered, secret) {
+				t.Fatalf("case %s: the error chain echoes the must_not_echo secret %q (at depth %d, %T): %s", name, secret, depth, e, rendered)
+			}
+		}
+		switch u := e.(type) {
+		case interface{ Unwrap() []error }:
+			for _, inner := range u.Unwrap() {
+				walk(inner, depth+1)
+			}
+		case interface{ Unwrap() error }:
+			walk(u.Unwrap(), depth+1)
+		}
+	}
+	walk(err, 0)
+	if visited == 0 {
+		t.Fatalf("case %s: must_not_echo needs an error to inspect", name)
+	}
 }
 
 // Every hostile-but-2xx token response must fail the refresh with the typed
@@ -86,25 +360,22 @@ func fileExists(path string) bool {
 // caller fails the t.Run outright, so reaching the assertions proves "never a panic".)
 func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileTokenResponses); n < 8 {
-		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 8", n)
+	if n := len(fixture.HostileTokenResponses); n < 30 {
+		t.Fatalf("fixture shrank? hostile_token_responses has %d cases, want >= 30", n)
 	}
+	var tokenNeedles []*string
+	for _, tc := range fixture.HostileTokenResponses {
+		tokenNeedles = append(tokenNeedles, tc.MustNotEcho)
+	}
+	requireNoEchoFloor(t, "hostile_token_responses", tokenNeedles, 4)
 
 	for _, tc := range fixture.HostileTokenResponses {
 		t.Run(tc.Name, func(t *testing.T) {
+			payload, verbatim := tc.payload(t, tc.Name)
 			var calls atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
-				if tc.RawBody != nil {
-					// raw_body is replayed VERBATIM (deliberately not JSON, so no
-					// content-type claim either).
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte(*tc.RawBody))
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write(tc.Body)
+				serveConformanceBody(w, payload, verbatim)
 			}))
 			defer srv.Close()
 
@@ -128,14 +399,14 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 			m := testManager(t, srv.URL, store, expiredTokens("r1"))
 			err = m.ForceRefresh(context.Background())
 			if err == nil {
-				t.Fatal("a hostile 2xx must not succeed")
+				t.Fatalf("case %s: a hostile 2xx must not succeed", tc.Name)
 			}
 			// Typed: the companion's invalid-response error — never a raw
 			// json.Unmarshal error escaping untyped, and never a mis-filed sentinel
 			// that would trigger re-login remediation for a server-side fault.
 			var te *TokenEndpointError
 			if !errors.As(err, &te) {
-				t.Fatalf("want the typed *TokenEndpointError, got %T: %v", err, err)
+				t.Fatalf("case %s: want the typed *TokenEndpointError, got %T: %v", tc.Name, err, err)
 			}
 			if te.Status != http.StatusOK {
 				t.Fatalf("the 2xx status must be preserved (so the 400-retry arm never misfires), got %d", te.Status)
@@ -143,6 +414,7 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 			if n := calls.Load(); n != 1 {
 				t.Fatalf("a hostile 2xx must not trigger the reload-retry arm: want 1 endpoint call, got %d", n)
 			}
+			assertNoEcho(t, tc.Name, payload, err, tc.MustNotEcho)
 
 			tokensAfter, err := os.ReadFile(store.TokensPath())
 			if err != nil {
@@ -162,18 +434,122 @@ func TestConformanceHostile2xxTokenResponsesFailTypedAndLeaveStoreUntouched(t *t
 	}
 }
 
+// Every implementation-defined 2xx token response (a leading UTF-8 BOM, duplicate keys,
+// deep nesting inside an unknown field, an integral float expires_in, a key in another
+// case) must EITHER succeed and persist access_token = "at-refreshed", a refresh_token
+// that is "rt-refreshed" or the prior stored one (never empty), and expires_at = refresh
+// time + 3600, OR fail with the typed *TokenEndpointError (2xx status preserved) and leave
+// both store files byte-identical. Anything else — a panic, an untyped error, a wrong
+// persisted token or expiry, a half-written store — fails, naming the case. The store/manager are seeded
+// exactly as in the hostile harness.
+func TestConformanceImplementationDefinedTokenResponsesSucceedOrFailTypedUntouched(t *testing.T) {
+	fixture := loadConformanceFixture(t)
+	if n := len(fixture.ImplementationDefinedTokenResponses); n < 5 {
+		t.Fatalf("fixture shrank? implementation_defined_token_responses has %d cases, want >= 5", n)
+	}
+
+	for _, tc := range fixture.ImplementationDefinedTokenResponses {
+		t.Run(tc.Name, func(t *testing.T) {
+			payload, verbatim := tc.payload(t, tc.Name)
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				serveConformanceBody(w, payload, verbatim)
+			}))
+			defer srv.Close()
+
+			store := NewStoreAt(t.TempDir())
+			if err := store.SaveCredentials(sampleCredentials()); err != nil {
+				t.Fatal(err)
+			}
+			// Expired on purpose, so the refresh genuinely calls the endpoint.
+			if err := store.SaveTokens(expiredTokens("r1")); err != nil {
+				t.Fatal(err)
+			}
+			tokensBefore, err := os.ReadFile(store.TokensPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			credsBefore, err := os.ReadFile(store.CredentialsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			m := testManager(t, srv.URL, store, expiredTokens("r1"))
+			t0 := time.Now().Unix()
+			refreshErr := m.ForceRefresh(context.Background())
+			t1 := time.Now().Unix()
+			if n := calls.Load(); n != 1 {
+				t.Fatalf("case %s: want exactly 1 token-endpoint call (a 2xx never takes the reload-retry arm), got %d", tc.Name, n)
+			}
+
+			if refreshErr == nil {
+				// Accepted: the refreshed record must be persisted with the response's
+				// access token — never a stale or mangled one.
+				persisted, err := store.LoadTokens()
+				if err != nil {
+					t.Fatalf("case %s: accepted, but the persisted tokens.json does not load: %v", tc.Name, err)
+				}
+				if persisted == nil || persisted.AccessToken != "at-refreshed" {
+					t.Fatalf("case %s: accepted, so the persisted access_token must be %q, got %+v", tc.Name, "at-refreshed", persisted)
+				}
+				// The rotation, or (the server's value dropped/blank) the prior stored one —
+				// never "" (the next refresh would 400) and never anything else.
+				if persisted.RefreshToken != "rt-refreshed" && persisted.RefreshToken != "r1" {
+					t.Fatalf("case %s: accepted, so the persisted refresh_token must be %q or the prior %q, got %q", tc.Name, "rt-refreshed", "r1", persisted.RefreshToken)
+				}
+				if lo, hi := t0+3600, t1+3600; persisted.ExpiresAt < lo || persisted.ExpiresAt > hi {
+					t.Fatalf("case %s: accepted, so the persisted expires_at must be within [%d, %d] (refresh time + 3600), got %d", tc.Name, lo, hi, persisted.ExpiresAt)
+				}
+				t.Logf("case %s: accepted (persisted at-refreshed, refresh_token %q)", tc.Name, persisted.RefreshToken)
+				return
+			}
+
+			// Rejected: typed, 2xx status preserved, store untouched.
+			var te *TokenEndpointError
+			if !errors.As(refreshErr, &te) {
+				t.Fatalf("case %s: a rejection must be the typed *TokenEndpointError, got %T: %v", tc.Name, refreshErr, refreshErr)
+			}
+			if te.Status < 200 || te.Status > 299 {
+				t.Fatalf("case %s: a rejected 2xx must preserve its 2xx status, got %d", tc.Name, te.Status)
+			}
+			tokensAfter, err := os.ReadFile(store.TokensPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(tokensBefore, tokensAfter) {
+				t.Fatalf("case %s: rejected, so tokens.json must be byte-identical:\nbefore: %s\nafter:  %s", tc.Name, tokensBefore, tokensAfter)
+			}
+			credsAfter, err := os.ReadFile(store.CredentialsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(credsBefore, credsAfter) {
+				t.Fatalf("case %s: rejected, so credentials.json must be byte-identical", tc.Name)
+			}
+			t.Logf("case %s: rejected typed (%v)", tc.Name, te)
+		})
+	}
+}
+
 // Every hostile store file must load as the typed *StoreFormatError — never a
 // zero-valued record (which would make IsAuthenticated lie), never a panic.
 func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 	fixture := loadConformanceFixture(t)
-	if n := len(fixture.HostileStoreFiles); n < 8 {
-		t.Fatalf("fixture shrank? hostile_store_files has %d cases, want >= 8", n)
+	if n := len(fixture.HostileStoreFiles); n < 21 {
+		t.Fatalf("fixture shrank? hostile_store_files has %d cases, want >= 21", n)
 	}
+	var storeNeedles []*string
+	for _, tc := range fixture.HostileStoreFiles {
+		storeNeedles = append(storeNeedles, tc.MustNotEcho)
+	}
+	requireNoEchoFloor(t, "hostile_store_files", storeNeedles, 5)
 
 	for _, tc := range fixture.HostileStoreFiles {
 		t.Run(tc.Name, func(t *testing.T) {
+			content := tc.fileContent(t, tc.Name)
 			store := NewStoreAt(t.TempDir())
-			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), []byte(tc.Content), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), content, 0o600); err != nil {
 				t.Fatal(err)
 			}
 
@@ -182,13 +558,13 @@ func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 			case "tokens.json":
 				tokens, err := store.LoadTokens()
 				if tokens != nil {
-					t.Fatalf("a hostile tokens.json must never yield a record, got %v", tokens)
+					t.Fatalf("case %s: a hostile tokens.json must never yield a record, got %v", tc.Name, tokens)
 				}
 				loadErr = err
 			case "credentials.json":
 				creds, err := store.LoadCredentials()
 				if creds != nil {
-					t.Fatalf("a hostile credentials.json must never yield a record, got %v", creds)
+					t.Fatalf("case %s: a hostile credentials.json must never yield a record, got %v", tc.Name, creds)
 				}
 				loadErr = err
 			default:
@@ -196,14 +572,318 @@ func TestConformanceHostileStoreFilesFailTyped(t *testing.T) {
 			}
 
 			if loadErr == nil {
-				t.Fatal("a hostile store file must not load")
+				t.Fatalf("case %s: a hostile store file must not load", tc.Name)
 			}
 			var sfe *StoreFormatError
 			if !errors.As(loadErr, &sfe) {
-				t.Fatalf("want the typed *StoreFormatError, got %T: %v", loadErr, loadErr)
+				t.Fatalf("case %s: want the typed *StoreFormatError, got %T: %v", tc.Name, loadErr, loadErr)
+			}
+			// The error names WHICH record is broken (the file, never its content).
+			if !strings.Contains(sfe.Error(), tc.File) {
+				t.Fatalf("case %s: the *StoreFormatError must name the record's file %q, got: %v", tc.Name, tc.File, sfe)
+			}
+			assertNoEcho(t, tc.Name, content, loadErr, tc.MustNotEcho)
+		})
+	}
+}
+
+// Every rejected (NON-2xx) token response must fail the refresh with the typed
+// *TokenEndpointError carrying the case's status and leave both store files
+// byte-identical. The body is kept for diagnosis (`must_echo` appears in the error text),
+// but a secret the refresh SUBMITTED and the server echoed back (`must_not_echo`) appears
+// nowhere in the error chain — Error(), %+v, %#v, the Body field, every Unwrap — and no
+// string in the chain exceeds `max_error_chars` characters however large the body. The
+// store and credentials are seeded with the fixture's `submitted` values (a case's own
+// `submitted` overriding the table's), and the mock asserts that every request really
+// sent them (else the redaction check is vacuous). `expected_body` pins the Body EXACTLY;
+// `cut_well_formed` requires a cut inside a multi-byte character to keep the Body valid
+// UTF-8, prefixed by the raw body's first 1023 characters and ending in "…". A 400 may
+// take the manager's one reload-retry; the mock answers every request the same.
+func TestConformanceRejectedTokenResponsesFailTypedRedactedAndBounded(t *testing.T) {
+	fixture := loadConformanceFixture(t)
+	table := fixture.RejectedTokenResponses
+	if n := len(table.Cases); n < 12 {
+		t.Fatalf("fixture shrank? rejected_token_responses has %d cases, want >= 12", n)
+	}
+	if table.Submitted.RefreshToken == "" || table.Submitted.ClientSecret == "" {
+		t.Fatal("fixture rejected_token_responses.submitted must give a non-empty refresh_token and client_secret")
+	}
+	var overrides, exactBodies, wellFormedCuts int
+	if table.MaxErrorChars <= 0 {
+		t.Fatal("fixture rejected_token_responses.max_error_chars is missing")
+	}
+	var needles []*string
+	for _, tc := range table.Cases {
+		needles = append(needles, tc.MustNotEcho)
+		if tc.Submitted != nil {
+			overrides++
+		}
+		if tc.ExpectedBody != nil {
+			exactBodies++
+		}
+		if tc.CutWellFormed {
+			wellFormedCuts++
+		}
+	}
+	requireNoEchoFloor(t, "rejected_token_responses", needles, 3)
+	// Each per-case feature must stay exercised, or its check below is vacuous.
+	if overrides < 1 || exactBodies < 1 || wellFormedCuts < 1 {
+		t.Fatalf("fixture shrank? rejected_token_responses needs >= 1 case each with its own `submitted` (%d), `expected_body` (%d) and `cut_well_formed` (%d)", overrides, exactBodies, wellFormedCuts)
+	}
+
+	for _, tc := range table.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			if tc.RawBody == nil {
+				t.Fatalf("case %s: raw_body is missing", tc.Name)
+			}
+			if tc.Status < 300 || tc.Status > 599 {
+				t.Fatalf("case %s: status %d is not a non-2xx HTTP status", tc.Name, tc.Status)
+			}
+			if tc.MustEcho == "" || !strings.Contains(*tc.RawBody, tc.MustEcho) {
+				t.Fatalf("case %s: must_echo %q must be non-empty and occur in raw_body", tc.Name, tc.MustEcho)
+			}
+			payload := []byte(*tc.RawBody)
+			sub := table.Submitted
+			if tc.Submitted != nil {
+				if tc.Submitted.RefreshToken == "" || tc.Submitted.ClientSecret == "" {
+					t.Fatalf("case %s: its own `submitted` must give a non-empty refresh_token and client_secret", tc.Name)
+				}
+				sub = *tc.Submitted
+			}
+
+			var calls atomic.Int32
+			var sentMu sync.Mutex
+			var sentProblems []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				var problem string
+				if err := r.ParseForm(); err != nil {
+					problem = "unparseable form"
+				} else if rt, cs := r.PostForm.Get("refresh_token"), r.PostForm.Get("client_secret"); rt != sub.RefreshToken || cs != sub.ClientSecret {
+					problem = "the request did not submit the fixture's `submitted` refresh_token/client_secret"
+				}
+				if problem != "" {
+					sentMu.Lock()
+					sentProblems = append(sentProblems, problem)
+					sentMu.Unlock()
+				}
+				w.WriteHeader(tc.Status)
+				_, _ = w.Write(payload)
+			}))
+			defer srv.Close()
+
+			creds := &ClientCredentials{ClientID: "cid", ClientSecret: sub.ClientSecret}
+			seeded := &Tokens{AccessToken: "stale-access", RefreshToken: sub.RefreshToken, ExpiresAt: 0}
+			store := NewStoreAt(t.TempDir())
+			if err := store.SaveCredentials(creds); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SaveTokens(seeded); err != nil {
+				t.Fatal(err)
+			}
+			tokensBefore, err := os.ReadFile(store.TokensPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			credsBefore, err := os.ReadFile(store.CredentialsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			seed := *seeded
+			m := NewManager(store, creds, &seed)
+			m.tokenURL = srv.URL
+			refreshErr := m.ForceRefresh(context.Background())
+			if refreshErr == nil {
+				t.Fatalf("case %s: a non-2xx token response must fail the refresh", tc.Name)
+			}
+			if n := calls.Load(); n < 1 || n > 2 {
+				t.Fatalf("case %s: want 1 token-endpoint call (2 with the 400 reload-retry), got %d", tc.Name, n)
+			}
+			sentMu.Lock()
+			problems := append([]string(nil), sentProblems...)
+			sentMu.Unlock()
+			if len(problems) != 0 {
+				t.Fatalf("case %s: %v", tc.Name, problems)
+			}
+
+			var te *TokenEndpointError
+			if !errors.As(refreshErr, &te) {
+				t.Fatalf("case %s: want the typed *TokenEndpointError, got %T: %v", tc.Name, refreshErr, refreshErr)
+			}
+			if te.Status != tc.Status {
+				t.Fatalf("case %s: TokenEndpointError.Status = %d, want the response's %d", tc.Name, te.Status, tc.Status)
+			}
+			if !strings.Contains(refreshErr.Error(), tc.MustEcho) {
+				t.Fatalf("case %s: the error must keep the body for diagnosis (must_echo %q), got: %v", tc.Name, tc.MustEcho, refreshErr)
+			}
+			if tc.MustNotEcho != nil && strings.Contains(te.Body, *tc.MustNotEcho) {
+				t.Fatalf("case %s: TokenEndpointError.Body echoes the submitted secret %q: %s", tc.Name, *tc.MustNotEcho, te.Body)
+			}
+			assertNoEcho(t, tc.Name, payload, refreshErr, tc.MustNotEcho)
+			assertChainBounded(t, tc.Name, refreshErr, table.MaxErrorChars)
+			if tc.ExpectedBody != nil {
+				if te.Body != *tc.ExpectedBody {
+					t.Fatalf("case %s: TokenEndpointError.Body must be EXACTLY expected_body (first 1024 chars, then \"…\"):\ngot  (%d runes, suffix %q)\nwant (%d runes, suffix %q)",
+						tc.Name, utf8.RuneCountInString(te.Body), runeSuffix(te.Body, 8),
+						utf8.RuneCountInString(*tc.ExpectedBody), runeSuffix(*tc.ExpectedBody, 8))
+				}
+			}
+			if tc.CutWellFormed {
+				raw := []rune(*tc.RawBody)
+				if len(raw) <= 1024 {
+					t.Fatalf("case %s: cut_well_formed needs a raw_body longer than 1024 characters, got %d", tc.Name, len(raw))
+				}
+				prefix := string(raw[:1023])
+				if !utf8.ValidString(te.Body) {
+					t.Fatalf("case %s: the cut split a character — TokenEndpointError.Body is not valid UTF-8 (suffix %q)", tc.Name, te.Body[max(0, len(te.Body)-8):])
+				}
+				if !strings.HasPrefix(te.Body, prefix) {
+					t.Fatalf("case %s: TokenEndpointError.Body must start with the raw body's first 1023 characters", tc.Name)
+				}
+				if !strings.HasSuffix(te.Body, "…") {
+					t.Fatalf("case %s: a cut TokenEndpointError.Body must end with \"…\", got suffix %q", tc.Name, runeSuffix(te.Body, 8))
+				}
+			}
+
+			tokensAfter, err := os.ReadFile(store.TokensPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(tokensBefore, tokensAfter) {
+				t.Fatalf("case %s: tokens.json must be byte-identical after a rejected refresh:\nbefore: %s\nafter:  %s", tc.Name, tokensBefore, tokensAfter)
+			}
+			credsAfter, err := os.ReadFile(store.CredentialsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(credsBefore, credsAfter) {
+				t.Fatalf("case %s: credentials.json must be byte-identical after a rejected refresh", tc.Name)
 			}
 		})
 	}
+}
+
+// runeSuffix returns the last n runes of s (for readable failure messages).
+func runeSuffix(s string, n int) string {
+	r := []rune(s)
+	return string(r[max(0, len(r)-n):])
+}
+
+// assertChainBounded fails unless every string rendered from the error chain — Error(),
+// %+v, %#v and (for a *TokenEndpointError) the Body field, at every Unwrap depth — is at
+// most maxChars characters: an unbounded server body must never reach logs/UI whole.
+func assertChainBounded(t *testing.T, name string, err error, maxChars int) {
+	t.Helper()
+	var walk func(e error, depth int)
+	walk = func(e error, depth int) {
+		if e == nil {
+			return
+		}
+		if depth > 64 {
+			t.Fatalf("case %s: error chain deeper than 64 — cyclic Unwrap?", name)
+		}
+		rendered := []string{e.Error(), fmt.Sprintf("%+v", e), fmt.Sprintf("%#v", e)}
+		if te, ok := e.(*TokenEndpointError); ok {
+			rendered = append(rendered, te.Body)
+		}
+		for _, r := range rendered {
+			if n := utf8.RuneCountInString(r); n > maxChars {
+				t.Fatalf("case %s: an error-chain string (depth %d, %T) is %d characters, want <= max_error_chars %d", name, depth, e, n, maxChars)
+			}
+		}
+		switch u := e.(type) {
+		case interface{ Unwrap() []error }:
+			for _, inner := range u.Unwrap() {
+				walk(inner, depth+1)
+			}
+		case interface{ Unwrap() error }:
+			walk(u.Unwrap(), depth+1)
+		}
+	}
+	walk(err, 0)
+}
+
+// Every implementation-defined store file (content a parser may accept or reject, e.g.
+// nesting past its depth limit inside an unknown field) must EITHER load as exactly the
+// fixture's `expected` record OR fail with the typed *StoreFormatError (and no record) —
+// never an untyped error, a panic, or a record differing from `expected`. "Exactly" is
+// checked on the wire shape: the loaded record re-marshalled through this package's own
+// JSON tags must equal `expected` field-for-field.
+func TestConformanceImplementationDefinedStoreFilesLoadExactlyOrFailTyped(t *testing.T) {
+	fixture := loadConformanceFixture(t)
+	if n := len(fixture.ImplementationDefinedStoreFiles); n < 1 {
+		t.Fatalf("fixture shrank? implementation_defined_store_files has %d cases, want >= 1", n)
+	}
+
+	for _, tc := range fixture.ImplementationDefinedStoreFiles {
+		t.Run(tc.Name, func(t *testing.T) {
+			want := decodeJSONObject(t, tc.Name, "expected", tc.Expected)
+			if len(want) == 0 {
+				t.Fatalf("case %s: fixture `expected` is missing or empty", tc.Name)
+			}
+			store := NewStoreAt(t.TempDir())
+			if err := os.WriteFile(filepath.Join(store.Dir(), tc.File), tc.fileContent(t, tc.Name), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var record any
+			var loadErr error
+			switch tc.File {
+			case "tokens.json":
+				tokens, err := store.LoadTokens()
+				if tokens != nil {
+					record = tokens
+				}
+				loadErr = err
+			case "credentials.json":
+				creds, err := store.LoadCredentials()
+				if creds != nil {
+					record = creds
+				}
+				loadErr = err
+			default:
+				t.Fatalf("fixture names an unknown store file %q", tc.File)
+			}
+
+			if loadErr != nil {
+				var sfe *StoreFormatError
+				if !errors.As(loadErr, &sfe) {
+					t.Fatalf("case %s: a rejection must be the typed *StoreFormatError, got %T: %v", tc.Name, loadErr, loadErr)
+				}
+				if record != nil {
+					t.Fatalf("case %s: a rejection must not also yield a record", tc.Name)
+				}
+				t.Logf("case %s: rejected typed (%v)", tc.Name, loadErr)
+				return
+			}
+			if record == nil {
+				t.Fatalf("case %s: loaded neither a record nor an error (an existing file read as absent)", tc.Name)
+			}
+			encoded, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := decodeJSONObject(t, tc.Name, "loaded record", encoded)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("case %s: accepted, so the loaded record must be exactly `expected`:\ngot:  %s\nwant: %s", tc.Name, encoded, tc.Expected)
+			}
+			t.Logf("case %s: accepted (exactly `expected`)", tc.Name)
+		})
+	}
+}
+
+// decodeJSONObject decodes a JSON object with numbers kept as json.Number (so an int64
+// expires_at compares exactly, never via float64 rounding).
+func decodeJSONObject(t *testing.T, name, what string, data []byte) map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		t.Fatalf("case %s: %s is not a JSON object: %v", name, what, err)
+	}
+	return m
 }
 
 // The canonical records load with exactly the fixture's values and survive a round-trip
@@ -287,5 +967,117 @@ func TestConformanceCanonicalValidRecordsLoadAndRoundTrip(t *testing.T) {
 	}
 	if tokensAgain == nil || *tokensAgain != *tokens {
 		t.Fatalf("tokens must round-trip through the persist path unchanged, got %v", tokensAgain)
+	}
+}
+
+// A SUCCESSFUL refresh starting from the fixture's stored `prior` record must persist
+// EXACTLY `expected`: an omitted, null, empty, whitespace-only (incl. U+00A0), or
+// non-string scope keeps the prior grant (persisting a blank would erase what the
+// re-consent check reads, #116) and must not fail the refresh (that would burn the
+// rotated refresh token); an omitted/null/EMPTY refresh_token or token_type keeps the
+// prior value (persisting "" would make the next refresh 400); expires_in at the cap
+// succeeds; an unknown field is never validated. expires_at must be the refresh time
+// plus expected.expires_in.
+func TestConformanceRefreshSuccessCasesPersistExpectedRecord(t *testing.T) {
+	fixture := loadConformanceFixture(t)
+	table := fixture.RefreshSuccessCases
+	p := table.Prior
+	if p.AccessToken == "" || p.RefreshToken == "" || p.Scope == "" || p.TokenType == "" {
+		t.Fatalf("fixture refresh_success_cases.prior is incomplete: every field must be non-empty")
+	}
+	if n := len(table.Cases); n < 18 {
+		t.Fatalf("fixture shrank? refresh_success_cases has %d cases, want >= 18", n)
+	}
+
+	for _, tc := range table.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			payload, verbatim := tc.payload(t, tc.Name)
+			if tc.Expected.ExpiresIn <= 0 {
+				t.Fatalf("case %s: expected.expires_in missing from the fixture", tc.Name)
+			}
+
+			var calls atomic.Int32
+			var sentMu sync.Mutex
+			var sentGrantType, sentRefreshToken string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if err := r.ParseForm(); err == nil {
+					sentMu.Lock()
+					sentGrantType = r.PostForm.Get("grant_type")
+					sentRefreshToken = r.PostForm.Get("refresh_token")
+					sentMu.Unlock()
+				}
+				serveConformanceBody(w, payload, verbatim)
+			}))
+			defer srv.Close()
+
+			store := NewStoreAt(t.TempDir())
+			if err := store.SaveCredentials(sampleCredentials()); err != nil {
+				t.Fatal(err)
+			}
+			// Already expired, so the refresh genuinely calls the endpoint.
+			prior := &Tokens{
+				AccessToken:  p.AccessToken,
+				RefreshToken: p.RefreshToken,
+				ExpiresAt:    0,
+				Scope:        p.Scope,
+				TokenType:    p.TokenType,
+			}
+			if err := store.SaveTokens(prior); err != nil {
+				t.Fatal(err)
+			}
+			seed := *prior
+
+			m := testManager(t, srv.URL, store, &seed)
+			t0 := time.Now().Unix()
+			if err := m.ForceRefresh(context.Background()); err != nil {
+				t.Fatalf("case %s: a valid 2xx refresh must succeed: %v", tc.Name, err)
+			}
+			t1 := time.Now().Unix()
+			if n := calls.Load(); n != 1 {
+				t.Fatalf("case %s: want exactly 1 token-endpoint call, got %d", tc.Name, n)
+			}
+			// The refresh must present the STORED prior refresh token — a success harness
+			// that never checked what was sent would pass a companion refreshing with the
+			// wrong (e.g. burned or blank) token.
+			sentMu.Lock()
+			gotGrant, gotRT := sentGrantType, sentRefreshToken
+			sentMu.Unlock()
+			if gotGrant != "refresh_token" {
+				t.Fatalf("case %s: sent grant_type = %q, want refresh_token", tc.Name, gotGrant)
+			}
+			if gotRT != p.RefreshToken {
+				t.Fatalf("case %s: sent refresh_token = %q, want the stored prior %q", tc.Name, gotRT, p.RefreshToken)
+			}
+
+			persisted, err := store.LoadTokens()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted == nil {
+				t.Fatalf("case %s: the refreshed record must be persisted", tc.Name)
+			}
+			want := tc.Expected
+			if persisted.AccessToken != want.AccessToken {
+				t.Fatalf("case %s: persisted access_token = %q, want %q", tc.Name, persisted.AccessToken, want.AccessToken)
+			}
+			if persisted.RefreshToken != want.RefreshToken {
+				t.Fatalf("case %s: persisted refresh_token = %q, want %q (an omitted/null/empty one keeps the prior %q; a returned one is the rotation)",
+					tc.Name, persisted.RefreshToken, want.RefreshToken, p.RefreshToken)
+			}
+			if persisted.Scope != want.Scope {
+				t.Fatalf("case %s: persisted scope = %q, want %q (a blank/whitespace/non-string scope keeps the prior grant %q; a real one replaces it)",
+					tc.Name, persisted.Scope, want.Scope, p.Scope)
+			}
+			if persisted.TokenType != want.TokenType {
+				t.Fatalf("case %s: persisted token_type = %q, want %q (an omitted/null/empty one keeps the prior %q)",
+					tc.Name, persisted.TokenType, want.TokenType, p.TokenType)
+			}
+			lo, hi := t0+want.ExpiresIn, t1+want.ExpiresIn
+			if persisted.ExpiresAt < lo || persisted.ExpiresAt > hi {
+				t.Fatalf("case %s: persisted expires_at = %d, want within [%d, %d] (refresh time + expires_in %d)",
+					tc.Name, persisted.ExpiresAt, lo, hi, want.ExpiresIn)
+			}
+		})
 	}
 }

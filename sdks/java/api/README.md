@@ -17,7 +17,8 @@ An API (Application Programming Interface) allows different software application
 2. **Make Your First API Call**:
    ```
    curl -X GET https://api.ouraring.com/v2/usercollection/personal_info \\
-   -H \"Authorization: Bearer YOUR_TOKEN_HERE\"
+   -H \"Authorization: Bearer YOUR_TOKEN_HERE\" \\
+   -H \"User-Agent: YourAppName/1.0\"
    ```
 3. **Explore Data Types**:
    - Browse the available endpoints in this documentation to discover what data you can access
@@ -43,8 +44,12 @@ Access tokens must be included in the request header as follows:
 GET /v2/usercollection/personal_info HTTP/1.1
 Host: api.ouraring.com
 Authorization: Bearer <token>
+User-Agent: YourAppName/1.0
 ```
 Please note that personal access tokens were deprecated in December 2025 and are no longer available for use.
+# User-Agent Header
+Every request must include a `User-Agent` header that identifies your application, for example `User-Agent: YourAppName/1.0`. Requests without one may be rejected. Not every HTTP library sends a default value, so set it explicitly rather than relying on the default. Browsers set their own `User-Agent` automatically; every other client (server-side code, scripts, native apps) must set it.
+
 # Oura HTTP Response Codes
 | Response Code                        | Description |
 | ------------------------------------ | - |
@@ -428,11 +433,12 @@ Authentication schemes defined for the API:
   - email: Email address of the user
   - personal: Personal information (gender, age, height, weight)
   - daily: Daily summaries of sleep, activity and readiness
-  - heartrate: Time series heart rate for Gen 3 users
+  - heartrate: Time series heart rate for users
   - workout: Summaries for auto-detected and user entered workouts
   - tag: User entered tags
   - session: Guided and unguided sessions in the Oura app
-  - spo2Daily: SpO2 Average recorded during sleep
+  - spo2: SpO2 Average recorded during sleep
+  - heart_health: Heart health data
 
 <a id="ClientIdAuth"></a>
 ### ClientIdAuth

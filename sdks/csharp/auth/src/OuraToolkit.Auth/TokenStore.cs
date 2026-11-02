@@ -82,6 +82,15 @@ public sealed class TokenStore
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    /// <summary>
+    /// Throws on ANY invalid UTF-8 (never substitutes U+FFFD): a store file must be valid UTF-8
+    /// throughout (#58 fixture contract). System.Text.Json only transcodes — and so only
+    /// rejects — strings it materializes, so invalid bytes inside an unknown field would
+    /// otherwise load silently.
+    /// </summary>
+    private static readonly System.Text.UTF8Encoding StrictUtf8 =
+        new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     /// <summary>Load the client credentials, or null if <c>auth setup</c> has never run.</summary>
     public ClientCredentials? LoadCredentials() => LoadRecord<ClientCredentials>(CredentialsPath);
 
@@ -202,8 +211,18 @@ public sealed class TokenStore
         }
         try
         {
+            StrictUtf8.GetCharCount(bytes);
+        }
+        catch (System.Text.DecoderFallbackException)
+        {
+            // A FIXED message, and the decoder's exception is deliberately NOT chained: the
+            // store holds secrets, so the typed error never quotes any of the file's bytes.
+            throw new StoreFormatException(path, "record is not valid UTF-8");
+        }
+        try
+        {
             return JsonSerializer.Deserialize<T>(bytes)
-                ?? throw new StoreFormatException(path, new JsonException("record is JSON null"));
+                ?? throw new StoreFormatException(path, "record is JSON null");
         }
         catch (JsonException e)
         {

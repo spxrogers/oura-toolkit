@@ -63,7 +63,7 @@ public class MetadataSpecSyncTests
             .Select(p => p.Name)
             .ToHashSet();
 
-        Assert.Equal(8, specScopes.Count); // the shape CLAUDE.md documents
+        Assert.Equal(9, specScopes.Count); // the shape CLAUDE.md documents
         Assert.Equal(specScopes, OAuthMetadata.AllScopes.ToHashSet());
     }
 
@@ -74,7 +74,7 @@ public class MetadataSpecSyncTests
         // would quietly shrink what users are asked to grant (mirrors metadata.rs).
         var expected = OAuthMetadata.AllScopes.Where(s => s != "email").ToHashSet();
         Assert.Equal(expected, OAuthMetadata.DefaultScopes.ToHashSet());
-        Assert.Equal(7, OAuthMetadata.DefaultScopes.Count);
+        Assert.Equal(8, OAuthMetadata.DefaultScopes.Count);
         Assert.DoesNotContain("email", OAuthMetadata.DefaultScopes);
     }
 }

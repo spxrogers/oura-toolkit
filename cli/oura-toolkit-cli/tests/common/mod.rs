@@ -8,12 +8,23 @@
 
 use wiremock::ResponseTemplate;
 
+/// A grant from before openapi-1.41 (`spo2Daily`, no `heart_health`): stale for the
+/// re-consent check (#116), which should report exactly `spo2 heart_health` missing.
+pub const PRE_1_41_GRANT: &str = "personal daily heartrate workout tag session spo2Daily";
+
+/// A grant covering every current default scope: the re-consent check stays silent.
+pub fn current_grant() -> String {
+    oura_toolkit_auth::metadata::default_scopes().join(" ")
+}
+
+/// Fresh tokens with a CURRENT grant, so suites that aren't about re-consent (#116) never
+/// trip its notice. Tests of the notice set `scope` explicitly.
 pub fn fresh_tokens(access: &str) -> oura_toolkit_auth::Tokens {
     oura_toolkit_auth::Tokens {
         access_token: access.into(),
         refresh_token: "rt-1".into(),
         expires_at: 4_102_444_800, // 2100 — never proactively refreshed
-        scope: None,
+        scope: Some(current_grant()),
         token_type: None,
     }
 }

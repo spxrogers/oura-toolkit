@@ -66,7 +66,7 @@ which does the following, interactively:
    exact values to enter on Oura's form:
    - **Application name**: anything (e.g. `oura-toolkit`)
    - **Redirect URI**: `http://localhost:8788/callback` — must match exactly
-   - **Scopes**: `personal daily heartrate workout tag session spo2Daily`
+   - **Scopes**: `personal daily heartrate workout tag session spo2 heart_health`
 2. Prompts for the app's **client id** and **client secret** in the terminal (the secret
    with hidden input — it never leaves your machine).
 3. Chains straight into `oura auth login`: your browser opens Oura's consent page, a
@@ -79,6 +79,12 @@ the loopback callback can't reach you (SSH, containers), add `--no-browser` (see
 Tokens and credentials live in `~/.config/oura-toolkit/` (owner-only file modes; on
 Windows, `%LOCALAPPDATA%\oura-toolkit\` under your profile's private ACLs) and refresh
 automatically from then on.
+
+When Oura changes its OAuth scopes (as in API 1.41: `spo2Daily` → `spo2`, plus
+`heart_health`), a refresh can't add them. So the first command after upgrading asks once
+whether to re-authorize (scripts get a one-line stderr note instead, and the MCP server
+adds a note to its first successful tool result for Claude to pass on). If your Oura app doesn't list
+the new scopes yet, add them first.
 
 Manage the stored state any time:
 

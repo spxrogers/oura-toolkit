@@ -23,7 +23,7 @@ runs the whole thing interactively:
    values to enter on Oura's form:
    - **Application name**: anything (e.g. `oura-toolkit`)
    - **Redirect URI**: `http://localhost:8788/callback` — must match exactly
-   - **Scopes**: `personal daily heartrate workout tag session spo2Daily`
+   - **Scopes**: `personal daily heartrate workout tag session spo2 heart_health`
 2. Prompts for the app's **client id** and **client secret** in the terminal (the secret with
    hidden input — it never leaves your machine).
 3. Chains straight into `oura auth login`: your browser opens Oura's consent page, a local
@@ -44,6 +44,28 @@ file permissions:
 Two records are kept side by side: the client credentials and the OAuth tokens, so a failed
 login never loses the client secret you pasted. Refresh tokens rotate on every refresh and are
 persisted automatically, so once you're logged in it stays that way.
+
+## When Oura changes its scopes
+
+Oura occasionally renames or adds OAuth scopes. API 1.41 renamed `spo2Daily` to `spo2` and
+added `heart_health`. A token refresh can't add scopes to an existing login, so the first
+data command (or `oura api`) after an upgrade notices and asks once:
+
+```text
+Oura's API permissions (OAuth scopes) changed, and your saved login doesn't cover: spo2 heart_health
+…
+Re-authorize now? [Y/n]
+```
+
+Press Enter to run `oura auth login` and carry on with your command, or `n` to skip (you won't
+be asked again for this change). Over SSH it uses the paste-back login. If the login can't
+complete (say your app is registered on another port), your command still runs on your
+existing login, and you can run `oura auth login --port <n>` yourself later. Scripts and other non-interactive runs get a single
+`oura: note: …` line on stderr instead, and are never blocked. If your Oura app doesn't list
+the new scopes yet, add them at <https://cloud.ouraring.com/oauth/applications> before
+re-authorizing. `oura auth status` shows any missing scopes at any time. In Claude (the `oura
+mcp` server), the first successful tool result of each session carries the same message as a
+note for Claude to pass on.
 
 ## Managing stored state
 

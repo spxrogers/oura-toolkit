@@ -29,6 +29,10 @@ Call in parallel:
 On an authentication error, tell the user to run `oura auth login` (or `oura auth
 setup` first if they've never registered an app) and stop.
 
+If a tool result carries a note that Oura changed its API permissions, the data is still
+good: finish the report, then pass the note on once, which asks the user to run
+`oura auth login` in a terminal to grant the new scopes.
+
 ## Analyze
 
 Work from the numbers you actually received:

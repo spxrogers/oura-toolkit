@@ -23,7 +23,7 @@ public final class OuraOAuthMetadata {
     /** {@code flows.authorizationCode.tokenUrl} from the spec. */
     public static final String TOKEN_URL = "https://api.ouraring.com/oauth/token";
 
-    /** All 8 scopes the spec advertises, in spec order. */
+    /** All 9 scopes the spec advertises, in spec order. */
     public static final List<String> ALL_SCOPES = List.of(
             "email",
             "personal",
@@ -32,7 +32,8 @@ public final class OuraOAuthMetadata {
             "workout",
             "tag",
             "session",
-            "spo2Daily");
+            "spo2",
+            "heart_health");
 
     /**
      * Scopes the toolkit requests by default: everything except {@code email} (CLAUDE.md
@@ -46,5 +47,6 @@ public final class OuraOAuthMetadata {
             "workout",
             "tag",
             "session",
-            "spo2Daily");
+            "spo2",
+            "heart_health");
 }

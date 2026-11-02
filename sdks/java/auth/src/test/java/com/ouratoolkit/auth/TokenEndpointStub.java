@@ -26,16 +26,25 @@ final class TokenEndpointStub implements AutoCloseable {
     /** A canned HTTP response. */
     static final class Response {
         final int status;
-        final String body;
+        final byte[] body; // served VERBATIM (may be deliberately invalid UTF-8)
         final String location; // when non-null, sent as a Location header (redirect tests)
 
         Response(int status, String body) {
+            this(status, body.getBytes(StandardCharsets.UTF_8), null);
+        }
+
+        /** Raw bytes a String can't hold (e.g. an invalid-UTF-8 body), served as-is. */
+        Response(int status, byte[] body) {
             this(status, body, null);
         }
 
         Response(int status, String body, String location) {
+            this(status, body.getBytes(StandardCharsets.UTF_8), location);
+        }
+
+        private Response(int status, byte[] body, String location) {
             this.status = status;
-            this.body = body;
+            this.body = body.clone();
             this.location = location;
         }
     }
@@ -49,7 +58,7 @@ final class TokenEndpointStub implements AutoCloseable {
             requests.incrementAndGet();
             Map<String, String> form = parseForm(readAll(exchange.getRequestBody()));
             Response response = handler.apply(form);
-            byte[] bytes = response.body.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = response.body;
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             if (response.location != null) {
                 exchange.getResponseHeaders().set("Location", response.location);

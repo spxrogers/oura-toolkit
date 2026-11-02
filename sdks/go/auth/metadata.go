@@ -14,7 +14,7 @@ const AuthorizeURL = "https://cloud.ouraring.com/oauth/authorize"
 // TokenURL is the spec's tokenUrl (code exchange + refresh; confidential client).
 const TokenURL = "https://api.ouraring.com/oauth/token"
 
-// allScopes is every scope the spec's OAuth2 flow advertises (8).
+// allScopes is every scope the spec's OAuth2 flow advertises (9).
 var allScopes = []string{
 	"email",
 	"personal",
@@ -23,7 +23,8 @@ var allScopes = []string{
 	"workout",
 	"tag",
 	"session",
-	"spo2Daily",
+	"spo2",
+	"heart_health",
 }
 
 // defaultScopeNames is the toolkit's *policy* — everything except "email" — not spec
@@ -35,7 +36,8 @@ var defaultScopeNames = []string{
 	"workout",
 	"tag",
 	"session",
-	"spo2Daily",
+	"spo2",
+	"heart_health",
 }
 
 // AllScopes returns every scope advertised by the vendored spec's OAuth2 flow.

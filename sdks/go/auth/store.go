@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // appDirName is the locked config-directory name (CLAUDE.md → NAMING), identical under
@@ -96,10 +97,10 @@ func NewStoreAt(dir string) *Store {
 func (s *Store) Dir() string { return s.dir }
 
 // CredentialsPath is the client-credentials record path.
-func (s *Store) CredentialsPath() string { return filepath.Join(s.dir, "credentials.json") }
+func (s *Store) CredentialsPath() string { return filepath.Join(s.dir, credentialsFile) }
 
 // TokensPath is the token record path.
-func (s *Store) TokensPath() string { return filepath.Join(s.dir, "tokens.json") }
+func (s *Store) TokensPath() string { return filepath.Join(s.dir, tokensFile) }
 
 // LoadCredentials returns the client credentials, or (nil, nil) if `oura auth setup` has
 // never run. A record that exists but is malformed, null, or missing a required field is a
@@ -160,14 +161,14 @@ func parseCredentials(data []byte) (*ClientCredentials, error) {
 		ClientID     *string `json:"client_id"`
 		ClientSecret *string `json:"client_secret"`
 	}
-	if err := strictUnmarshal(data, &w); err != nil {
+	if err := strictUnmarshal(data, &w, credentialsFile); err != nil {
 		return nil, err
 	}
-	clientID, err := requireStr(w.ClientID, "client_id", "credentials")
+	clientID, err := requireStr(w.ClientID, "client_id", credentialsFile)
 	if err != nil {
 		return nil, err
 	}
-	clientSecret, err := requireStr(w.ClientSecret, "client_secret", "credentials")
+	clientSecret, err := requireStr(w.ClientSecret, "client_secret", credentialsFile)
 	if err != nil {
 		return nil, err
 	}
@@ -187,18 +188,18 @@ func parseTokens(data []byte) (*Tokens, error) {
 		Scope        *string `json:"scope"`
 		TokenType    *string `json:"token_type"`
 	}
-	if err := strictUnmarshal(data, &w); err != nil {
+	if err := strictUnmarshal(data, &w, tokensFile); err != nil {
 		return nil, err
 	}
-	access, err := requireStr(w.AccessToken, "access_token", "tokens")
+	access, err := requireStr(w.AccessToken, "access_token", tokensFile)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := requireStr(w.RefreshToken, "refresh_token", "tokens")
+	refresh, err := requireStr(w.RefreshToken, "refresh_token", tokensFile)
 	if err != nil {
 		return nil, err
 	}
-	expiresAt, err := requireInt(w.ExpiresAt, "expires_at", "tokens")
+	expiresAt, err := requireInt(w.ExpiresAt, "expires_at", tokensFile)
 	if err != nil {
 		return nil, err
 	}
@@ -212,12 +213,30 @@ func parseTokens(data []byte) (*Tokens, error) {
 	return t, nil
 }
 
+// The store's record file names — also how a *StoreFormatError names the offending
+// record (the file, never its content).
+const (
+	credentialsFile = "credentials.json"
+	tokensFile      = "tokens.json"
+)
+
 // strictUnmarshal maps any JSON error (syntax, or a wrong-typed field caught by the shadow
-// struct's typed pointers) to a typed *StoreFormatError. json.Unmarshal messages name the
-// character/field/type, never the value, so no secret can leak.
-func strictUnmarshal(data []byte, into any) error {
+// struct's typed pointers) to a typed *StoreFormatError naming the record's file.
+// json.Unmarshal messages name the character/field/type, never the value, so no secret can
+// leak.
+//
+// A store file must be valid UTF-8 (RFC 8259 §8.1): encoding/json would silently
+// substitute U+FFFD for invalid bytes and LOAD a mangled secret (e.g. a refresh_token the
+// next refresh would present and burn), so invalid bytes are rejected up front — with a
+// fixed message that never quotes the content (hostile_store_files/
+// tokens_invalid_utf8_secret). A leading UTF-8 byte-order mark is already a syntax error to
+// encoding/json, so it fails typed below (hostile_store_files/tokens_utf8_bom).
+func strictUnmarshal(data []byte, into any, file string) error {
+	if !utf8.Valid(data) {
+		return &StoreFormatError{msg: file + ": record is not valid UTF-8"}
+	}
 	if err := json.Unmarshal(data, into); err != nil {
-		return &StoreFormatError{msg: err.Error()}
+		return &StoreFormatError{msg: file + ": " + err.Error()}
 	}
 	return nil
 }
@@ -225,18 +244,18 @@ func strictUnmarshal(data []byte, into any) error {
 // requireStr enforces presence of a required string field (a nil pointer is a missing field
 // OR an explicit JSON null — both rejected, matching serde). Names the field, never its
 // value.
-func requireStr(p *string, field, record string) (string, error) {
+func requireStr(p *string, field, file string) (string, error) {
 	if p == nil {
-		return "", &StoreFormatError{msg: fmt.Sprintf("%s record missing required field %q", record, field)}
+		return "", &StoreFormatError{msg: fmt.Sprintf("%s: record missing required field %q", file, field)}
 	}
 	return *p, nil
 }
 
 // requireInt enforces presence of a required integer field. Names the field, never its
 // value.
-func requireInt(p *int64, field, record string) (int64, error) {
+func requireInt(p *int64, field, file string) (int64, error) {
 	if p == nil {
-		return 0, &StoreFormatError{msg: fmt.Sprintf("%s record missing required field %q", record, field)}
+		return 0, &StoreFormatError{msg: fmt.Sprintf("%s: record missing required field %q", file, field)}
 	}
 	return *p, nil
 }

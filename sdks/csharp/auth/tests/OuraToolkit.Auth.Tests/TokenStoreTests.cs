@@ -111,6 +111,25 @@ public class TokenStoreTests
         File.WriteAllText(temp.Store.CredentialsPath, "null");
         var credsError = Assert.Throws<StoreFormatException>(() => temp.Store.LoadCredentials());
         Assert.Contains("credentials.json", credsError.Message);
+        // Library-detected: an honest fixed reason, no synthesized parser exception chained.
+        Assert.Contains("record is JSON null", credsError.Message);
+        Assert.Null(credsError.InnerException);
+    }
+
+    /// <summary>
+    /// A record that is not valid UTF-8 fails with the typed error carrying a FIXED reason and
+    /// NO inner exception: the decoder's exception is deliberately not chained (the store holds
+    /// secrets), and no fake JsonException is synthesized in its place.
+    /// </summary>
+    [Fact]
+    public void InvalidUtf8RecordThrowsATypedFormatErrorWithNoInnerException()
+    {
+        using var temp = new TempStore();
+        File.WriteAllBytes(temp.Store.TokensPath,
+            [.. System.Text.Encoding.UTF8.GetBytes("{\"access_token\":\"a"), 0xFF, (byte)'"', (byte)'}']);
+        var e = Assert.Throws<StoreFormatException>(() => temp.Store.LoadTokens());
+        Assert.Equal($"token store format error in {temp.Store.TokensPath}: record is not valid UTF-8", e.Message);
+        Assert.Null(e.InnerException);
     }
 
     [Fact]

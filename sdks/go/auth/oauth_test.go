@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -79,40 +80,50 @@ func TestRefreshRejectsHostile2xxTypedAndLeavesStoreUntouched(t *testing.T) {
 // A confidential client must never re-POST its client_secret to a redirect target. The
 // token-endpoint HTTP client refuses to follow redirects: a 3xx from the endpoint surfaces
 // as an error and the redirect target is never contacted (so the secret cannot leak there).
+// 307 and 308 are the statuses that matter: unlike a 302, they re-send the POST form
+// (client secret + refresh token) to the Location host.
 func TestTokenEndpointClientRefusesRedirects(t *testing.T) {
-	var targetHits atomic.Int32
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		targetHits.Add(1)
-		// If the client wrongly followed, it would deliver client_id/client_secret here
-		// and this would look like a successful refresh.
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token": "leaked-access", "refresh_token": "r2", "expires_in": 3600,
+	for _, status := range []int{http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			var targetHits atomic.Int32
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				targetHits.Add(1)
+				// If the client wrongly followed, it would deliver client_id/client_secret
+				// here and this would look like a successful refresh.
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"access_token": "leaked-access", "refresh_token": "r2", "expires_in": 3600,
+				})
+			}))
+			defer target.Close()
+
+			redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, target.URL, status)
+			}))
+			defer redirector.Close()
+
+			store := NewStoreAt(t.TempDir())
+			if err := store.SaveTokens(expiredTokens("r1")); err != nil {
+				t.Fatal(err)
+			}
+			m := testManager(t, redirector.URL, store, expiredTokens("r1"))
+
+			got, err := m.AccessToken(context.Background())
+			if err == nil {
+				t.Fatalf("a %d from the token endpoint must surface an error, not be followed (got token %q)", status, got)
+			}
+			var te *TokenEndpointError
+			if !errors.As(err, &te) || te.Status != status {
+				t.Fatalf("a %d must fail as a *TokenEndpointError with that status, got %v", status, err)
+			}
+			if n := targetHits.Load(); n != 0 {
+				t.Fatalf("confidential client must NOT re-POST client_secret to a %d redirect target: target contacted %d time(s)", status, n)
+			}
+			// The store keeps its original refresh token — the redirect did not rotate anything.
+			disk, _ := store.LoadTokens()
+			if disk == nil || disk.RefreshToken != "r1" {
+				t.Fatalf("a refused redirect must leave the store untouched, disk=%v", disk)
+			}
 		})
-	}))
-	defer target.Close()
-
-	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, target.URL, http.StatusFound)
-	}))
-	defer redirector.Close()
-
-	store := NewStoreAt(t.TempDir())
-	if err := store.SaveTokens(expiredTokens("r1")); err != nil {
-		t.Fatal(err)
-	}
-	m := testManager(t, redirector.URL, store, expiredTokens("r1"))
-
-	got, err := m.AccessToken(context.Background())
-	if err == nil {
-		t.Fatalf("a redirect from the token endpoint must surface an error, not be followed (got token %q)", got)
-	}
-	if n := targetHits.Load(); n != 0 {
-		t.Fatalf("confidential client must NOT re-POST client_secret to a redirect target: target contacted %d time(s)", n)
-	}
-	// The store keeps its original refresh token — the redirect did not rotate anything.
-	disk, _ := store.LoadTokens()
-	if disk == nil || disk.RefreshToken != "r1" {
-		t.Fatalf("a refused redirect must leave the store untouched, disk=%v", disk)
 	}
 }

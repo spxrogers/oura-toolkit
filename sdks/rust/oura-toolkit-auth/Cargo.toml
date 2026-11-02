@@ -36,6 +36,8 @@ test-util = []
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# Decodes the conformance fixture's `raw_body_base64` column (bytes JSON can't hold).
+base64 = "0.22"
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 wiremock = "0.6"
 tempfile = "3"

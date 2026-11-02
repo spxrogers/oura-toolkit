@@ -42,7 +42,13 @@ pub const REFRESH_SKEW_SECS: i64 = 60;
 /// lock can be held (the refresh runs under it) — without it, one process's stalled refresh
 /// would wedge every other process waiting on the lock. Worst case is ~2× this value: the
 /// 400-retry arm can chain a second endpoint call under the same lock.
-const TOKEN_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const TOKEN_ENDPOINT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The `User-Agent` every request this crate builds carries: the token-endpoint calls and
+/// [`build_authenticated_client`]'s data-plane client. Oura's API (openapi-1.43+) requires a
+/// `User-Agent` identifying the application on every request and may reject requests without
+/// one — and `reqwest` sends none by default.
+pub const USER_AGENT: &str = concat!("oura-toolkit-auth/", env!("CARGO_PKG_VERSION"));
 
 /// Owns the current tokens and the machinery to keep them fresh. Shared (behind `Arc`) by the
 /// CLI's SDK calls and the MCP server's tool calls — one auth layer, two consumers.
@@ -97,10 +103,7 @@ impl TokenManager {
             // A plain client (no auth middleware) for token-endpoint calls, to avoid
             // recursion. The timeout is load-bearing: the call runs under the store's
             // exclusive lock, so an unbounded hang would block other processes too.
-            http: reqwest::Client::builder()
-                .timeout(TOKEN_ENDPOINT_TIMEOUT)
-                .build()
-                .expect("default reqwest client"),
+            http: crate::oauth::token_endpoint_client(),
             skew_secs: REFRESH_SKEW_SECS,
             token_url: TOKEN_URL.to_string(),
             env_token: false,
@@ -284,7 +287,11 @@ impl Middleware for AuthMiddleware {
 /// Bearer-injecting auth middleware (inner), so every retry re-injects a fresh token.
 pub fn build_authenticated_client(manager: Arc<TokenManager>) -> ClientWithMiddleware {
     let retry = ExponentialBackoff::builder().build_with_max_retries(3);
-    ClientBuilder::new(reqwest::Client::new())
+    let http = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .expect("data-plane reqwest client");
+    ClientBuilder::new(http)
         .with(RetryTransientMiddleware::new_with_policy(retry))
         .with(AuthMiddleware::new(manager))
         .build()
@@ -646,6 +653,109 @@ mod tests {
         // force_refresh runs the same critical section — same guarantee.
         let err = m.force_refresh().await.unwrap_err();
         assert!(matches!(err, AuthError::NotAuthenticated), "{err:?}");
+    }
+
+    /// The refresh behind every `oura` data call and `oura mcp` tool call must refuse a
+    /// 307/308 from the token endpoint: following it would re-send the client secret and
+    /// refresh token to the `Location` host. It fails typed with the 3xx status, the other
+    /// host receives nothing, and the store is untouched.
+    #[tokio::test]
+    async fn a_refresh_never_follows_a_token_endpoint_redirect_with_the_secret() {
+        let elsewhere = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "stolen", "refresh_token": "stolen", "expires_in": 3600
+            })))
+            .expect(0) // checked on drop: the secrets never reach it
+            .mount(&elsewhere)
+            .await;
+        for status in [307u16, 308] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .insert_header("location", format!("{}/steal", elsewhere.uri())),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let dir = tempfile::tempdir().unwrap();
+            let store = TokenStore::with_dir(dir.path());
+            store.save_tokens(&expired_tokens("r-live")).unwrap();
+            let before = std::fs::read(dir.path().join("tokens.json")).unwrap();
+
+            let m = test_manager(&server, store, Some(expired_tokens("r-live")));
+            let err = m.access_token().await.expect_err(&format!(
+                "a {status} from the token endpoint must not be followed to another host"
+            ));
+            assert!(
+                matches!(err, AuthError::TokenEndpoint { status: s, .. } if s == status),
+                "a {status} from the token endpoint fails typed, got {err:?}"
+            );
+            assert_eq!(
+                std::fs::read(dir.path().join("tokens.json")).unwrap(),
+                before,
+                "a {status} leaves the store untouched"
+            );
+        }
+    }
+
+    /// Oura (openapi-1.43+) requires an identifying `User-Agent` on every request and reqwest
+    /// sends none by default. The mock answers ONLY when the exact header is present, so a
+    /// successful refresh proves `TokenManager`'s own token-endpoint client carries it.
+    #[tokio::test]
+    async fn a_token_manager_refresh_sends_the_user_agent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(wiremock::matchers::header("user-agent", USER_AGENT))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "a-new", "refresh_token": "r-new", "expires_in": 3600
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        store.save_tokens(&expired_tokens("r1")).unwrap();
+
+        let m = test_manager(&server, store, Some(expired_tokens("r1")));
+        assert_eq!(
+            m.access_token().await.expect("refresh with the User-Agent"),
+            "a-new",
+            "the token endpoint must receive `User-Agent: {USER_AGENT}`"
+        );
+        assert_eq!(
+            USER_AGENT,
+            concat!("oura-toolkit-auth/", env!("CARGO_PKG_VERSION")),
+            "the User-Agent names the crate and its version"
+        );
+    }
+
+    /// The data-plane client handed to the generated SDK carries the `User-Agent` (alongside
+    /// the Bearer) on every request: the mock answers only when both are exact.
+    #[tokio::test]
+    async fn the_authenticated_client_sends_the_user_agent_and_bearer() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::header("user-agent", USER_AGENT))
+            .and(wiremock::matchers::header("authorization", "Bearer tok-ua"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let manager = Arc::new(TokenManager::from_access_token("tok-ua".into()));
+        let client = build_authenticated_client(manager);
+        let status = client
+            .get(format!("{}/v2/usercollection/personal_info", server.uri()))
+            .send()
+            .await
+            .expect("send")
+            .status();
+        assert_eq!(
+            status, 200,
+            "the data-plane request must carry `User-Agent: {USER_AGENT}` and the Bearer"
+        );
     }
 
     #[tokio::test]

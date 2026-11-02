@@ -21,7 +21,9 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
 
-use oura_toolkit_auth::{AuthError, TokenManager};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use oura_toolkit_auth::{AuthError, TokenManager, TokenStore};
 
 use crate::api::{self, DateRange};
 use crate::commands;
@@ -59,6 +61,11 @@ pub struct OuraMcp {
     manager: TokenManager,
     base_url: String,
     tool_router: ToolRouter<Self>,
+    /// The store to check for a scope-change re-consent (#116); `None` = no check (an
+    /// `OURA_ACCESS_TOKEN` server has no store, and in-process tests opt in explicitly).
+    scope_store: Option<TokenStore>,
+    /// Whether this session already ran its one scope-change check ("once per session").
+    scope_checked: AtomicBool,
 }
 
 /// Shared date-window parameters for every windowed tool. Deliberately CURATED, not the
@@ -193,7 +200,43 @@ impl OuraMcp {
             manager,
             base_url,
             tool_router,
+            scope_store: None,
+            scope_checked: AtomicBool::new(false),
         }
+    }
+
+    /// Enable the scope-change re-consent note (#116) against `store`: the first SUCCESSFUL
+    /// tool result of the session, if the saved grant lacks a default scope, carries an extra
+    /// text block telling the model to have the user run `oura auth login`. That's MCP's
+    /// out-of-band version of the CLI's `[Y/n]` prompt (see `reconsent`).
+    pub fn with_scope_check(mut self, store: TokenStore) -> Self {
+        self.scope_store = Some(store);
+        self
+    }
+
+    /// Append the scope-change note to `result` if it's the session's first successful one.
+    ///
+    /// Only successes: an error result carries no data to vouch for ("the data above is still
+    /// valid"), and a skill told to stop on an auth error would never relay it, so the one
+    /// note must wait for a result the model will actually present. The data block(s) and
+    /// `structured_content` stay untouched; the note is its own trailing text block.
+    fn with_scope_notice(
+        &self,
+        result: Result<CallToolResult, ErrorData>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (mut result, store) = match (result, &self.scope_store) {
+            (Ok(result), Some(store)) if result.is_error != Some(true) => (result, store),
+            (other, _) => return other,
+        };
+        // `swap` claims the session's one check atomically: under concurrent tool calls
+        // exactly one successful result reads the store and (maybe) carries the note, and a
+        // current grant costs one read per session, not one per call.
+        if !self.scope_checked.swap(true, Ordering::AcqRel) {
+            if let Some(note) = crate::reconsent::mcp_notice(store) {
+                result.content.push(ContentBlock::text(note));
+            }
+        }
+        Ok(result)
     }
 
     #[tool(name = "get_daily_sleep")]
@@ -202,7 +245,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_sleep(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_sleep(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_daily_readiness")]
@@ -211,7 +256,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_readiness(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_readiness(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_daily_activity")]
@@ -220,7 +267,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_activity(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_activity(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_daily_stress")]
@@ -229,7 +278,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_stress(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_stress(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_heart_rate")]
@@ -238,7 +289,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_heartrate(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_heartrate(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_sessions")]
@@ -247,7 +300,9 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_sessions(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_sessions(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_workouts")]
@@ -256,12 +311,16 @@ impl OuraMcp {
         Parameters(params): Parameters<DateRangeParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let range = params.resolve()?;
-        tool_result(commands::fetch_workouts(&self.manager, &self.base_url, range).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_workouts(&self.manager, &self.base_url, range).await,
+        ))
     }
 
     #[tool(name = "get_personal_info")]
     async fn get_personal_info(&self) -> Result<CallToolResult, ErrorData> {
-        tool_result(commands::fetch_personal_info(&self.manager, &self.base_url).await)
+        self.with_scope_notice(tool_result(
+            commands::fetch_personal_info(&self.manager, &self.base_url).await,
+        ))
     }
 }
 
@@ -285,7 +344,9 @@ impl ServerHandler for OuraMcp {
                  Authentication is out of band: if a tool reports that the user is not \
                  authenticated, ask them to run `oura auth login` in a terminal (or \
                  `oura auth setup` first if they have never registered credentials), then \
-                 retry.",
+                 retry. If a tool result carries a note that Oura changed its API \
+                 permissions, relay it to the user once (they re-authorize with `oura auth \
+                 login` in a terminal). The data in that result is still valid.",
             )
     }
 }
@@ -295,8 +356,18 @@ impl ServerHandler for OuraMcp {
 ///
 /// `base_url` is the resolved data-plane host (default [`api::API_BASE`], or `OURA_API_BASE_URL`
 /// — #20), so a containerized server can point at a proxy/mock just like the CLI.
-pub async fn serve(manager: TokenManager, base_url: String) -> anyhow::Result<()> {
-    let server = OuraMcp::new(manager, base_url);
+///
+/// `scope_store` is the store to check for a scope-change re-consent note (#116): `None` for
+/// an `OURA_ACCESS_TOKEN` server (no store).
+pub async fn serve(
+    manager: TokenManager,
+    scope_store: Option<TokenStore>,
+    base_url: String,
+) -> anyhow::Result<()> {
+    let mut server = OuraMcp::new(manager, base_url);
+    if let Some(store) = scope_store {
+        server = server.with_scope_check(store);
+    }
     let running = match server.serve(rmcp::transport::stdio()).await {
         Ok(running) => running,
         // stdin closing before/during the handshake is "no client connected", not a
@@ -315,6 +386,62 @@ pub async fn serve(manager: TokenManager, base_url: String) -> anyhow::Result<()
 #[cfg(test)]
 mod tests {
     use super::DESCRIPTIONS;
+
+    /// "Exactly one note per session" under REAL contention (CLAUDE.md rule 4): the
+    /// protocol-level test in tests/mcp_server.rs can't guarantee its calls overlap inside
+    /// `with_scope_notice`, so a racy check-then-set would still pass there. Here 16 threads
+    /// released by one barrier hit the claim at once, over many fresh sessions; a
+    /// non-atomic `load` + `store` lets several through (each reads the store in between).
+    #[test]
+    fn concurrent_results_claim_the_session_note_exactly_once() {
+        use super::OuraMcp;
+        use oura_toolkit_auth::{TokenManager, TokenStore, Tokens};
+        use rmcp::model::{CallToolResult, ContentBlock};
+        use std::sync::{Arc, Barrier};
+
+        const THREADS: usize = 16;
+        for session in 0..50 {
+            let dir = tempfile::tempdir().unwrap();
+            let store = TokenStore::with_dir(dir.path());
+            store
+                .save_tokens(&Tokens {
+                    access_token: "at".into(),
+                    refresh_token: "rt".into(),
+                    expires_at: i64::MAX / 2,
+                    // A grant predating Oura's 1.41 scope rename: the check has a gap to note.
+                    scope: Some("personal daily heartrate workout tag session spo2Daily".into()),
+                    token_type: Some("Bearer".into()),
+                })
+                .unwrap();
+            let server = Arc::new(
+                OuraMcp::new(
+                    TokenManager::from_access_token("at".into()),
+                    "http://127.0.0.1:9".into(),
+                )
+                .with_scope_check(store),
+            );
+            let barrier = Arc::new(Barrier::new(THREADS));
+            let handles: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let (server, barrier) = (server.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        let result = server
+                            .with_scope_notice(Ok(CallToolResult::success(vec![
+                                ContentBlock::text("data"),
+                            ])))
+                            .unwrap();
+                        result.content.len() - 1 // blocks beyond the data block = notes
+                    })
+                })
+                .collect();
+            let notes: usize = handles.into_iter().map(|h| h.join().unwrap()).sum();
+            assert_eq!(
+                notes, 1,
+                "session {session}: {THREADS} concurrent successes must carry exactly one note"
+            );
+        }
+    }
 
     /// The plugin skills instruct Claude to call tools BY NAME — that's a functional
     /// contract, not prose. A `#[tool(name = …)]` rename that orphans a skill must fail

@@ -4,8 +4,9 @@
 # generation-input spec on stdout. The pristine spec is never edited in place. See issue #5
 # and CLAUDE.md ("Known spec issues"). The three fixes:
 #
-#   1. servers[0].url is the leaked Python `None` ("https://api.None.com") — rewrite it.
-#      NON-NEGOTIABLE: nothing resolves without this.
+#   1. servers[0].url was the leaked Python `None` ("https://api.None.com") through
+#      openapi-1.37; upstream fixed it in 1.41, but we still pin it — a regression guard (a
+#      wrong server URL breaks every call). NON-NEGOTIABLE; a no-op on a correct spec.
 #   2. Every multi-doc response is `anyOf: [TypedResponse, MultiDocumentResponseDict]`; the
 #      dict branch produces ugly union return types. Strip it, collapse the now-single-element
 #      anyOf into the typed response, and drop the unused schema.

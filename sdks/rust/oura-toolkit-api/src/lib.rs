@@ -269,13 +269,14 @@ pub mod types {
         pub tag_type_code: ::std::option::Option<::std::string::String>,
     }
 
-    #[doc = "`ExtApiV2DataType`"]
+    #[doc = "Data types that partners can subscribe to via ExtApiV2 webhooks."]
     #[doc = r""]
     #[doc = r" <details><summary>JSON schema</summary>"]
     #[doc = r""]
     #[doc = r" ```json"]
     #[doc = "{"]
     #[doc = "  \"title\": \"ExtApiV2DataType\","]
+    #[doc = "  \"description\": \"Data types that partners can subscribe to via ExtApiV2 webhooks.\","]
     #[doc = "  \"type\": \"string\","]
     #[doc = "  \"enum\": ["]
     #[doc = "    \"tag\","]
@@ -293,8 +294,7 @@ pub mod types {
     #[doc = "    \"daily_stress\","]
     #[doc = "    \"daily_cardiovascular_age\","]
     #[doc = "    \"daily_resilience\","]
-    #[doc = "    \"vo2_max\","]
-    #[doc = "    \"meal\""]
+    #[doc = "    \"vo2_max\""]
     #[doc = "  ]"]
     #[doc = "}"]
     #[doc = r" ```"]
@@ -344,8 +344,6 @@ pub mod types {
         DailyResilience,
         #[serde(rename = "vo2_max")]
         Vo2Max,
-        #[serde(rename = "meal")]
-        Meal,
     }
 
     impl ::std::fmt::Display for ExtApiV2DataType {
@@ -367,7 +365,6 @@ pub mod types {
                 Self::DailyCardiovascularAge => f.write_str("daily_cardiovascular_age"),
                 Self::DailyResilience => f.write_str("daily_resilience"),
                 Self::Vo2Max => f.write_str("vo2_max"),
-                Self::Meal => f.write_str("meal"),
             }
         }
     }
@@ -392,7 +389,6 @@ pub mod types {
                 "daily_cardiovascular_age" => Ok(Self::DailyCardiovascularAge),
                 "daily_resilience" => Ok(Self::DailyResilience),
                 "vo2_max" => Ok(Self::Vo2Max),
-                "meal" => Ok(Self::Meal),
                 _ => Err("invalid value".into()),
             }
         }
@@ -2522,7 +2518,7 @@ pub mod types {
     #[doc = "    },"]
     #[doc = "    \"ring_id\": {"]
     #[doc = "      \"title\": \"Ring Id\","]
-    #[doc = "      \"description\": \"Encrypted identifier of the ring that produced this sleep data.\","]
+    #[doc = "      \"description\": \"Encrypted identifier of the ring that produced this sleep data. Deprecated, returns null.\","]
     #[doc = "      \"type\": ["]
     #[doc = "        \"string\","]
     #[doc = "        \"null\""]
@@ -2682,7 +2678,7 @@ pub mod types {
         #[doc = "Number of restless periods during sleep."]
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub restless_periods: ::std::option::Option<i64>,
-        #[doc = "Encrypted identifier of the ring that produced this sleep data."]
+        #[doc = "Encrypted identifier of the ring that produced this sleep data. Deprecated, returns null."]
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ring_id: ::std::option::Option<::std::string::String>,
         #[doc = "Version of the sleep algorithm used to calculate the sleep data."]
@@ -4934,7 +4930,9 @@ pub mod types {
     #[doc = "    \"manual\","]
     #[doc = "    \"autodetected\","]
     #[doc = "    \"confirmed\","]
-    #[doc = "    \"workout_heart_rate\""]
+    #[doc = "    \"workout_heart_rate\","]
+    #[doc = "    \"live_third_party_heart_rate\","]
+    #[doc = "    \"live_oura_heart_rate\""]
     #[doc = "  ]"]
     #[doc = "}"]
     #[doc = r" ```"]
@@ -4960,6 +4958,10 @@ pub mod types {
         Confirmed,
         #[serde(rename = "workout_heart_rate")]
         WorkoutHeartRate,
+        #[serde(rename = "live_third_party_heart_rate")]
+        LiveThirdPartyHeartRate,
+        #[serde(rename = "live_oura_heart_rate")]
+        LiveOuraHeartRate,
     }
 
     impl ::std::fmt::Display for PublicWorkoutSource {
@@ -4969,6 +4971,8 @@ pub mod types {
                 Self::Autodetected => f.write_str("autodetected"),
                 Self::Confirmed => f.write_str("confirmed"),
                 Self::WorkoutHeartRate => f.write_str("workout_heart_rate"),
+                Self::LiveThirdPartyHeartRate => f.write_str("live_third_party_heart_rate"),
+                Self::LiveOuraHeartRate => f.write_str("live_oura_heart_rate"),
             }
         }
     }
@@ -4981,6 +4985,8 @@ pub mod types {
                 "autodetected" => Ok(Self::Autodetected),
                 "confirmed" => Ok(Self::Confirmed),
                 "workout_heart_rate" => Ok(Self::WorkoutHeartRate),
+                "live_third_party_heart_rate" => Ok(Self::LiveThirdPartyHeartRate),
+                "live_oura_heart_rate" => Ok(Self::LiveOuraHeartRate),
                 _ => Err("invalid value".into()),
             }
         }
@@ -5789,7 +5795,7 @@ pub mod types {
 }
 
 #[derive(Clone, Debug)]
-#[doc = "Client for Oura API Documentation\n\n# Overview \nThe Oura API allows Oura users and partner applications to improve their user experience with Oura data.\nThis document describes the Oura API Version 2 (V2), which is the only available integration point for Oura data. The previous V1 API has been sunset.\n# Getting Started \n## What is an API?\nAn API (Application Programming Interface) allows different software applications to communicate with each other. The Oura API enables you to access your Oura Ring data programmatically.\n## Quick Start Guide\n1. Register an [API Application](https://cloud.ouraring.com/oauth/applications) and implement OAuth2\n2. **Make Your First API Call**:\n   ```\n   curl -X GET https://api.ouraring.com/v2/usercollection/personal_info \\\n   -H \"Authorization: Bearer YOUR_TOKEN_HERE\"\n   ```\n3. **Explore Data Types**:\n   - Browse the available endpoints in this documentation to discover what data you can access\n   - Each endpoint includes example requests and responses\n4. **Set Up Webhooks (Strongly Recommended)**:\n   - Webhooks are the preferred way to consume Oura data\n   - We have not had customers hit rate limits with webhooks properly implemented\n   - Make a single request for historical data when a user first connects, then use webhooks for ongoing updates\n   - Webhook notifications come approximately 30 seconds after data syncs from the mobile app\n   - [Set up webhooks](#tag/Webhook-Subscription-Routes) to receive notifications when data changes\n## Common Questions\n- **Data Delay**: Different data types sync at different times - sleep data requires users to open the Oura app, while daily activity and stress may sync in the background\n# Data Access\nIn order to access data, a registered [API Application](https://cloud.ouraring.com/oauth/applications) is required.\n API Applications are limited to **10** users before requiring approval from Oura. There is no limit once an application is approved.\n Additionally, Oura users **must provide consent** to share each data type an API Application has access to.\nAll data access requests through the Oura API require [Authentication](https://cloud.ouraring.com/docs/authentication).\nAdditionally, we recommend that Oura users keep their mobile app updated to support API access for the latest data types.\n# Authentication\nThe Oura Cloud API supports authentication through the industry-standard OAuth2 protocol. For more information, see our [Authentication instructions](https://cloud.ouraring.com/docs/authentication).\nAccess tokens must be included in the request header as follows:\n```http\nGET /v2/usercollection/personal_info HTTP/1.1\nHost: api.ouraring.com\nAuthorization: Bearer <token>\n```\nPlease note that personal access tokens were deprecated in December 2025 and are no longer available for use.\n# Oura HTTP Response Codes\n| Response Code                        | Description |\n| ------------------------------------ | - |\n| 200 OK                               | Successful Response         |\n| 400 Query Parameter Validation Error | The request contains query parameters that are invalid or incorrectly formatted. |\n| 401 Unauthorized                     | Invalid or expired authentication token. |\n| 403 Forbidden                        | The requested resource requires additional permissions or the user's Oura subscription has expired. |\n| 429 Too Many Requests                | Rate limit exceeded. See response headers for retry guidance. |\n\n## Rate Limits\nThe API enforces rate limits at two layers to ensure fair access across all applications:\n- a per-access-token limit, which throttles single-token floods, and\n- a per-application limit, which caps the aggregate traffic across all of an application's end-user tokens so one fan-out app can't dominate shared capacity.\n\nA request that trips either layer receives a `429 Too Many Requests`. The `X-RateLimit-Tier` response header identifies which layer fired.\n\nIf your application regularly approaches rate limits, [webhooks](#tag/Webhook-Subscription-Routes) are strongly recommended — most applications that implement webhooks correctly do not encounter rate limit issues.\n\n[Contact us](mailto:api-support@ouraring.com) if you expect your usage to require higher limits.\n\n## Rate Limit Response Headers\nWhen a `429 Too Many Requests` response is returned, five headers are included to guide retries. Prefer these over fixed-interval backoff:\n- **`Retry-After`** — integer seconds to wait before retrying. RFC 7231-compliant; safe to feed directly into your client's backoff logic.\n- **`X-RateLimit-Limit`** — the request ceiling for the current window.\n- **`X-RateLimit-Window`** — the rolling window length in seconds that the ceiling applies to.\n- **`X-RateLimit-Reset`** — Unix epoch (seconds) at which the window resets and quota is fully restored.\n- **`X-RateLimit-Tier`** — identifies which limit was exceeded, useful when contacting support.\n\n\nhttps://cloud.ouraring.com/legal/api-agreement\n\nVersion: 2.0"]
+#[doc = "Client for Oura API Documentation\n\n# Overview \nThe Oura API allows Oura users and partner applications to improve their user experience with Oura data.\nThis document describes the Oura API Version 2 (V2), which is the only available integration point for Oura data. The previous V1 API has been sunset.\n# Getting Started \n## What is an API?\nAn API (Application Programming Interface) allows different software applications to communicate with each other. The Oura API enables you to access your Oura Ring data programmatically.\n## Quick Start Guide\n1. Register an [API Application](https://cloud.ouraring.com/oauth/applications) and implement OAuth2\n2. **Make Your First API Call**:\n   ```\n   curl -X GET https://api.ouraring.com/v2/usercollection/personal_info \\\n   -H \"Authorization: Bearer YOUR_TOKEN_HERE\" \\\n   -H \"User-Agent: YourAppName/1.0\"\n   ```\n3. **Explore Data Types**:\n   - Browse the available endpoints in this documentation to discover what data you can access\n   - Each endpoint includes example requests and responses\n4. **Set Up Webhooks (Strongly Recommended)**:\n   - Webhooks are the preferred way to consume Oura data\n   - We have not had customers hit rate limits with webhooks properly implemented\n   - Make a single request for historical data when a user first connects, then use webhooks for ongoing updates\n   - Webhook notifications come approximately 30 seconds after data syncs from the mobile app\n   - [Set up webhooks](#tag/Webhook-Subscription-Routes) to receive notifications when data changes\n## Common Questions\n- **Data Delay**: Different data types sync at different times - sleep data requires users to open the Oura app, while daily activity and stress may sync in the background\n# Data Access\nIn order to access data, a registered [API Application](https://cloud.ouraring.com/oauth/applications) is required.\n API Applications are limited to **10** users before requiring approval from Oura. There is no limit once an application is approved.\n Additionally, Oura users **must provide consent** to share each data type an API Application has access to.\nAll data access requests through the Oura API require [Authentication](https://cloud.ouraring.com/docs/authentication).\nAdditionally, we recommend that Oura users keep their mobile app updated to support API access for the latest data types.\n# Authentication\nThe Oura Cloud API supports authentication through the industry-standard OAuth2 protocol. For more information, see our [Authentication instructions](https://cloud.ouraring.com/docs/authentication).\nAccess tokens must be included in the request header as follows:\n```http\nGET /v2/usercollection/personal_info HTTP/1.1\nHost: api.ouraring.com\nAuthorization: Bearer <token>\nUser-Agent: YourAppName/1.0\n```\nPlease note that personal access tokens were deprecated in December 2025 and are no longer available for use.\n# User-Agent Header\nEvery request must include a `User-Agent` header that identifies your application, for example `User-Agent: YourAppName/1.0`. Requests without one may be rejected. Not every HTTP library sends a default value, so set it explicitly rather than relying on the default. Browsers set their own `User-Agent` automatically; every other client (server-side code, scripts, native apps) must set it.\n\n# Oura HTTP Response Codes\n| Response Code                        | Description |\n| ------------------------------------ | - |\n| 200 OK                               | Successful Response         |\n| 400 Query Parameter Validation Error | The request contains query parameters that are invalid or incorrectly formatted. |\n| 401 Unauthorized                     | Invalid or expired authentication token. |\n| 403 Forbidden                        | The requested resource requires additional permissions or the user's Oura subscription has expired. |\n| 429 Too Many Requests                | Rate limit exceeded. See response headers for retry guidance. |\n\n## Rate Limits\nThe API enforces rate limits at two layers to ensure fair access across all applications:\n- a per-access-token limit, which throttles single-token floods, and\n- a per-application limit, which caps the aggregate traffic across all of an application's end-user tokens so one fan-out app can't dominate shared capacity.\n\nA request that trips either layer receives a `429 Too Many Requests`. The `X-RateLimit-Tier` response header identifies which layer fired.\n\nIf your application regularly approaches rate limits, [webhooks](#tag/Webhook-Subscription-Routes) are strongly recommended — most applications that implement webhooks correctly do not encounter rate limit issues.\n\n[Contact us](mailto:api-support@ouraring.com) if you expect your usage to require higher limits.\n\n## Rate Limit Response Headers\nWhen a `429 Too Many Requests` response is returned, five headers are included to guide retries. Prefer these over fixed-interval backoff:\n- **`Retry-After`** — integer seconds to wait before retrying. RFC 7231-compliant; safe to feed directly into your client's backoff logic.\n- **`X-RateLimit-Limit`** — the request ceiling for the current window.\n- **`X-RateLimit-Window`** — the rolling window length in seconds that the ceiling applies to.\n- **`X-RateLimit-Reset`** — Unix epoch (seconds) at which the window resets and quota is fully restored.\n- **`X-RateLimit-Tier`** — identifies which limit was exceeded, useful when contacting support.\n\n\nhttps://cloud.ouraring.com/legal/api-agreement\n\nVersion: 2.0"]
 pub struct Client {
     pub(crate) baseurl: String,
     pub(crate) client: reqwest::Client,

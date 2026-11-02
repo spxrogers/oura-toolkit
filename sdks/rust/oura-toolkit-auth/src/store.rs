@@ -145,7 +145,7 @@ impl TokenStore {
     /// Load the client credentials, or `None` if `auth setup` has never run.
     pub fn load_credentials(&self) -> Result<Option<ClientCredentials>, AuthError> {
         match fs::read(self.credentials_path()) {
-            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Ok(bytes) => parse_record("credentials.json", &bytes).map(Some),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -154,7 +154,7 @@ impl TokenStore {
     /// Persist the client credentials (`0600`, atomic).
     pub fn save_credentials(&self, credentials: &ClientCredentials) -> Result<(), AuthError> {
         self.ensure_dir()?;
-        let data = serde_json::to_vec_pretty(credentials)?;
+        let data = serde_json::to_vec_pretty(credentials).map_err(AuthError::Serde)?;
         write_secure(&self.credentials_path(), &data)?;
         Ok(())
     }
@@ -162,7 +162,7 @@ impl TokenStore {
     /// Load the tokens, or `None` if no login has succeeded yet.
     pub fn load_tokens(&self) -> Result<Option<Tokens>, AuthError> {
         match fs::read(self.tokens_path()) {
-            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Ok(bytes) => parse_record("tokens.json", &bytes).map(Some),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -177,7 +177,7 @@ impl TokenStore {
     /// `TokenManager` does, or it can burn a rotation another process just persisted.
     pub fn save_tokens(&self, tokens: &Tokens) -> Result<(), AuthError> {
         self.ensure_dir()?;
-        let data = serde_json::to_vec_pretty(tokens)?;
+        let data = serde_json::to_vec_pretty(tokens).map_err(AuthError::Serde)?;
         write_secure(&self.tokens_path(), &data)?;
         Ok(())
     }
@@ -286,6 +286,56 @@ fn remove_if_exists(path: &Path) -> Result<bool, AuthError> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e.into()),
     }
+}
+
+/// Parse the store record `file`, reporting WHAT went wrong and WHERE — never the file's
+/// values. serde_json's own messages quote the value they choke on (`invalid type: string
+/// "…"`), and the store holds secrets, so the typed error carries only the category, the
+/// position, and (for a missing or duplicate field) the field's name — our own schema, never data
+/// (conformance: hostile_store_files `must_not_echo` cases).
+fn parse_record<T: serde::de::DeserializeOwned>(
+    file: &'static str,
+    bytes: &[u8],
+) -> Result<T, AuthError> {
+    use serde_json::error::Category;
+    let fail = |detail: String| AuthError::StoreFormat { file, detail };
+    // A record is UTF-8 JSON text (RFC 8259 §8.1), checked over the WHOLE file: serde_json
+    // doesn't validate the strings of fields it skips. (A leading byte-order mark is already
+    // malformed JSON to serde_json — conformance tokens_utf8_bom.)
+    if std::str::from_utf8(bytes).is_err() {
+        return Err(fail("not valid UTF-8".into()));
+    }
+    serde_json::from_slice(bytes).map_err(|e| {
+        let what = match e.classify() {
+            Category::Io => "an unreadable record".to_owned(),
+            Category::Syntax => "malformed JSON".to_owned(),
+            Category::Eof => "truncated JSON".to_owned(),
+            // "missing field `x`" / "duplicate field `x`" name our schema, not the file's
+            // data; every other data error ("invalid type: string \"…\"") may quote a value,
+            // so it stays generic.
+            Category::Data => schema_field_error(&e.to_string())
+                .map(|(what, field)| format!("{what} `{field}`"))
+                .unwrap_or_else(|| "an invalid or wrong-typed value".to_owned()),
+        };
+        fail(format!("{what} at line {} column {}", e.line(), e.column()))
+    })
+}
+
+/// serde's "missing field `name`" / "duplicate field `name`" message as (kind, name), when the
+/// name is one of ours (a plain identifier) — anything else returns `None`, so nothing
+/// file-derived is echoed (a wrong-typed value's message quotes the value itself).
+fn schema_field_error(message: &str) -> Option<(&'static str, &str)> {
+    let (what, rest) = if let Some(rest) = message.strip_prefix("missing field `") {
+        ("missing field", rest)
+    } else {
+        (
+            "duplicate field",
+            message.strip_prefix("duplicate field `")?,
+        )
+    };
+    let field = &rest[..rest.find('`')?];
+    (!field.is_empty() && field.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+        .then_some((what, field))
 }
 
 /// Open (creating if needed) with owner-only perms where supported.
@@ -520,6 +570,36 @@ mod tests {
     }
 
     #[test]
+    fn a_format_error_names_the_file_and_a_missing_field_but_never_a_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TokenStore::with_dir(dir.path());
+        std::fs::create_dir_all(dir.path()).unwrap();
+        std::fs::write(
+            store.tokens_path(),
+            r#"{"access_token": "atSEC777", "refresh_token": "rt"}"#,
+        )
+        .unwrap();
+        let err = store.load_tokens().expect_err("expires_at is missing");
+        let text = err.to_string();
+        assert!(
+            text.starts_with("token store format error in tokens.json: missing field `expires_at` at line 1 column"),
+            "names the file and the missing field: {text}"
+        );
+        assert!(!text.contains("atSEC777"), "never a value: {text}");
+        // A field name is echoed only when it's a plain identifier (our schema's shape).
+        assert_eq!(
+            schema_field_error("missing field `expires_at` at line 1 column 3"),
+            Some(("missing field", "expires_at"))
+        );
+        assert_eq!(
+            schema_field_error("duplicate field `refresh_token` at line 1 column 9"),
+            Some(("duplicate field", "refresh_token"))
+        );
+        assert_eq!(schema_field_error("missing field `a\"b` at line 1"), None);
+        assert_eq!(schema_field_error("invalid type: string \"x\""), None);
+    }
+
+    #[test]
     fn delete_removes_exactly_the_named_record_and_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let store = TokenStore::with_dir(dir.path());
@@ -551,7 +631,7 @@ mod tests {
         fs::create_dir_all(dir.path()).unwrap();
         fs::write(store.tokens_path(), b"{not json").unwrap();
         assert!(
-            matches!(store.load_tokens(), Err(AuthError::Serde(_))),
+            matches!(store.load_tokens(), Err(AuthError::StoreFormat { .. })),
             "corrupt tokens.json must surface a typed parse error"
         );
     }

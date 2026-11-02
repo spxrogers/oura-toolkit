@@ -108,12 +108,45 @@ enum Command {
     Man,
 }
 
+impl Command {
+    /// Reads the saved login (so the re-consent check, #116, applies): the data commands and
+    /// `oura api`. THE list — `main`'s preflight and check both go through it.
+    fn is_store_backed(&self) -> bool {
+        matches!(
+            self,
+            Command::Sleep(_)
+                | Command::Readiness(_)
+                | Command::Activity(_)
+                | Command::Stress(_)
+                | Command::Heartrate(_)
+                | Command::Sessions(_)
+                | Command::Workouts(_)
+                | Command::PersonalInfo
+                | Command::Api { .. }
+        )
+    }
+
+    /// The date-window flags of a windowed data command, for the preflight.
+    fn range_args(&self) -> Option<&RangeArgs> {
+        match self {
+            Command::Sleep(r)
+            | Command::Readiness(r)
+            | Command::Activity(r)
+            | Command::Stress(r)
+            | Command::Heartrate(r)
+            | Command::Sessions(r)
+            | Command::Workouts(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum AuthAction {
     /// Guided Oura OAuth app registration (terminal prompts), then login.
     Setup {
         /// Loopback port for the redirect URI (must match your registered app).
-        #[arg(long, default_value_t = 8788)]
+        #[arg(long, default_value_t = auth::DEFAULT_LOGIN_PORT)]
         port: u16,
         /// Skip the local browser+loopback: print the URL and paste the redirect back
         /// (for SSH/containers where the callback can't reach this host).
@@ -123,7 +156,7 @@ enum AuthAction {
     /// Authorization Code login using stored client credentials.
     Login {
         /// Loopback port for the redirect URI (must match your registered app).
-        #[arg(long, default_value_t = 8788)]
+        #[arg(long, default_value_t = auth::DEFAULT_LOGIN_PORT)]
         port: u16,
         /// Skip the local browser+loopback: print the URL and paste the redirect back
         /// (for SSH/containers where the callback can't reach this host).
@@ -192,6 +225,43 @@ async fn run() -> anyhow::Result<()> {
         })
     };
 
+    // Preflight: every store-backed command's own inputs are validated FIRST (date ranges,
+    // and `oura api`'s method/fields/body/--paginate, with its stdin body read now), so a
+    // usage error always fails as exactly that — never after a re-consent prompt or a
+    // browser login the user didn't need (#116, docs/cli-contract.md → Scope changes).
+    if let Some(range) = cli.command.as_ref().and_then(Command::range_args) {
+        range.resolve()?;
+    }
+    let api_request = match &cli.command {
+        Some(Command::Api {
+            path,
+            method,
+            field,
+            paginate,
+        }) => Some(oura_toolkit_cli::passthrough::prepare(
+            &base_url,
+            path,
+            method,
+            field,
+            read_stdin_body()?,
+            *paginate,
+        )?),
+        _ => None,
+    };
+
+    // Re-consent check (#116): before a STORE-backed command, a saved login that predates a
+    // change to the default scopes gets one prompt (interactive) or one notice (scripts).
+    // Not for `auth *` (account commands act on the store directly), the pure generators, or
+    // an OURA_ACCESS_TOKEN run (no store involved). `mcp` can't prompt (stdout is the
+    // transport), so it carries its own out-of-band note on a tool result (`mcp.rs`).
+    let store_backed = cli.command.as_ref().is_some_and(Command::is_store_backed);
+    if store_backed && api::access_token_override(env).is_none() {
+        // No resolvable store dir is the command's own error to report (via its manager).
+        if let Ok(store) = oura_toolkit_auth::TokenStore::new() {
+            oura_toolkit_cli::reconsent::run(&store).await;
+        }
+    }
+
     match cli.command {
         Some(Command::Auth { action }) => match action {
             AuthAction::Setup { port, no_browser } => auth::setup(port, no_browser).await,
@@ -258,21 +328,13 @@ async fn run() -> anyhow::Result<()> {
             contract::emit(&commands::personal_info(&data_ctx()?).await?)?;
             Ok(())
         }
-        Some(Command::Api {
-            path,
-            method,
-            field,
-            paginate,
-        }) => {
+        Some(Command::Api { .. }) => {
             // The authenticated escape hatch (#19): same auth layer + base URL as the data
-            // commands, but a raw request to an arbitrary path. A request body may be piped
-            // on stdin (used only when stdin is a non-empty non-TTY stream).
-            let stdin_body = read_stdin_body()?;
+            // commands, but a raw request to an arbitrary path — validated (and its stdin
+            // body read) in the preflight above.
+            let request = api_request.expect("the preflight prepares every `oura api` invocation");
             let manager = api::manager_from_env(env)?;
-            let out = oura_toolkit_cli::passthrough::run(
-                &manager, &base_url, &path, &method, &field, stdin_body, paginate,
-            )
-            .await?;
+            let out = oura_toolkit_cli::passthrough::execute(&manager, request).await?;
             contract::emit(&out)?;
             Ok(())
         }
@@ -282,7 +344,12 @@ async fn run() -> anyhow::Result<()> {
             // the first tool call reports the structured auth error (CLAUDE.md → MCP).
             // Honors the same OURA_ACCESS_TOKEN / OURA_API_BASE_URL overrides so the server
             // runs in a container with an injected token (#20).
-            oura_toolkit_cli::mcp::serve(api::manager_from_env(env)?, base_url).await
+            // The store also feeds the scope-change note (#116). An env-token server has none.
+            let scope_store = match api::access_token_override(env) {
+                Some(_) => None,
+                None => oura_toolkit_auth::TokenStore::new().ok(),
+            };
+            oura_toolkit_cli::mcp::serve(api::manager_from_env(env)?, scope_store, base_url).await
         }
         // Pure code generators: no auth, no network. The script/man page IS the result, so it
         // goes to stdout through the same broken-pipe-tolerant path as every other result

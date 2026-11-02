@@ -180,8 +180,9 @@ class TestRefresh:
 class TestHostileTokenEndpointBodies:
     """A 2xx token-endpoint response whose body is broken or hostile must surface as the
     typed TokenEndpointError — never a raw JSONDecodeError/KeyError/ValueError detonating
-    downstream (Rust parity: `resp.json::<TokenResponse>()?` -> AuthError::Serde) — and
-    the surfaced message must NEVER echo token material (CLAUDE.md rule 5; ISSUE A)."""
+    downstream (Rust parity: every decode failure -> AuthError::InvalidTokenResponse with
+    a static message) — and the surfaced message must NEVER echo token material
+    (CLAUDE.md rule 5; ISSUE A)."""
 
     @pytest.mark.parametrize(
         "body",
@@ -315,6 +316,90 @@ class TestCrossProcessProtocol:
         assert len(token_endpoint.requests) == 1, (
             "the reload-retry only fires when disk moved past what we sent"
         )
+
+
+
+class TestRedirects:
+    @pytest.mark.parametrize("status", [307, 308])
+    def test_refresh_never_follows_a_token_endpoint_redirect_with_the_secret(
+        self, token_endpoint, other_endpoint, tmp_path: Path, status: int
+    ) -> None:
+        # Following a 307/308 would re-send the form (client secret + refresh token) to
+        # whatever host `Location` names: it must fail typed, reaching no one else.
+        other_endpoint.handler = lambda form: (
+            200,
+            {"access_token": "stolen", "refresh_token": "stolen", "expires_in": 3600},
+        )
+        token_endpoint.handler = lambda form: (
+            status,
+            "",
+            {"Location": other_endpoint.url},
+        )
+        store = TokenStore(tmp_path)
+        store.save_tokens(expired_tokens("r-live"))
+        before = (tmp_path / "tokens.json").read_bytes()
+        manager = manager_for(token_endpoint, store, expired_tokens("r-live"))
+
+        with pytest.raises(TokenEndpointError) as excinfo:
+            manager.access_token()
+        assert excinfo.value.status == status
+        assert other_endpoint.requests == [], (
+            f"a {status} was followed: the secrets reached the Location host"
+        )
+        assert len(token_endpoint.requests) == 1
+        assert (tmp_path / "tokens.json").read_bytes() == before, "store untouched"
+
+class TestRejectedBodyScrubbing:
+    """The non-2xx body carried by TokenEndpointError is scrubbed of every submitted
+    secret and then capped at exactly 1024 characters (conformance
+    `rejected_token_responses` pins the cross-language contract; these pin the exact
+    boundary and ordering Python promises)."""
+
+    def _rejected(
+        self, token_endpoint, tmp_path: Path, body: str
+    ) -> TokenEndpointError:
+        token_endpoint.handler = lambda form: (400, body)
+        store = TokenStore(tmp_path)
+        store.save_tokens(expired_tokens("r-dead"))
+        manager = manager_for(token_endpoint, store, expired_tokens("r-dead"))
+        with pytest.raises(TokenEndpointError) as excinfo:
+            manager.access_token()
+        return excinfo.value
+
+    def test_body_of_exactly_1024_chars_is_kept_whole(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        body = "e" * 1024
+        err = self._rejected(token_endpoint, tmp_path, body)
+        assert err.body == body, (
+            "a 1024-char body is within the cap and must not be cut"
+        )
+
+    def test_body_over_1024_chars_is_cut_to_1024_plus_ellipsis(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        err = self._rejected(token_endpoint, tmp_path, "a" * 1024 + "TAIL")
+        assert err.body == "a" * 1024 + "…", (
+            "a body over 1024 chars must be cut to its first 1024 chars + '…'"
+        )
+
+    def test_redaction_runs_before_the_cap(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        # The secret straddles the cut: capping first would keep its prefix "r-de".
+        err = self._rejected(token_endpoint, tmp_path, "x" * 1020 + "r-dead" + "y" * 50)
+        assert err.body == "x" * 1020 + "[RED" + "…", (
+            "redaction must run before the cap, so no prefix of a secret survives a cut"
+        )
+
+    def test_every_occurrence_of_each_submitted_secret_is_redacted(
+        self, token_endpoint, tmp_path: Path
+    ) -> None:
+        err = self._rejected(
+            token_endpoint, tmp_path, "r-dead secret r-dead|secret|cid"
+        )
+        # client_id is not a secret and is kept; both secrets are gone everywhere.
+        assert err.body == "[REDACTED] [REDACTED] [REDACTED]|[REDACTED]|cid"
 
 
 class TestConfigurationSeam:

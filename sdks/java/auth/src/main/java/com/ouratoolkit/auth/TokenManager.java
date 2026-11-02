@@ -6,9 +6,14 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -53,8 +58,24 @@ public final class TokenManager {
      */
     public static final Duration DEFAULT_ENDPOINT_TIMEOUT = Duration.ofSeconds(30);
 
+    /**
+     * The largest {@code expires_in} (seconds) a token response may carry: {@code
+     * 2^31 - 1}, the shared cross-companion cap (conformance fixture, #58). It keeps
+     * {@code now + expires_in} exact (no overflow, no float rounding) and the resulting
+     * {@code expires_at} readable by EVERY companion's store — including Rust's {@code
+     * i64} and the double-precision JSON numbers of TypeScript/Python. A larger value is a
+     * malformed response and fails typed rather than persisting an unreadable expiry.
+     */
+    static final long MAX_EXPIRES_IN_SECS = 2_147_483_647L;
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            // A 2xx body is ONE JSON value and nothing but whitespace after it (RFC 8259 §2).
+            // Jackson's readTree otherwise stops after the first value and silently IGNORES
+            // the rest, so `{...} junk` or `{..}{..}` would be accepted and persisted while
+            // the other five companions reject it. Pinned by the fixture's
+            // body_trailing_data / body_two_objects hostile cases.
+            .configure(DeserializationFeature.FAIL_ON_TRAILING_TOKENS, true);
 
     private final TokenStore store;
     private final ClientCredentials credentials; // nullable: tokens-only use is legal
@@ -225,9 +246,11 @@ public final class TokenManager {
                 .POST(HttpRequest.BodyPublishers.ofString(encodeForm(form)))
                 .build();
 
-        final HttpResponse<String> response;
+        // Read BYTES, not ofString(): the JDK's string handler silently substitutes U+FFFD
+        // for invalid UTF-8, which would let a malformed body through as mojibake.
+        final HttpResponse<byte[]> response;
         try {
-            response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
         } catch (IOException e) {
             // Includes HttpTimeoutException: the hard timeout that bounds lock-hold time.
             throw new TransportException("token endpoint request failed", e);
@@ -237,20 +260,63 @@ public final class TokenManager {
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new TokenEndpointException(response.statusCode(), response.body());
+            // A non-2xx error body is only carried for diagnostics: a lenient decode is fine.
+            // But a server may echo what it was sent, so every secret this request submitted
+            // is REDACTED first, then the body is capped so a huge one can't flood logs
+            // (fixture: rejected_token_responses).
+            String body = new String(response.body(), StandardCharsets.UTF_8);
+            body = redactSecrets(body, current.getRefreshToken(), credentials.getClientSecret());
+            throw new TokenEndpointException(response.statusCode(), capErrorBody(body));
+        }
+
+        // A 2xx body that isn't valid UTF-8 ANYWHERE (unknown fields included) isn't JSON
+        // text at all (RFC 8259 §8.1): decode STRICTLY and fail typed, before anything is
+        // persisted. Pinned by the fixture's body_invalid_utf8_* cases.
+        final String bodyText;
+        try {
+            bodyText = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(response.body()))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            throw new TransportException(
+                    "token endpoint 2xx response is not valid UTF-8", null);
         }
 
         final JsonNode node;
         try {
-            node = MAPPER.readTree(response.body());
+            node = MAPPER.readTree(bodyText);
         } catch (IOException e) {
-            throw new TransportException("token endpoint returned unparseable JSON", e);
+            // NO cause: Jackson's parse messages quote the offending body text (e.g.
+            // "Unrecognized token 'rt...'"), and a 2xx body may carry token material — a
+            // logged stack trace must not leak it (same as the UTF-8 branch above).
+            throw new TransportException("token endpoint returned unparseable JSON", null);
         }
         // A hostile or broken 2xx body must fail as a typed error, never a half-populated
         // token persisted to the store (an empty access_token or a non-positive expiry
         // would only resurface as a baffling 400 on the NEXT refresh, long after the cause).
-        // Mirrors go/auth/oauth.go:74-79. Messages carry NO token/secret material — the raw
-        // body is never echoed, since a partial 2xx payload may contain token material.
+        // Mirrors the Go companion's refreshTokens (sdks/go/auth/oauth.go). Messages carry
+        // NO token/secret material — the raw body is never echoed, since a partial 2xx
+        // payload may contain token material.
+        // A string that isn't valid Unicode (e.g. a lone "\\ud800" escape, which Jackson
+        // decodes into an unpaired UTF-16 surrogate) in any of the FOUR fields this companion
+        // reads — access_token, refresh_token, token_type, scope — makes the RESPONSE
+        // malformed: it must fail typed here, before anything is persisted, never be written
+        // to the store as mojibake. Unknown fields are NOT validated (the agreed rule for all
+        // six companions). Pinned by the shared fixture's hostile_token_responses
+        // *_lone_surrogate cases.
+        if (node != null && node.isObject()) {
+            for (String field : READ_FIELDS) {
+                JsonNode value = node.get(field);
+                if (value != null && value.isTextual() && hasUnpairedSurrogate(value.asText())) {
+                    throw new TransportException(
+                            "token endpoint 2xx response has a " + field
+                                    + " that is not valid Unicode",
+                            null);
+                }
+            }
+        }
         JsonNode accessToken = node == null ? null : node.get("access_token");
         JsonNode expiresIn = node == null ? null : node.get("expires_in");
         if (accessToken == null || !accessToken.isTextual() || accessToken.asText().isEmpty()) {
@@ -258,26 +324,142 @@ public final class TokenManager {
                     "token endpoint 2xx response missing or empty access_token",
                     null);
         }
-        // Reject 0, negative, AND non-numeric (e.g. "expires_in":"abc", where a bare
-        // asLong() would silently coerce to 0 and be treated as immediately expired).
-        if (expiresIn == null || !expiresIn.canConvertToLong() || expiresIn.asLong() <= 0) {
+        // expires_in must be an INTEGRAL JSON number in 1..=MAX_EXPIRES_IN_SECS. Rejects 0,
+        // negative, textual ("soon", and the numeric string "3600" — asLong() would coerce
+        // either), fractional (3600.5 — canConvertToLong() alone would truncate it to
+        // 3600), above the cap, beyond any machine integer (a BigIntegerNode), and 1e400
+        // (Jackson parses it as an infinite DoubleNode: not integral).
+        if (expiresIn == null
+                || !expiresIn.isIntegralNumber()
+                || !expiresIn.canConvertToLong()
+                || expiresIn.asLong() < 1
+                || expiresIn.asLong() > MAX_EXPIRES_IN_SECS) {
             throw new TransportException(
                     "token endpoint 2xx response missing or invalid expires_in",
                     null);
         }
-        String rotatedRefresh = node.hasNonNull("refresh_token")
-                ? node.get("refresh_token").asText()
-                : current.getRefreshToken(); // server omitted rotation; keep the old one
-        String scope = node.hasNonNull("scope") ? node.get("scope").asText() : current.getScope();
-        String tokenType = node.hasNonNull("token_type")
-                ? node.get("token_type").asText()
-                : current.getTokenType();
+        // An omitted, null or EMPTY refresh_token or token_type keeps the current value (the
+        // server didn't rotate it; persisting "" would make the next refresh 400); a
+        // NON-STRING one (e.g. 42) is a malformed response and fails typed — asText() would
+        // otherwise persist "42" as the rotated refresh token (burning the real one) or ""
+        // for an object. Pinned by the fixture's wrong_type_refresh_token /
+        // wrong_type_token_type hostile cases and the refresh_token_* / token_type_*
+        // refresh_success_cases.
+        String rotatedRefresh = optionalString(node, "refresh_token", current.getRefreshToken());
+        // An omitted, null, non-string, empty, or whitespace-only scope keeps the prior grant
+        // (RFC 6749 §5.1 lets the server omit an unchanged scope); persisting a blank would
+        // erase the grant the CLI's re-consent check reads. Pinned by the shared conformance
+        // fixture's refresh_success_cases table.
+        JsonNode scopeNode = node.get("scope");
+        String scope = scopeNode != null && scopeNode.isTextual() && !isBlankScope(scopeNode.asText())
+                ? scopeNode.asText()
+                : current.getScope();
+        String tokenType = optionalString(node, "token_type", current.getTokenType());
+        // Cannot overflow: expires_in is capped at MAX_EXPIRES_IN_SECS above; addExact makes
+        // that a checked invariant rather than a silent wrap.
+        final long expiresAt;
+        try {
+            expiresAt = Math.addExact(Instant.now().getEpochSecond(), expiresIn.asLong());
+        } catch (ArithmeticException e) {
+            throw new TransportException(
+                    "token endpoint 2xx response missing or invalid expires_in", null);
+        }
         return new Tokens(
                 accessToken.asText(),
                 rotatedRefresh,
-                Instant.now().getEpochSecond() + expiresIn.asLong(),
+                expiresAt,
                 scope,
                 tokenType);
+    }
+
+    /** The longest non-2xx body (in chars) a {@link TokenEndpointException} carries. */
+    static final int MAX_ERROR_BODY_CHARS = 1024;
+
+    /**
+     * Replace EVERY occurrence of each non-empty {@code secret} in {@code body} with
+     * {@code [REDACTED]} — longest first, so a secret that contains another is never left
+     * half-visible.
+     */
+    static String redactSecrets(String body, String... secrets) {
+        String[] ordered = secrets.clone();
+        Arrays.sort(ordered, Comparator.comparingInt(
+                (String x) -> x == null ? 0 : x.length()).reversed());
+        for (String secret : ordered) {
+            if (secret != null && !secret.isEmpty()) {
+                body = body.replace(secret, "[REDACTED]");
+            }
+        }
+        return body;
+    }
+
+    /**
+     * Cap {@code body} at {@link #MAX_ERROR_BODY_CHARS}, appending "…" when cut, never
+     * splitting a surrogate pair (the cut backs off one char instead).
+     */
+    static String capErrorBody(String body) {
+        if (body.length() <= MAX_ERROR_BODY_CHARS) {
+            return body;
+        }
+        int end = MAX_ERROR_BODY_CHARS;
+        if (Character.isHighSurrogate(body.charAt(end - 1))
+                && Character.isLowSurrogate(body.charAt(end))) {
+            end--;
+        }
+        return body.substring(0, end) + "…";
+    }
+
+    /** The token-response fields this companion reads (and so validates as Unicode). */
+    private static final String[] READ_FIELDS = {
+        "access_token", "refresh_token", "token_type", "scope"
+    };
+
+    /**
+     * The string value of {@code field}, or {@code fallback} when it is omitted, null, or
+     * the empty string (the server didn't rotate it). A present non-string value is a
+     * malformed response: typed {@link TransportException}.
+     */
+    private static String optionalString(JsonNode node, String field, String fallback)
+            throws TransportException {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return fallback;
+        }
+        if (!value.isTextual()) {
+            throw new TransportException(
+                    "token endpoint 2xx response has a non-string " + field, null);
+        }
+        if (value.asText().isEmpty()) {
+            return fallback;
+        }
+        return value.asText();
+    }
+
+    /**
+     * True when every code point is whitespace. {@link String#isBlank()} is not enough: it
+     * uses {@link Character#isWhitespace}, which excludes U+00A0 and the other no-break
+     * Unicode space separators, so {@code "\u00a0"} would be persisted as a real grant while
+     * Rust/Python/Go/C#/TypeScript (and the fixture's {@code scope_nbsp} case) keep the prior one.
+     */
+    private static boolean isBlankScope(String s) {
+        return s.codePoints().allMatch(cp -> Character.isWhitespace(cp) || Character.isSpaceChar(cp));
+    }
+
+    /** True when {@code s} has a high surrogate not followed by a low one, or a lone low one. */
+    private static boolean hasUnpairedSurrogate(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!Character.isSurrogate(c)) {
+                continue;
+            }
+            if (Character.isHighSurrogate(c)
+                    && i + 1 < s.length()
+                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                i++; // a well-formed pair — skip its low half
+                continue;
+            }
+            return true; // lone high, or a low surrogate with no preceding high
+        }
+        return false;
     }
 
     private static String encodeForm(Map<String, String> form) {
