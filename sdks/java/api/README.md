@@ -113,7 +113,7 @@ Add this dependency to your project's POM:
 <dependency>
   <groupId>com.ouratoolkit</groupId>
   <artifactId>api</artifactId>
-  <version>0.4.0</version>
+  <version>0.5.0</version>
   <scope>compile</scope>
 </dependency>
 ```
@@ -123,7 +123,7 @@ Add this dependency to your project's POM:
 Add this dependency to your project's build file:
 
 ```groovy
-compile "com.ouratoolkit:api:0.4.0"
+compile "com.ouratoolkit:api:0.5.0"
 ```
 
 ### Others
@@ -136,7 +136,7 @@ mvn clean package
 
 Then manually install the following JARs:
 
-- `target/api-0.4.0.jar`
+- `target/api-0.5.0.jar`
 - `target/lib/*.jar`
 
 ## Getting Started
