@@ -8,61 +8,56 @@ the skill.
 
 ## Read first
 
-- Every lens reads `CLAUDE.md`: *Testing & verification*, *Docs stay true to the code*, and the
-  *Hard "do not" list*.
-- A diff that touches auth, the token store or the MCP server: those sections of `CLAUDE.md`,
-  and `docs/cli-contract.md`.
-- `ARCHITECTURE.md` for how the pieces fit, and `DECISIONS.md` before calling a locked choice
-  wrong.
+The single source of review knowledge for this repo is `docs/reviewing/`. A new angle goes in
+the guide for its area, never in the skill; this file holds only what binds the skill to this
+repo.
+
+- Every lens reads `docs/reviewing/core.md`.
+- Every lens also reads each area guide whose row in `core.md`'s table the diff matches:
+  `auth.md`, `codegen.md`, `cli-mcp.md`, `tests.md`, `release.md`. Name each one by path in the
+  context file and in every brief.
+- The test-rigor lens reads `docs/reviewing/tests.md` whatever the diff touches.
+- `CLAUDE.md` is the law the guides cite, and `DECISIONS.md` is read before calling a locked
+  choice wrong.
 
 ## Checks and shared services
 
-- Every command is a `just` recipe; `just ci` is the gate. Never run a raw tool.
-- `just test` is hermetic. `just test-sandbox` reaches Oura's sandbox and is not for a reviewer.
-- A reviewer must not touch the real token store (`~/.config/oura-toolkit/`), run `oura auth`
-  against a real account, or run any publish or release recipe.
-- Generated code (`sdks/*/api`, the CLI reference page) is never edited by hand.
+- How to run the checks: `docs/reviewing/core.md` → *Running the checks*. Point the context file
+  at it; do not restate it.
+- What a reviewer must not touch: `docs/reviewing/core.md` → *What a reviewer must not touch*
+  (the real token store, a real Oura account, the live sandbox, anything that publishes).
 
 ## Lens angles
 
 ### Correctness
 
-- Refresh-token rotation: the newly returned token is persisted, and a refresh re-reads the
-  store under the lock first.
+- The data plane's one retry on 401, and the rotation it persists (`auth.md`).
 - Pagination by `next_token`, and the date parameters the overlay collapses.
-- The MCP server never writes to stdout outside the protocol.
 
 ### Adversarial
 
-- A secret in a URL query string, a log line, an error message, a `{:?}` or MCP stdout.
-- Hostile token-endpoint responses and hostile store files; a new case goes in
-  `codegen/conformance/auth-cases.json`, never in one language's suite.
-- Output sanitization: escape sequences and forged lines in data that reaches a terminal.
-- Two processes sharing the store: the CLI and a long-running MCP server.
+- A secret reaching a URL, a log, an error, `Debug` output or MCP stdout (`auth.md` → *Never*).
+- The hostile cases of `codegen/conformance/auth-cases.json`, and two processes on one store.
+- Escape sequences and forged lines in data that reaches a terminal (`cli-mcp.md`).
 
 ### API design
 
-- The locked names (`CLAUDE.md` → *Naming*) and per-ecosystem namespacing.
-- Every language has the same shape: a generated client beside a hand-written auth companion.
-  No transport is written by hand; interactive OAuth lives in the CLI only.
-- The CLI's contract: exit codes, stream discipline, the shape of errors and hints.
-- Authorize and token URLs and scopes are read from the spec, never hardcoded.
+- The locked names and the same shape in every language (`codegen.md` → *Never*).
+- The CLI's contract (`docs/cli-contract.md`) and the MCP tools' names and schemas.
 
 ### Test rigor
 
-- The eight rules of `CLAUDE.md` → *Testing & verification*: a guarantee has a test, a guard
-  test was break-verified, concurrency claims use real concurrency, each security invariant has
-  an attack test, platform code runs on its platform, the contract is asserted on the binary.
-- Enumerable doc claims are pinned by tripwire tests.
+- `docs/reviewing/tests.md` is the lens's checklist: the eight rules, the docs tripwires and the
+  conformance fixture.
 
 ## Fixing
 
-- Every doc claim a fix makes false changes in the same PR: `README.md`, `CONTRIBUTING.md`,
-  `docs/cli-contract.md`, the plugin README, the docs site, and `ARCHITECTURE.md` or
-  `DECISIONS.md` when a decision or map fact changes. Each round asks: which documented claim
-  does this diff invalidate?
+- Every doc claim a fix makes false changes in the same PR; `docs/reviewing/core.md` → *The
+  change is more than the diff* lists the documents.
 - Agent config is changed under `.agentsync/` and re-rendered, never in a rendered file.
-- A fix to generated output is a fix to the generator, the overlay or a post-patch.
+- A fix to generated output is a fix to the generator's input, the overlay or a post-patch.
+- A class of defect this repo is prone to, found by the loop, is added to the guide for its
+  area in the same PR.
 
 ## Gated areas
 
