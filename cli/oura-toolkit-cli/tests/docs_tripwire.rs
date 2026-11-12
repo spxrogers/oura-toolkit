@@ -2,8 +2,9 @@
 //! fails CI instead of relying on reviewer diligence (CLAUDE.md → DOCS STAY TRUE TO THE
 //! CODE, rule 4). These guard exactly the claims a test can enumerate — command list,
 //! the `oura auth` subcommand list (#63), scope string, redirect URI, store paths,
-//! `just` recipe names, MCP tool names; prose accuracy stays a review-gate
-//! responsibility (rules 1–3).
+//! `just` recipe names, MCP tool names, and the pointers `docs/reviewing/core.md` and
+//! `.reviewlooprc` make into CLAUDE.md and DECISIONS.md; prose accuracy stays a
+//! review-gate responsibility (rules 1–3).
 //!
 //! Monorepo-only by nature (they read repo-root files, same walk-up as bundled_spec.rs);
 //! `just publish-check` only BUILDS the packaged crate, so these never run outside the
@@ -1278,5 +1279,160 @@ fn scope_change_reconsent_strings_match_the_source() {
     assert!(
         contract.contains("`tokens.missing_scopes`"),
         "docs/cli-contract.md must document `auth status --json`'s tokens.missing_scopes field"
+    );
+}
+
+/// Headings of a markdown file, lowercased, without their `#` markers.
+fn markdown_headings(path: &Path) -> Vec<String> {
+    let headings: Vec<String> = read(path)
+        .lines()
+        .filter(|l| l.starts_with('#'))
+        .map(|l| l.trim_start_matches('#').trim().to_lowercase())
+        .collect();
+    assert!(
+        headings.len() >= 5,
+        "parsed only {} headings from {path:?} — heading parser broken?",
+        headings.len()
+    );
+    headings
+}
+
+/// `docs/reviewing/core.md` states no rule: it POINTS at sections of CLAUDE.md and entries of
+/// DECISIONS.md, and at `just` recipes. A renamed heading or recipe would leave a dead
+/// pointer that sends a reviewer nowhere, so every pointer is pinned here (CLAUDE.md → DOCS
+/// STAY TRUE TO THE CODE, rule 4). `.reviewlooprc`'s prose pointers get the same check.
+///
+/// The pointer forms are fixed by `core.md` → "Adding to this file":
+/// - table column 2: each `*italic*` span is the START of a CLAUDE.md heading;
+/// - table column 3: each `*italic*` span is the START of a DECISIONS.md heading, and each
+///   `(#N)` appears in one;
+/// - prose: `` `FILE` → *Heading* `` for CLAUDE.md, DECISIONS.md and core.md itself;
+/// - recipes: `` `just name` `` exists; `` `just prefix-…` `` matches at least one recipe.
+#[test]
+fn review_guide_pointers_resolve() {
+    let root = repo_root();
+    let guide_path = root.join("docs/reviewing/core.md");
+    let guide = read(&guide_path);
+    let law = markdown_headings(&root.join("CLAUDE.md"));
+    let log = markdown_headings(&root.join("DECISIONS.md"));
+    let own = markdown_headings(&guide_path);
+
+    let starts = |headings: &[String], pointer: &str| {
+        let p = pointer.to_lowercase();
+        headings.iter().any(|h| h.starts_with(&p))
+    };
+
+    // --- the table -------------------------------------------------------------------
+    let mut table_pointers = 0;
+    for line in guide.lines().filter(|l| l.starts_with('|')) {
+        let cells: Vec<&str> = line.split('|').collect();
+        if cells.len() < 5 || line.starts_with("|---") || cells[1].contains("The diff touches") {
+            continue;
+        }
+        for (i, span) in cells[2].split('*').enumerate() {
+            if i % 2 == 1 {
+                assert!(
+                    starts(&law, span),
+                    "docs/reviewing/core.md points at CLAUDE.md → {span:?}, but no CLAUDE.md                      heading starts with that — section renamed without updating the pointer?"
+                );
+                table_pointers += 1;
+            }
+        }
+        for (i, span) in cells[3].split('*').enumerate() {
+            if i % 2 == 1 {
+                assert!(
+                    starts(&log, span),
+                    "docs/reviewing/core.md points at DECISIONS.md → {span:?}, but no                      DECISIONS.md heading starts with that — entry renamed?"
+                );
+                table_pointers += 1;
+            }
+        }
+        for (idx, _) in cells[3].match_indices("(#") {
+            let issue: String = cells[3][idx..]
+                .chars()
+                .take_while(|c| *c != ')')
+                .chain(std::iter::once(')'))
+                .collect();
+            assert!(
+                log.iter().any(|h| h.contains(&issue)),
+                "docs/reviewing/core.md cites a DECISIONS.md lesson {issue}, but no                  DECISIONS.md heading carries that issue number"
+            );
+            table_pointers += 1;
+        }
+    }
+    assert!(
+        table_pointers >= 25,
+        "only {table_pointers} table pointers parsed from docs/reviewing/core.md — table          format changed, or the parser is broken?"
+    );
+
+    // --- prose pointers, in the guide and in .reviewlooprc ------------------------------
+    let mut prose_pointers = 0;
+    for (doc, text) in [
+        ("docs/reviewing/core.md", guide.clone()),
+        (".reviewlooprc", read(&root.join(".reviewlooprc"))),
+    ] {
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        for (file, headings) in [
+            ("`CLAUDE.md` → *", &law),
+            ("`DECISIONS.md` → *", &log),
+            ("`docs/reviewing/core.md` → *", &own),
+        ] {
+            for (idx, _) in flat.match_indices(file) {
+                let pointer: String = flat[idx + file.len()..]
+                    .chars()
+                    .take_while(|c| *c != '*')
+                    .collect();
+                assert!(
+                    starts(headings, &pointer),
+                    "{doc} points at {file}{pointer}*, but no such heading exists there —                      renamed without updating the pointer?"
+                );
+                prose_pointers += 1;
+            }
+        }
+    }
+    assert!(
+        prose_pointers >= 6,
+        "only {prose_pointers} prose pointers parsed — arrow format changed?"
+    );
+
+    // --- recipes ----------------------------------------------------------------------
+    let mut recipes = BTreeSet::new();
+    for line in read(&root.join("justfile")).lines() {
+        if !line.starts_with(|c: char| c.is_ascii_alphabetic()) || line.contains(":=") {
+            continue;
+        }
+        if line.contains(':') {
+            let header = line.split(':').next().unwrap();
+            recipes.insert(header.split_whitespace().next().unwrap().to_string());
+        }
+    }
+    assert!(recipes.len() >= 15, "justfile recipe parser broken?");
+
+    let mut checked = 0;
+    for snippet in code_snippets(&guide) {
+        let Some(rest) = snippet.strip_prefix("just ") else {
+            continue;
+        };
+        let token: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+            .collect();
+        if token.ends_with('-') {
+            // A family: `just auth-*`, `just sdk-test-<lang>`.
+            assert!(
+                recipes.iter().any(|r| r.starts_with(&token)),
+                "docs/reviewing/core.md references the recipe family `just {token}…` but                  the justfile has no recipe with that prefix"
+            );
+        } else {
+            assert!(
+                recipes.contains(&token),
+                "docs/reviewing/core.md references `just {token}` but the justfile has no                  such recipe — renamed without updating the guide?"
+            );
+        }
+        checked += 1;
+    }
+    assert!(
+        checked >= 15,
+        "only {checked} `just <recipe>` references parsed from docs/reviewing/core.md —          tokenizer broken?"
     );
 }

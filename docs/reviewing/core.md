@@ -17,7 +17,7 @@ Every review reads `CLAUDE.md` → *Hard "do not" list* and *Docs stay true to t
 | Auth, the token store, anything that handles a token, secret or credential | *Auth*; *Testing & verification* → the conformance paragraph | *Auth*; both *Token store* entries; the lessons on conformance (#58), the static token (#20), User-Agent and scope changes (#116) | `just ci`, the `just sdk-test-<lang>` recipes |
 | `spec/`, `codegen/`, a generated client, a `gen-*` recipe, a package or crate name | *Spec is the source of truth*; *Client / SDK generation*; *Naming* | *Client generation*; *Naming*; all of *Toolchain realities*; the lesson on spec drift (#29) | `just gen-check`, `just sdk-check`, `just spec-overlay-selftest`, `just spec-drift-selftest` |
 | CLI commands, flags, output or exit codes | *Testing & verification* rule 7; `docs/cli-contract.md` | the lesson on `oura api` (#19) | `just ci`, `just docs-gen-cli-check`, `just gen-completions-check` |
-| `oura mcp`, the plugin under `plugins/` | *MCP*; *Plugin* | both *MCP* entries; the rmcp router gotcha; the lesson on `serde_json` (#40) | `just ci`, `just plugin-check`, `just version-check` |
+| `oura mcp`, the plugin under `plugins/` | *MCP*; *Plugin* | both *MCP* entries; *rmcp* (the router gotcha); the lesson on `serde_json` (#40) | `just ci`, `just plugin-check`, `just version-check` |
 | Any test, or any behaviour a document promises | *Testing & verification*, all eight rules | *Lessons from the review loops* | `just ci`, `just coverage` |
 | The justfile, `.github/workflows/`, version pins, `dist` config | *Task runner*; *Distribution* | *Single root justfile*; *Version centralization*; *Breadth-SDK publishing*; *CLI npm launcher* | `just version-check`, `just dist-check`, `just publish-check` |
 | `docs-site/`, or any shipped doc | *Docs stay true to the code*; *Docs site* | *Documentation site* | `just docs-check` |
@@ -59,6 +59,13 @@ wrong if it merged. Two of its terms, as they apply here:
   depends on and CI cannot see is at least an `ISSUE`, even when the code is right today.
 
 ## Adding to this file
+
+The pointers above are pinned by a tripwire test
+(`review_guide_pointers_resolve` in `cli/oura-toolkit-cli/tests/docs_tripwire.rs`), so they keep
+one form: in the table, an italic span in the second column is the start of a `CLAUDE.md`
+heading, and in the third an italic span or an issue number in parentheses is the start of, or
+appears in, a `DECISIONS.md` heading; in prose, a file name in backticks, an arrow, then the
+heading in italics. Recipes are written in backticks.
 
 A review that finds a class of defect this repo is prone to records the rule in `CLAUDE.md` or
 the lesson in `DECISIONS.md`, and adds the pointer here. An angle that is only about how to
