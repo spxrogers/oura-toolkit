@@ -1,108 +1,65 @@
-# Reviewing oura-toolkit: start here
+# Reviewing oura-toolkit
 
-What a review of this repo checks, on top of whatever method runs it: a single pass, a
-self-review before a push, or each lens of the `/review-loop` skill. `CLAUDE.md` is the law and
-stays the source for every rule; `DECISIONS.md` says why. These guides say what a reviewer does
-with them: what to look for, which check shows it, and what has gone wrong here before. A new
-review angle goes in the guide for its area, not in the skill and not in `.reviewlooprc`.
+How to review a change to this repo: a single pass, a self-review before a push, or each lens of
+the `/review-loop` skill.
 
-## Which guides to read
+**This file states no rule.** `CLAUDE.md` is the law and `DECISIONS.md` is the log of why, and
+each rule lives in exactly one of them. This file says where a reviewer looks for a given diff,
+which recipe shows the answer, and what a reviewer must not touch. If a line here restates a
+rule, that is a defect in this file: replace it with a pointer.
 
-Every review reads this file. Then, by what the diff touches:
+## Where to look, by what the diff touches
 
-| The diff touches | Read |
-|---|---|
-| `sdks/*/…-auth`, `cli/oura-toolkit-cli` auth or store code, anything that handles a token, secret or credential | [`auth.md`](auth.md) |
-| `spec/`, `codegen/`, `sdks/*/api`, a `gen-*` recipe, a package or crate name | [`codegen.md`](codegen.md) |
-| CLI commands, flags, output or exit codes; `oura mcp`; the plugin under `plugins/` | [`cli-mcp.md`](cli-mcp.md) |
-| any test, or any behaviour a document promises | [`tests.md`](tests.md) |
-| the justfile, `.github/workflows/`, version pins, `dist` config, `docs-site/` | [`release.md`](release.md) |
+Every review reads `CLAUDE.md` → *Hard "do not" list* and *Docs stay true to the code*. Then:
 
-The test-rigor lens of `/review-loop` reads `tests.md` whatever the diff touches.
+| The diff touches | The law (`CLAUDE.md`) | The log (`DECISIONS.md`) | Recipes that show it |
+|---|---|---|---|
+| Auth, the token store, anything that handles a token, secret or credential | *Auth*; *Testing & verification* → the conformance paragraph | *Auth*; both *Token store* entries; the lessons on conformance (#58), the static token (#20), User-Agent and scope changes (#116) | `just ci`, the `just sdk-test-<lang>` recipes |
+| `spec/`, `codegen/`, a generated client, a `gen-*` recipe, a package or crate name | *Spec is the source of truth*; *Client / SDK generation*; *Naming* | *Client generation*; *Naming*; all of *Toolchain realities*; the lesson on spec drift (#29) | `just gen-check`, `just sdk-check`, `just spec-overlay-selftest`, `just spec-drift-selftest` |
+| CLI commands, flags, output or exit codes | *Testing & verification* rule 7; `docs/cli-contract.md` | the lesson on `oura api` (#19) | `just ci`, `just docs-gen-cli-check`, `just gen-completions-check` |
+| `oura mcp`, the plugin under `plugins/` | *MCP*; *Plugin* | both *MCP* entries; the rmcp router gotcha; the lesson on `serde_json` (#40) | `just ci`, `just plugin-check`, `just version-check` |
+| Any test, or any behaviour a document promises | *Testing & verification*, all eight rules | *Lessons from the review loops* | `just ci`, `just coverage` |
+| The justfile, `.github/workflows/`, version pins, `dist` config | *Task runner*; *Distribution* | *Single root justfile*; *Version centralization*; *Breadth-SDK publishing*; *CLI npm launcher* | `just version-check`, `just dist-check`, `just publish-check` |
+| `docs-site/`, or any shipped doc | *Docs stay true to the code*; *Docs site* | *Documentation site* | `just docs-check` |
+
+The test-rigor lens of `/review-loop` reads *Testing & verification* whatever the diff touches.
 
 ## The change is more than the diff
 
-Each review, and each round of a review loop, asks: **which documented claim does this diff
-invalidate?** (`CLAUDE.md` → *Docs stay true to the code*, rule 2.) Then it checks the docs the
-change touched against the code: commands, URLs, scopes, recipe names and printed terminal text
-are checked against source, never from memory.
+The review gate, and the documents a change can make false, are `CLAUDE.md` → *Docs stay true to
+the code*. Four more that list does not name, because they are not shipped surface:
 
-The documents a change can make false:
-
-- `README.md`, `CONTRIBUTING.md`, `docs/cli-contract.md`, `plugins/oura-toolkit/README.md`;
-- the docs site's hand-written pages under `docs-site/`;
-- `ARCHITECTURE.md` and `DECISIONS.md`, when a decision or a fact about the layout changes;
-- `CLAUDE.md`, which is rendered: its source is `.agentsync/memory/AGENTS.md`;
-- these guides and `.reviewlooprc`;
-- code comments, rustdoc promises, and the PR body.
-
-A doc claim that is enumerable (a command list, a scope string, a path, a recipe name, a tool
-name) and has no tripwire test pinning it is a finding (`tests.md`).
-
-## Never, in any change
-
-Each of these is in `CLAUDE.md` → *Hard "do not" list*; a change that does one is not ready.
-
-- A second justfile, or a build, test, lint, codegen or release command run or documented
-  outside `just`.
-- A hand-written transport or HTTP client in any language. `oura api` is the one sanctioned
-  exception and is not to be generalised.
-- Codegen that touches a hand-written auth companion.
-- PKCE, a public-client path, or an embedded default `client_id` or `client_secret`.
-- Authorize or token URLs, or scopes, hardcoded instead of read from the spec.
-- Interactive OAuth in an SDK or companion.
-- A remote or HTTP MCP server, or a second plugin.
-- A secret in a URL query string, a log or MCP stdout.
-- A documented guarantee without its enforcing test, or a behaviour change without the doc
-  updates in the same PR.
-
-A change that relitigates the language, transport, client generation, auth model, layout or
-task runner is raised with the owner and waits for an answer; it is not reviewed as a design
-choice.
+- `CLAUDE.md` itself. It is rendered: the source is `.agentsync/memory/AGENTS.md`.
+- This file and `.reviewlooprc`.
+- Code comments and rustdoc.
+- The PR body.
 
 ## Running the checks
 
-Every command is a `just` recipe. A reviewer runs recipes, never the raw tool.
-
-- `just ci` — format check, lint and the hermetic test suite. The gate.
-- `just coverage` — the line-coverage floor on the hand-written crates.
-- `just gen-check`, `just gen-completions-check`, `just docs-gen-cli-check` — generated output
-  is in sync with its source.
-- `just sdk-check` and the `just sdk-test-<lang>` recipes — the breadth SDKs and their auth
-  companions.
-- `just version-check`, `just plugin-check`, `just dist-check`, `just publish-check` — version
-  pins and release configuration.
-- `just docs-check` — the docs site builds and its generated pages are current.
-- `just spec-overlay-selftest`, `just spec-drift-selftest` — the overlay and the drift
-  detector's own logic.
-
-A read-only reviewer runs a recipe that rewrites files (`just fmt`, `just gen`, `just
+A reviewer runs recipes, never the raw tool; the justfile's default recipe lists them. A
+read-only reviewer runs a recipe that rewrites files (`just fmt`, `just gen`, `just
 set-version`, `just docs-gen-cli`) only in a throwaway clone outside the worktree.
 
 ## What a reviewer must not touch
 
-- The real token store: `~/.config/oura-toolkit/` (or `$XDG_CONFIG_HOME/oura-toolkit/`), and
-  `%LOCALAPPDATA%\oura-toolkit\` on Windows. Tests use tempdirs.
-- A real Oura account. `just auth-*` recipes and `oura auth` are not for a review.
-- The live sandbox: `just test-sandbox` and `just test-sandbox-sdks` reach the network and never
-  gate CI.
-- Anything that publishes or tags: `just release`, `just release-tag`, `just publish`, the
-  `just publish-*` and `just sdk-publish-*` recipes, and `just spec-fetch`.
+- The real token store. Its paths are in `CLAUDE.md` → *Token store*.
+- A real Oura account: the `just auth-*` recipes and `oura auth`.
+- The live sandbox: `just test-sandbox` and `just test-sandbox-sdks`.
+- Anything that fetches, tags or publishes: `just spec-fetch`, `just release`,
+  `just release-tag`, `just publish`, and the `just publish-*` and `just sdk-publish-*` recipes.
 
 ## Severity here
 
 The review loop's rubric (`severity-rubric.md`, beside the skill) rates a finding by what goes
 wrong if it merged. Two of its terms, as they apply here:
 
-- **A commitment to users** is what the project says it will never do: embed a shared
-  credential, leak a secret to a URL, a log, an error or MCP stdout, weaken the token store's
-  permissions or move its path, or run OAuth anywhere but the user's own CLI. Breaking one is a
-  `BLOCKER`.
-- **Green CI is the release decision** (`CLAUDE.md` → *Testing & verification*). So a property
-  release confidence depends on that CI cannot see is at least an `ISSUE`, even when the code
-  is right today: the next release ships on that blind spot.
+- **A commitment to users** is an item of the *Hard "do not" list* that protects the user: their
+  credentials, their secrets, their token store, where OAuth runs. Breaking one is a `BLOCKER`.
+- **A test gap.** Green CI is the release decision here, so a property that release confidence
+  depends on and CI cannot see is at least an `ISSUE`, even when the code is right today.
 
-Typical `BLOCKER` shapes here: a rotated refresh token not persisted, so the next refresh
-fails; a secret in an error message or `{:?}` output; a wrong `servers[0].url`; a write to
-stdout from `oura mcp` outside the protocol; a release workflow that publishes the wrong
-artifact.
+## Adding to this file
+
+A review that finds a class of defect this repo is prone to records the rule in `CLAUDE.md` or
+the lesson in `DECISIONS.md`, and adds the pointer here. An angle that is only about how to
+review, and belongs in neither, goes here in full.

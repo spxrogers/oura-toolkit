@@ -8,56 +8,29 @@ the skill.
 
 ## Read first
 
-The single source of review knowledge for this repo is `docs/reviewing/`. A new angle goes in
-the guide for its area, never in the skill; this file holds only what binds the skill to this
-repo.
-
-- Every lens reads `docs/reviewing/core.md`.
-- Every lens also reads each area guide whose row in `core.md`'s table the diff matches:
-  `auth.md`, `codegen.md`, `cli-mcp.md`, `tests.md`, `release.md`. Name each one by path in the
-  context file and in every brief.
-- The test-rigor lens reads `docs/reviewing/tests.md` whatever the diff touches.
-- `CLAUDE.md` is the law the guides cite, and `DECISIONS.md` is read before calling a locked
-  choice wrong.
+- Every lens reads `docs/reviewing/core.md`, then the sections of `CLAUDE.md` and `DECISIONS.md`
+  its table names for what the diff touches. Name those sections in the context file and in
+  every brief.
+- The test-rigor lens reads `CLAUDE.md` → *Testing & verification* whatever the diff touches.
+- `DECISIONS.md` is read before calling a locked choice wrong.
 
 ## Checks and shared services
 
-- How to run the checks: `docs/reviewing/core.md` → *Running the checks*. Point the context file
-  at it; do not restate it.
-- What a reviewer must not touch: `docs/reviewing/core.md` → *What a reviewer must not touch*
-  (the real token store, a real Oura account, the live sandbox, anything that publishes).
+- The recipes for each area, and what a reviewer must not touch: `docs/reviewing/core.md`. Point
+  the context file at it; do not restate it.
 
 ## Lens angles
 
-### Correctness
-
-- The data plane's one retry on 401, and the rotation it persists (`auth.md`).
-- Pagination by `next_token`, and the date parameters the overlay collapses.
-
-### Adversarial
-
-- A secret reaching a URL, a log, an error, `Debug` output or MCP stdout (`auth.md` → *Never*).
-- The hostile cases of `codegen/conformance/auth-cases.json`, and two processes on one store.
-- Escape sequences and forged lines in data that reaches a terminal (`cli-mcp.md`).
-
-### API design
-
-- The locked names and the same shape in every language (`codegen.md` → *Never*).
-- The CLI's contract (`docs/cli-contract.md`) and the MCP tools' names and schemas.
-
-### Test rigor
-
-- `docs/reviewing/tests.md` is the lens's checklist: the eight rules, the docs tripwires and the
-  conformance fixture.
+Each lens takes its angles from the sections `core.md`'s table names. This file adds none: a
+rule goes in `CLAUDE.md`, a lesson in `DECISIONS.md`.
 
 ## Fixing
 
-- Every doc claim a fix makes false changes in the same PR; `docs/reviewing/core.md` → *The
-  change is more than the diff* lists the documents.
+- The documents a fix can make false: `CLAUDE.md` → *Docs stay true to the code*, and
+  `docs/reviewing/core.md` → *The change is more than the diff*.
 - Agent config is changed under `.agentsync/` and re-rendered, never in a rendered file.
-- A fix to generated output is a fix to the generator's input, the overlay or a post-patch.
-- A class of defect this repo is prone to, found by the loop, is added to the guide for its
-  area in the same PR.
+- A class of defect found by the loop is recorded as `docs/reviewing/core.md` → *Adding to this
+  file* says.
 
 ## Gated areas
 

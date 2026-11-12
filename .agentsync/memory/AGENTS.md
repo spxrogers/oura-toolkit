@@ -8,9 +8,9 @@ carry the rest so this one stays lean and load-bearing:
 - **[DECISIONS.md](DECISIONS.md)** — the log: *why* each locked choice was made, plus the
   hard-won toolchain realities and review-loop lessons behind them.
 
-Every review reads **[docs/reviewing/core.md](docs/reviewing/core.md)** and the guides beside it
-for the areas its diff touches: what to look for, which check shows it, and what has gone wrong
-here before. A new review angle goes in the guide for its area.
+Every review reads **[docs/reviewing/core.md](docs/reviewing/core.md)**: for a given diff, which
+sections of this file and of DECISIONS.md apply, which recipe shows the answer, and what a
+reviewer must not touch. It states no rule of its own.
 
 The architecture is **MOSTLY FINAL**. Do not relitigate the language, transport,
 client-generation, auth model, layout, or task-runner convention unless you have **high
