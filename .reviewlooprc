@@ -34,8 +34,8 @@ rule goes in `CLAUDE.md`, a lesson in `DECISIONS.md`.
 
 ## Gated areas
 
-- **Stated principles** — the *Hard "do not" list*, and the locked architecture and naming:
-  raise the issue and wait for an answer.
+- **Stated principles** — `CLAUDE.md` → *Hard "do not" list*, and the locked architecture and
+  naming: raise the issue and wait for an answer.
 - **Private data and secrets** — the token store (paths, permissions, the two records),
   redaction, bring-your-own credentials, and what the CLI or MCP server prints.
 - **Stored data and published contracts** — the store's file format, `docs/cli-contract.md`,

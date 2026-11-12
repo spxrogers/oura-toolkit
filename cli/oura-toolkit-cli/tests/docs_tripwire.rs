@@ -1297,17 +1297,21 @@ fn markdown_headings(path: &Path) -> Vec<String> {
     headings
 }
 
-/// `docs/reviewing/core.md` states no rule: it POINTS at sections of CLAUDE.md and entries of
-/// DECISIONS.md, and at `just` recipes. A renamed heading or recipe would leave a dead
-/// pointer that sends a reviewer nowhere, so every pointer is pinned here (CLAUDE.md → DOCS
-/// STAY TRUE TO THE CODE, rule 4). `.reviewlooprc`'s prose pointers get the same check.
+/// `docs/reviewing/core.md` states no product rule: it POINTS at sections of CLAUDE.md and
+/// entries of DECISIONS.md, and at `just` recipes. A renamed heading or recipe would leave a
+/// dead pointer that sends a reviewer nowhere, so every pointer is pinned here (CLAUDE.md →
+/// DOCS STAY TRUE TO THE CODE, rule 4). `.reviewlooprc`'s prose pointers get the same check.
 ///
 /// The pointer forms are fixed by `core.md` → "Adding to this file":
 /// - table column 2: each `*italic*` span is the START of a CLAUDE.md heading;
 /// - table column 3: each `*italic*` span is the START of a DECISIONS.md heading, and each
 ///   `(#N)` appears in one;
-/// - prose: `` `FILE` → *Heading* `` for CLAUDE.md, DECISIONS.md and core.md itself;
+/// - prose: `` `FILE` → *Heading* `` for CLAUDE.md, DECISIONS.md and core.md itself, one
+///   arrow per heading;
 /// - recipes: `` `just name` `` exists; `` `just prefix-…` `` matches at least one recipe.
+///
+/// What it cannot see: whether a pointer is the RIGHT section for that kind of diff, and
+/// sub-pointers such as "rule 7". Those stay a review-gate responsibility.
 #[test]
 fn review_guide_pointers_resolve() {
     let root = repo_root();
@@ -1317,13 +1321,20 @@ fn review_guide_pointers_resolve() {
     let log = markdown_headings(&root.join("DECISIONS.md"));
     let own = markdown_headings(&guide_path);
 
+    // A pointer names the start of a heading and ends on a word boundary: `*Auth*` matches
+    // "auth (the meaty…)" and "auth: oauth-only…", never "authoring". An empty span (a
+    // `**bold**` in a pointer column) is a malformed pointer, not a match.
     let starts = |headings: &[String], pointer: &str| {
         let p = pointer.to_lowercase();
-        headings.iter().any(|h| h.starts_with(&p))
+        !p.trim().is_empty()
+            && headings.iter().any(|h| {
+                h.strip_prefix(p.as_str())
+                    .is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric()))
+            })
     };
 
     // --- the table -------------------------------------------------------------------
-    let mut table_pointers = 0;
+    let (mut law_pointers, mut log_pointers, mut issue_pointers) = (0, 0, 0);
     for line in guide.lines().filter(|l| l.starts_with('|')) {
         let cells: Vec<&str> = line.split('|').collect();
         if cells.len() < 5 || line.starts_with("|---") || cells[1].contains("The diff touches") {
@@ -1333,18 +1344,20 @@ fn review_guide_pointers_resolve() {
             if i % 2 == 1 {
                 assert!(
                     starts(&law, span),
-                    "docs/reviewing/core.md points at CLAUDE.md → {span:?}, but no CLAUDE.md                      heading starts with that — section renamed without updating the pointer?"
+                    "docs/reviewing/core.md points at CLAUDE.md → {span:?}, but no CLAUDE.md \
+                     heading starts with that — section renamed without updating the pointer?"
                 );
-                table_pointers += 1;
+                law_pointers += 1;
             }
         }
         for (i, span) in cells[3].split('*').enumerate() {
             if i % 2 == 1 {
                 assert!(
                     starts(&log, span),
-                    "docs/reviewing/core.md points at DECISIONS.md → {span:?}, but no                      DECISIONS.md heading starts with that — entry renamed?"
+                    "docs/reviewing/core.md points at DECISIONS.md → {span:?}, but no \
+                     DECISIONS.md heading starts with that — entry renamed?"
                 );
-                table_pointers += 1;
+                log_pointers += 1;
             }
         }
         for (idx, _) in cells[3].match_indices("(#") {
@@ -1355,44 +1368,50 @@ fn review_guide_pointers_resolve() {
                 .collect();
             assert!(
                 log.iter().any(|h| h.contains(&issue)),
-                "docs/reviewing/core.md cites a DECISIONS.md lesson {issue}, but no                  DECISIONS.md heading carries that issue number"
+                "docs/reviewing/core.md cites a DECISIONS.md lesson {issue}, but no \
+                 DECISIONS.md heading carries that issue number"
             );
-            table_pointers += 1;
+            issue_pointers += 1;
         }
     }
+    // Per-class floors, so a parser that silently skips one whole class cannot pass.
     assert!(
-        table_pointers >= 25,
-        "only {table_pointers} table pointers parsed from docs/reviewing/core.md — table          format changed, or the parser is broken?"
+        law_pointers >= 14 && log_pointers >= 14 && issue_pointers >= 6,
+        "table pointers parsed from docs/reviewing/core.md: {law_pointers} to CLAUDE.md, \
+         {log_pointers} to DECISIONS.md, {issue_pointers} issue numbers — table format \
+         changed, or the parser is broken?"
     );
 
     // --- prose pointers, in the guide and in .reviewlooprc ------------------------------
-    let mut prose_pointers = 0;
+    let flatten = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let (mut law_prose, mut log_prose, mut own_prose) = (0, 0, 0);
     for (doc, text) in [
-        ("docs/reviewing/core.md", guide.clone()),
-        (".reviewlooprc", read(&root.join(".reviewlooprc"))),
+        ("docs/reviewing/core.md", flatten(&guide)),
+        (".reviewlooprc", flatten(&read(&root.join(".reviewlooprc")))),
     ] {
-        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        for (file, headings) in [
-            ("`CLAUDE.md` → *", &law),
-            ("`DECISIONS.md` → *", &log),
-            ("`docs/reviewing/core.md` → *", &own),
+        for (file, headings, count) in [
+            ("`CLAUDE.md` → *", &law, &mut law_prose),
+            ("`DECISIONS.md` → *", &log, &mut log_prose),
+            ("`docs/reviewing/core.md` → *", &own, &mut own_prose),
         ] {
-            for (idx, _) in flat.match_indices(file) {
-                let pointer: String = flat[idx + file.len()..]
+            for (idx, _) in text.match_indices(file) {
+                let pointer: String = text[idx + file.len()..]
                     .chars()
                     .take_while(|c| *c != '*')
                     .collect();
                 assert!(
                     starts(headings, &pointer),
-                    "{doc} points at {file}{pointer}*, but no such heading exists there —                      renamed without updating the pointer?"
+                    "{doc} points at {file}{pointer}*, but no such heading exists there — \
+                     renamed without updating the pointer?"
                 );
-                prose_pointers += 1;
+                *count += 1;
             }
         }
     }
     assert!(
-        prose_pointers >= 6,
-        "only {prose_pointers} prose pointers parsed — arrow format changed?"
+        law_prose >= 10 && log_prose >= 1 && own_prose >= 2,
+        "prose pointers parsed: {law_prose} to CLAUDE.md, {log_prose} to DECISIONS.md, \
+         {own_prose} to core.md — arrow format changed?"
     );
 
     // --- recipes ----------------------------------------------------------------------
@@ -1408,8 +1427,19 @@ fn review_guide_pointers_resolve() {
     }
     assert!(recipes.len() >= 15, "justfile recipe parser broken?");
 
+    // Inline code may wrap across a line, so spans are read from the flattened text; the
+    // guide has no fenced blocks, and an odd backtick count would misread every later span.
+    let flat = flatten(&guide);
+    assert!(
+        !flat.contains("```") && flat.matches('`').count() % 2 == 0,
+        "docs/reviewing/core.md has a code fence or an unbalanced backtick, which this \
+         scanner does not parse"
+    );
     let mut checked = 0;
-    for snippet in code_snippets(&guide) {
+    for (i, snippet) in flat.split('`').enumerate() {
+        if i % 2 == 0 {
+            continue;
+        }
         let Some(rest) = snippet.strip_prefix("just ") else {
             continue;
         };
@@ -1421,18 +1451,21 @@ fn review_guide_pointers_resolve() {
             // A family: `just auth-*`, `just sdk-test-<lang>`.
             assert!(
                 recipes.iter().any(|r| r.starts_with(&token)),
-                "docs/reviewing/core.md references the recipe family `just {token}…` but                  the justfile has no recipe with that prefix"
+                "docs/reviewing/core.md references the recipe family `just {token}…` but \
+                 the justfile has no recipe with that prefix"
             );
         } else {
             assert!(
                 recipes.contains(&token),
-                "docs/reviewing/core.md references `just {token}` but the justfile has no                  such recipe — renamed without updating the guide?"
+                "docs/reviewing/core.md references `just {token}` but the justfile has no \
+                 such recipe — renamed without updating the guide?"
             );
         }
         checked += 1;
     }
     assert!(
-        checked >= 15,
-        "only {checked} `just <recipe>` references parsed from docs/reviewing/core.md —          tokenizer broken?"
+        checked >= 40,
+        "only {checked} `just <recipe>` references parsed from docs/reviewing/core.md — \
+         tokenizer broken?"
     );
 }
