@@ -1,0 +1,76 @@
+# .reviewlooprc — what this repo adds to /review-loop
+
+The `/review-loop` skill names no repository. Its canonical copy here is
+`.agentsync/skills/review-loop/`, rendered to `.claude/skills/` and `.agents/skills/` by
+agentsync. It reads this file, when it exists at the repo root, and applies each section at the
+step the skill's Step 0 names. This file adds the repo's conventions; it cannot loosen a rule of
+the skill.
+
+## Read first
+
+- Every lens reads `CLAUDE.md`: *Testing & verification*, *Docs stay true to the code*, and the
+  *Hard "do not" list*.
+- A diff that touches auth, the token store or the MCP server: those sections of `CLAUDE.md`,
+  and `docs/cli-contract.md`.
+- `ARCHITECTURE.md` for how the pieces fit, and `DECISIONS.md` before calling a locked choice
+  wrong.
+
+## Checks and shared services
+
+- Every command is a `just` recipe; `just ci` is the gate. Never run a raw tool.
+- `just test` is hermetic. `just test-sandbox` reaches Oura's sandbox and is not for a reviewer.
+- A reviewer must not touch the real token store (`~/.config/oura-toolkit/`), run `oura auth`
+  against a real account, or run any publish or release recipe.
+- Generated code (`sdks/*/api`, the CLI reference page) is never edited by hand.
+
+## Lens angles
+
+### Correctness
+
+- Refresh-token rotation: the newly returned token is persisted, and a refresh re-reads the
+  store under the lock first.
+- Pagination by `next_token`, and the date parameters the overlay collapses.
+- The MCP server never writes to stdout outside the protocol.
+
+### Adversarial
+
+- A secret in a URL query string, a log line, an error message, a `{:?}` or MCP stdout.
+- Hostile token-endpoint responses and hostile store files; a new case goes in
+  `codegen/conformance/auth-cases.json`, never in one language's suite.
+- Output sanitization: escape sequences and forged lines in data that reaches a terminal.
+- Two processes sharing the store: the CLI and a long-running MCP server.
+
+### API design
+
+- The locked names (`CLAUDE.md` → *Naming*) and per-ecosystem namespacing.
+- Every language has the same shape: a generated client beside a hand-written auth companion.
+  No transport is written by hand; interactive OAuth lives in the CLI only.
+- The CLI's contract: exit codes, stream discipline, the shape of errors and hints.
+- Authorize and token URLs and scopes are read from the spec, never hardcoded.
+
+### Test rigor
+
+- The eight rules of `CLAUDE.md` → *Testing & verification*: a guarantee has a test, a guard
+  test was break-verified, concurrency claims use real concurrency, each security invariant has
+  an attack test, platform code runs on its platform, the contract is asserted on the binary.
+- Enumerable doc claims are pinned by tripwire tests.
+
+## Fixing
+
+- Every doc claim a fix makes false changes in the same PR: `README.md`, `CONTRIBUTING.md`,
+  `docs/cli-contract.md`, the plugin README, the docs site, and `ARCHITECTURE.md` or
+  `DECISIONS.md` when a decision or map fact changes. Each round asks: which documented claim
+  does this diff invalidate?
+- Agent config is changed under `.agentsync/` and re-rendered, never in a rendered file.
+- A fix to generated output is a fix to the generator, the overlay or a post-patch.
+
+## Gated areas
+
+- **Stated principles** — the *Hard "do not" list*, and the locked architecture and naming:
+  raise the issue and wait for an answer.
+- **Private data and secrets** — the token store (paths, permissions, the two records),
+  redaction, bring-your-own credentials, and what the CLI or MCP server prints.
+- **Stored data and published contracts** — the store's file format, `docs/cli-contract.md`,
+  the MCP tool names and schemas, the spec overlay, package and binary names, and the release
+  workflows.
+- **Money** — nothing in this repo.
