@@ -15,6 +15,10 @@ carry the rest so this one stays lean and load-bearing:
 - **[DECISIONS.md](DECISIONS.md)** — the log: *why* each locked choice was made, plus the
   hard-won toolchain realities and review-loop lessons behind them.
 
+Every review reads **[docs/reviewing/core.md](docs/reviewing/core.md)**: for a given diff, which
+sections of this file and of DECISIONS.md apply, which recipe shows the answer, and what a
+reviewer must not touch. It states no rule about the product.
+
 The architecture is **MOSTLY FINAL**. Do not relitigate the language, transport,
 client-generation, auth model, layout, or task-runner convention unless you have **high
 conviction** on a specific item; in that case, present the issue + suggestion(s) and wait for

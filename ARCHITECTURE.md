@@ -201,6 +201,9 @@ oura-toolkit/
 ├── .claude-plugin/marketplace.json   # at repo root (marketplace schema requires it)
 ├── plugins/oura-toolkit/  # single plugin: plugin.json + .mcp.json + skills/
 ├── docs-site/             # docs website (Astro Starlight → ouratoolkit.com)
+├── docs/cli-contract.md   # what the CLI promises its users
+├── docs/reviewing/        # where a reviewer looks for a given diff (points here + DECISIONS)
+├── .reviewlooprc          # what this repo adds to the /review-loop skill
 ├── codegen/               # overlays + generator configs + conformance fixtures
 └── dist-workspace.toml    # cargo-dist config
 ```
